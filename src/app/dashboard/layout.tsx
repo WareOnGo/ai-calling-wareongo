@@ -1,0 +1,20 @@
+import { requireUser } from "@/lib/auth";
+import { SignOutButton } from "./SignOutButton";
+
+export const dynamic = "force-dynamic";
+
+export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const user = await requireUser();
+  return (
+    <>
+      <div className="header">
+        <h1>Bolna Calls</h1>
+        <div className="user">
+          <span>{user.email}</span>
+          <SignOutButton />
+        </div>
+      </div>
+      <div className="wrap">{children}</div>
+    </>
+  );
+}

@@ -1,6 +1,8 @@
+import "./globals.css";
+
 export const metadata = {
-  title: "Bolna Processing",
-  description: "Receives Bolna post-call webhooks, enriches with OpenAI, stores in Supabase.",
+  title: "Bolna Calls — WareOnGo",
+  description: "Call data dashboard for Bolna voice-AI verification calls.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
