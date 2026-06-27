@@ -1,14 +1,44 @@
 import Link from "next/link";
-import { getCalls, getFilterOptions, type CallFilters } from "@/lib/calls";
+import { getCalls, getFilterOptions, calledByOptions, type CallFilters, type CallRow } from "@/lib/calls";
+import { GridInteractivity } from "./GridInteractivity";
+import { EditableCells } from "./EditableCells";
+import { ApplyButton } from "./ApplyButton";
 
 export const dynamic = "force-dynamic";
 
-function pill(availability: string | null) {
+const COLUMNS = [
+  "When", "Dir", "Number", "Owner", "Area", "Availability",
+  "Segment", "Sqft", "Rent", "Conf", "Notes", "Status", "Recording", "Transcript",
+  "Call Status", "Called By", "Added", "WH ID",
+];
+
+// Build a compact page list with ellipses: 1 … 4 5 [6] 7 8 … 20
+function pageList(page: number, pages: number): (number | "…")[] {
+  const set = new Set<number>();
+  for (let p = 1; p <= pages; p++) {
+    if (p === 1 || p === pages || Math.abs(p - page) <= 1) set.add(p);
+  }
+  const sorted = [...set].sort((a, b) => a - b);
+  const out: (number | "…")[] = [];
+  let prev = 0;
+  for (const p of sorted) {
+    if (prev && p - prev > 1) out.push("…");
+    out.push(p);
+    prev = p;
+  }
+  return out;
+}
+
+function colLetter(i: number) {
+  return String.fromCharCode(65 + i); // A, B, C, …
+}
+
+function cfClass(availability: string | null) {
   const v = (availability ?? "").toLowerCase();
-  if (v === "available") return <span className="pill available">Available</span>;
-  if (v === "unavailable") return <span className="pill unavailable">Unavailable</span>;
-  if (v.startsWith("dead")) return <span className="pill dead">Dead</span>;
-  return <span className="pill unclear">Unclear</span>;
+  if (v === "available") return "cf-green";
+  if (v === "unavailable") return "cf-red";
+  if (v.startsWith("dead")) return "cf-gray";
+  return "cf-yel"; // Unclear
 }
 
 function fmtDate(s: string | null) {
@@ -20,8 +50,7 @@ type SP = Record<string, string | undefined>;
 
 function qs(base: SP, override: SP) {
   const p = new URLSearchParams();
-  const merged = { ...base, ...override };
-  for (const [k, v] of Object.entries(merged)) if (v) p.set(k, v);
+  for (const [k, v] of Object.entries({ ...base, ...override })) if (v) p.set(k, v);
   return `?${p.toString()}`;
 }
 
@@ -33,6 +62,7 @@ export default async function Dashboard({
   const raw = await searchParams;
   const sp: SP = {};
   for (const [k, v] of Object.entries(raw)) sp[k] = Array.isArray(v) ? v[0] : v;
+
   const filters: CallFilters = {
     q: sp.q,
     availability: sp.availability,
@@ -44,100 +74,116 @@ export default async function Dashboard({
     page: sp.page ? Number(sp.page) : 1,
   };
 
-  const [{ rows, total, page, pages }, opts] = await Promise.all([
+  const [{ rows, total, page, pages, pageSize }, opts] = await Promise.all([
     getCalls(filters),
     getFilterOptions(),
   ]);
+  const cbOpts = calledByOptions();
 
-  const sel = (cur: string | undefined, val: string) => (cur === val ? "selected" : undefined);
+  const numCols = COLUMNS.length;
+  const startRow = (page - 1) * pageSize;
 
   return (
     <>
-      {/* Filters — plain GET form, no client JS needed */}
-      <form className="filters" method="GET" action="/dashboard">
-        <div className="field" style={{ minWidth: 220 }}>
-          <label>Search (number / owner / transcript)</label>
-          <input name="q" defaultValue={sp.q ?? ""} placeholder="e.g. 98765 or Avinash" />
+      {/* Filters — Google-style chips */}
+      <form className="filterbar" method="GET" action="/dashboard">
+        <div className="search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input name="q" defaultValue={sp.q ?? ""} placeholder="Search number, owner, transcript" />
         </div>
-        <div className="field">
-          <label>Availability</label>
+
+        <div className={`chip${sp.availability ? " active" : ""}`}>
           <select name="availability" defaultValue={sp.availability ?? ""}>
-            <option value="">All</option>
+            <option value="">Availability</option>
             {opts.availabilities.map((v) => <option key={v} value={v}>{v}</option>)}
           </select>
         </div>
-        <div className="field">
-          <label>Segment</label>
+        <div className={`chip${sp.segment ? " active" : ""}`}>
           <select name="segment" defaultValue={sp.segment ?? ""}>
-            <option value="">All</option>
+            <option value="">Segment</option>
             {opts.segments.map((v) => <option key={v} value={v}>{v}</option>)}
           </select>
         </div>
-        <div className="field">
-          <label>Agent</label>
+        <div className={`chip${sp.agent_id ? " active" : ""}`}>
           <select name="agent_id" defaultValue={sp.agent_id ?? ""}>
-            <option value="">All</option>
+            <option value="">Agent</option>
             {opts.agents.map((v) => <option key={v} value={v}>{v.slice(0, 8)}…</option>)}
           </select>
         </div>
-        <div className="field">
-          <label>Status</label>
+        <div className={`chip${sp.status ? " active" : ""}`}>
           <select name="status" defaultValue={sp.status ?? ""}>
-            <option value="">All</option>
+            <option value="">Status</option>
             {opts.statuses.map((v) => <option key={v} value={v}>{v}</option>)}
           </select>
         </div>
-        <div className="field">
-          <label>Confidence</label>
+        <div className={`chip${sp.confidence ? " active" : ""}`}>
           <select name="confidence" defaultValue={sp.confidence ?? ""}>
-            <option value="">All</option>
+            <option value="">Confidence</option>
             {opts.confidences.map((v) => <option key={v} value={v}>{v}</option>)}
           </select>
         </div>
-        <div className="field check">
-          <input type="checkbox" id="nr" name="needs_review" value="1" defaultChecked={sp.needs_review === "1"} />
-          <label htmlFor="nr" style={{ textTransform: "none" }}>Needs review</label>
-        </div>
-        <button className="btn" type="submit">Apply</button>
-        <a className="btn secondary" href="/dashboard">Reset</a>
+
+        <label className={`toggle${sp.needs_review === "1" ? " active" : ""}`}>
+          <input type="checkbox" name="needs_review" value="1" defaultChecked={sp.needs_review === "1"} />
+          Needs review
+        </label>
+
+        <span className="spacer" />
+        <ApplyButton />
+        <a className="btn-text" href="/dashboard">Reset</a>
       </form>
 
-      <div className="tablewrap">
-        <table>
+      <div className="gridwrap">
+        <table className="sheet">
           <thead>
-            <tr>
-              <th>When</th>
-              <th>Dir</th>
-              <th>Number</th>
-              <th>Owner</th>
-              <th>Area</th>
-              <th>Availability</th>
-              <th>Segment</th>
-              <th>Area (sqft)</th>
-              <th>Rent</th>
-              <th>Conf.</th>
-              <th>Status</th>
-              <th>Rec.</th>
+            <tr className="colletters">
+              <th className="corner"></th>
+              {COLUMNS.map((_, i) => <th key={i}>{colLetter(i)}</th>)}
+            </tr>
+            <tr className="colheads">
+              <th className="rowgutter"></th>
+              {COLUMNS.map((c) => <th key={c}>{c}</th>)}
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && (
-              <tr><td colSpan={12} className="muted" style={{ padding: 24, textAlign: "center" }}>No calls match these filters.</td></tr>
+              <tr>
+                <td className="rownum"></td>
+                <td colSpan={numCols} className="muted" style={{ textAlign: "center", padding: 24 }}>
+                  No calls match these filters.
+                </td>
+              </tr>
             )}
-            {rows.map((r) => (
+            {rows.map((r: CallRow, i) => (
               <tr key={r.id}>
-                <td className="muted">{fmtDate(r.call_created_at)}</td>
-                <td>{r.call_type === "inbound" ? "←" : "→"}</td>
+                <td className="rownum">{startRow + i + 1}</td>
+                <td>{fmtDate(r.call_created_at)}</td>
+                <td>{r.call_type === "inbound" ? "In" : "Out"}</td>
                 <td>{r.call_type === "inbound" ? r.from_number : r.to_number}</td>
-                <td>{r.owner_name ?? <span className="muted">—</span>}</td>
-                <td>{r.db_area ?? <span className="muted">—</span>}</td>
-                <td>{pill(r.availability)} {r.needs_review && <span className="pill review">review</span>}</td>
-                <td className="muted">{r.segment || "—"}</td>
-                <td>{r.built_up_area_sqft || <span className="muted">—</span>}</td>
-                <td>{r.expected_rent || <span className="muted">—</span>}</td>
-                <td className="muted">{r.confidence ?? "—"}</td>
-                <td className="muted">{r.status}</td>
-                <td>{r.recording_url ? <a href={r.recording_url} target="_blank" rel="noreferrer">▶</a> : <span className="muted">—</span>}</td>
+                <td>{r.owner_name ?? ""}</td>
+                <td>{r.db_area ?? ""}</td>
+                <td className={cfClass(r.availability)}>
+                  {r.availability ?? ""}
+                  {r.needs_review && <span className="review-tag">review</span>}
+                </td>
+                <td>{r.segment || ""}</td>
+                <td>{r.built_up_area_sqft || ""}</td>
+                <td>{r.expected_rent || ""}</td>
+                <td>{r.confidence ?? ""}</td>
+                <td className="clip" title={r.notes ?? ""}>{r.notes ?? ""}</td>
+                <td>{r.status}</td>
+                <td>{r.recording_url ? <a href={r.recording_url} target="_blank" rel="noreferrer">Play</a> : ""}</td>
+                <td className="clip" title={r.transcript ?? ""}>{r.transcript ?? ""}</td>
+                <EditableCells
+                  id={r.id}
+                  callStatus={r.call_status}
+                  calledBy={r.called_by}
+                  addedToDb={r.added_to_db}
+                  whId={r.wh_id}
+                  calledByOptions={cbOpts}
+                />
               </tr>
             ))}
           </tbody>
@@ -145,17 +191,24 @@ export default async function Dashboard({
       </div>
 
       <div className="pager">
-        <span className="muted">{total.toLocaleString()} calls · page {page} of {pages}</span>
+        <span className="muted">
+          {total === 0 ? "No results" : `${(startRow + 1).toLocaleString()}–${Math.min(startRow + pageSize, total).toLocaleString()} of ${total.toLocaleString()}`}
+        </span>
         <div className="pages">
-          {page > 1
-            ? <Link href={qs(sp, { page: String(page - 1) })}>‹ Prev</Link>
-            : <span className="disabled cur">‹ Prev</span>}
-          <span className="cur">{page}</span>
-          {page < pages
-            ? <Link href={qs(sp, { page: String(page + 1) })}>Next ›</Link>
-            : <span className="disabled cur">Next ›</span>}
+          <Link className={page <= 1 ? "disabled" : ""} href={qs(sp, { page: "1" })} aria-label="First">«</Link>
+          <Link className={page <= 1 ? "disabled" : ""} href={qs(sp, { page: String(page - 1) })} aria-label="Prev">‹</Link>
+          {pageList(page, pages).map((t, i) =>
+            t === "…"
+              ? <span key={`e${i}`} className="ellipsis">…</span>
+              : t === page
+                ? <span key={t} className="cur">{t}</span>
+                : <Link key={t} href={qs(sp, { page: String(t) })}>{t}</Link>,
+          )}
+          <Link className={page >= pages ? "disabled" : ""} href={qs(sp, { page: String(page + 1) })} aria-label="Next">›</Link>
+          <Link className={page >= pages ? "disabled" : ""} href={qs(sp, { page: String(pages) })} aria-label="Last">»</Link>
         </div>
       </div>
+      <GridInteractivity />
     </>
   );
 }

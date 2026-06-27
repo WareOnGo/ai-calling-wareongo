@@ -14,8 +14,15 @@ export type CallRow = {
   confidence: string | null;
   built_up_area_sqft: string | null;
   expected_rent: string | null;
+  notes: string | null;
+  transcript: string | null;
   recording_url: string | null;
   needs_review: boolean;
+  // editable workflow fields
+  call_status: string | null;
+  called_by: string | null;
+  added_to_db: boolean;
+  wh_id: string | null;
 };
 
 export type CallFilters = {
@@ -62,7 +69,8 @@ export async function getCalls(f: CallFilters) {
   const rowsRes = await query<CallRow>(
     `select id, call_created_at, call_type, from_number, to_number, owner_name, db_area,
             status, availability, segment, confidence, built_up_area_sqft, expected_rent,
-            recording_url, needs_review
+            notes, transcript, recording_url, needs_review,
+            call_status, called_by, added_to_db, wh_id
        from call_analysis
        ${whereSql}
        order by call_created_at desc nulls last
@@ -71,6 +79,13 @@ export async function getCalls(f: CallFilters) {
   );
 
   return { rows: rowsRes.rows, total, page, pageSize, pages: Math.max(1, Math.ceil(total / pageSize)) };
+}
+
+export function calledByOptions(): string[] {
+  return (process.env.CALLED_BY_OPTIONS ?? "Raghav,Dhaval,Jayanth")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 export async function getFilterOptions() {
