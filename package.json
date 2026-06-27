@@ -1,0 +1,30 @@
+{
+  "name": "bolna-processing",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bolna Processing — receives Bolna post-call webhooks, enriches them with OpenAI, and stores results in Supabase Postgres.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:init": "node --env-file=.env.local scripts/db-init.mjs",
+    "backfill": "node --env-file=.env.local scripts/backfill.mjs",
+    "drain": "node --env-file=.env.local scripts/drain.mjs http://localhost:3000/api/process",
+    "enrich": "node --env-file=.env.local scripts/drain.mjs http://localhost:3000/api/enrich"
+  },
+  "dependencies": {
+    "next": "^15.1.0",
+    "openai": "^4.77.0",
+    "pg": "^8.13.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.11.10",
+    "@types/react": "^19.0.0",
+    "typescript": "^5.7.0"
+  }
+}
