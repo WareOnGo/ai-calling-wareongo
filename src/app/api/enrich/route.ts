@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-// Bulk "enrich later" pass over call_logs (e.g. the historical backfill).
+// Bulk "enrich later" pass over bolna_call_logs (e.g. the historical backfill).
 // Selects calls that pass the cost gate and haven't been inferred at the current
 // version, runs OpenAI, and writes the inference fields back. Idempotent + resumable:
 // re-running only picks up rows still needing inference. Run single-runner (drain loop).
@@ -30,7 +30,7 @@ function authorized(req: NextRequest): boolean {
 async function claimRows(): Promise<Row[]> {
   const { rows } = await getPool().query<Row>(
     `select id, transcript
-       from call_logs
+       from bolna_call_logs
       where status = 'completed'
         and total_cost > $1
         and length(trim(coalesce(transcript, ''))) > 0
@@ -45,7 +45,7 @@ async function claimRows(): Promise<Row[]> {
 async function enrichRow(row: Row) {
   const f = inferenceFields(await inferCall(row.transcript));
   await getPool().query(
-    `update call_logs set
+    `update bolna_call_logs set
        llm_availability   = $2,
        built_up_area_sqft = $3,
        city_area          = $4,

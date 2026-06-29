@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
   try {
     // Idempotent: a duplicate terminal fire for the same execution is a no-op.
     await query(
-      `insert into webhook_events (id, raw, status, next_attempt_at)
+      `insert into bolna_webhook_events (id, raw, status, next_attempt_at)
        values ($1, $2, 'pending', now())
        on conflict (id) do nothing`,
       [e.id, body],

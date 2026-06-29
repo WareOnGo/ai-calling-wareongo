@@ -26,7 +26,7 @@ function authorized(req: NextRequest): boolean {
 async function claimRows(): Promise<Row[]> {
   const { rows } = await getPool().query<Row>(
     `select id, transcript, city_area
-       from call_logs
+       from bolna_call_logs
       where context_details -> 'recipient_data' ->> 'area' is null
         and inferred_district is null
         and (length(trim(coalesce(transcript, ''))) > 20
@@ -40,7 +40,7 @@ async function claimRows(): Promise<Row[]> {
 async function inferRow(row: Row) {
   const { district } = await inferDistrict(row.transcript, row.city_area);
   await getPool().query(
-    `update call_logs set inferred_district = $2 where id = $1`,
+    `update bolna_call_logs set inferred_district = $2 where id = $1`,
     [row.id, district ?? ""],
   );
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { randomBytes } from "crypto";
+import { callbackUrl, originFromRequest } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
@@ -8,11 +9,12 @@ const STATE_COOKIE = "bp_oauth_state";
 
 export async function GET(req: Request) {
   const clientId = process.env.GOOGLE_CLIENT_ID;
-  const redirectUri = process.env.GOOGLE_REDIRECT_URI;
-  if (!clientId || !redirectUri) {
-    const url = new URL(req.url);
-    return NextResponse.redirect(`${url.origin}/?error=oauth_not_configured`);
+  if (!clientId) {
+    return NextResponse.redirect(`${originFromRequest(req)}/?error=oauth_not_configured`);
   }
+  // redirect_uri is derived from the current host, so it matches wherever the
+  // user is (localhost or the deployed domain).
+  const redirectUri = callbackUrl(req);
 
   const state = randomBytes(16).toString("hex");
   const c = await cookies();

@@ -9,7 +9,7 @@ export const ENABLE_ENRICHMENT = process.env.ENABLE_ENRICHMENT !== "false";
 /**
  * A call qualifies for LLM inference only if it actually connected
  * (status=completed), spent more than the cost gate, and has a transcript.
- * Non-connected calls are handled deterministically by the call_analysis view.
+ * Non-connected calls are handled deterministically by the bolna_call_analysis view.
  */
 export function qualifiesForInference(
   status: string | null | undefined,

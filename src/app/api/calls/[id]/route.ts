@@ -39,7 +39,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   vals.push(id);
   const res = await query(
-    `update call_logs set ${sets.join(", ")} where id = $${vals.length}`,
+    `update bolna_call_logs set ${sets.join(", ")} where id = $${vals.length}`,
     vals,
   );
   if (res.rowCount === 0) return NextResponse.json({ error: "not found" }, { status: 404 });

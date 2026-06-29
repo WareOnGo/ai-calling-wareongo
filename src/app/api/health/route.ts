@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const { rows } = await query<{ pending: string }>(
-      `select count(*)::text as pending from webhook_events
+      `select count(*)::text as pending from bolna_webhook_events
         where status in ('pending', 'failed')`,
     );
     return NextResponse.json({ ok: true, db: "up", pending: Number(rows[0].pending) });

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { setSessionEmail, isAllowed } from "@/lib/auth";
+import { setSessionEmail, isAllowed, originFromRequest, callbackUrl } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
@@ -11,7 +11,7 @@ type UserInfo = { email?: string; email_verified?: boolean; name?: string };
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const origin = url.origin;
+  const origin = originFromRequest(req);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
   const oauthError = url.searchParams.get("error");
@@ -28,10 +28,11 @@ export async function GET(req: Request) {
 
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const redirectUri = process.env.GOOGLE_REDIRECT_URI;
-  if (!clientId || !clientSecret || !redirectUri) {
+  if (!clientId || !clientSecret) {
     return NextResponse.redirect(`${origin}/?error=oauth_not_configured`);
   }
+  // Must be the SAME redirect_uri used in the auth request (Google validates it).
+  const redirectUri = callbackUrl(req);
 
   const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",

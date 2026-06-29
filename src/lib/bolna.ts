@@ -52,7 +52,7 @@ export const executionSchema = z
 
 export type Execution = z.infer<typeof executionSchema>;
 
-// Flatten + clean the raw payload into the shape we store in call_logs.
+// Flatten + clean the raw payload into the shape we store in bolna_call_logs.
 export function normalize(e: Execution) {
   const t = e.telephony_data ?? {};
   const duration = t.duration != null ? Math.trunc(Number(t.duration)) : null;

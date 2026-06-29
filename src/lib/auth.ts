@@ -10,6 +10,20 @@ const MAX_AGE = 60 * 60 * 24 * 30; // 30 days
 
 export type CurrentUser = { email: string; isAdmin: boolean };
 
+// Derive the public origin from the request (works on localhost and behind
+// Vercel's proxy) so the OAuth redirect_uri always matches the host the user
+// is actually on — no per-environment GOOGLE_REDIRECT_URI needed.
+export function originFromRequest(req: Request): string {
+  const h = req.headers;
+  const proto = h.get("x-forwarded-proto") ?? "https";
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+  return `${proto}://${host}`;
+}
+
+export function callbackUrl(req: Request): string {
+  return `${originFromRequest(req)}/api/auth/google/callback`;
+}
+
 function emailSet(envVar: string): Set<string> {
   return new Set(
     (process.env[envVar] ?? "")

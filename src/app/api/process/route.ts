@@ -44,7 +44,7 @@ async function claimBatch(): Promise<ClaimedRow[]> {
     await client.query("begin");
     const { rows } = await client.query<ClaimedRow>(
       `select id, raw, attempts, max_attempts
-         from webhook_events
+         from bolna_webhook_events
         where status in ('pending', 'failed')
           and attempts < max_attempts
           and next_attempt_at <= now()
@@ -55,7 +55,7 @@ async function claimBatch(): Promise<ClaimedRow[]> {
     );
     if (rows.length > 0) {
       await client.query(
-        `update webhook_events set status = 'processing'
+        `update bolna_webhook_events set status = 'processing'
           where id = any($1::uuid[])`,
         [rows.map((r) => r.id)],
       );
@@ -80,17 +80,31 @@ async function processEvent(row: ClaimedRow) {
     const inf = shouldInfer ? await inferCall(c.transcript) : null;
     const f = inferenceFields(inf);
 
+    // FK: bolna_call_logs.phone_id references raw_phone_numbers. Ensure the canonical
+    // number exists first and capture its id. last10 matches the generated column:
+    // last 10 digits of the customer number (caller for inbound, recipient otherwise).
+    const rawNum = c.call_type === "inbound" ? c.from_number : c.to_number;
+    const digitsOnly = String(rawNum ?? "").replace(/\D/g, "");
+    const last10 = digitsOnly.length > 10 ? digitsOnly.slice(-10) : digitsOnly;
+    const { rows: pnRows } = await pool.query<{ phone_id: string }>(
+      `insert into raw_phone_numbers (phone_last10, phone) values ($1, $2)
+       on conflict (phone_last10) do update set phone = coalesce(raw_phone_numbers.phone, excluded.phone)
+       returning phone_id`,
+      [last10, last10.length === 10 ? "+91" + last10 : null],
+    );
+    const phoneId = pnRows[0]?.phone_id ?? null;
+
     await pool.query(
-      `insert into call_logs (
+      `insert into bolna_call_logs (
          id, agent_id, batch_id, status, call_type, from_number, to_number,
          duration_secs, total_cost, cost_breakdown, recording_url, hangup_by,
          hangup_reason, answered_by_vm, transcript, context_details, raw, call_created_at,
          llm_availability, built_up_area_sqft, city_area, expected_rent, possession,
          confidence, notes, enrichment, enriched, inference_version, inference_model,
-         needs_review, processed_at
+         needs_review, phone_id, processed_at
        ) values (
          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
-         $19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30, now()
+         $19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31, now()
        )
        on conflict (id) do update set
          status          = excluded.status,
@@ -98,18 +112,19 @@ async function processEvent(row: ClaimedRow) {
          context_details = excluded.context_details,
          raw             = excluded.raw,
          -- only overwrite inference when this run actually inferred
-         llm_availability   = case when excluded.enriched then excluded.llm_availability   else call_logs.llm_availability   end,
-         built_up_area_sqft = case when excluded.enriched then excluded.built_up_area_sqft else call_logs.built_up_area_sqft end,
-         city_area          = case when excluded.enriched then excluded.city_area          else call_logs.city_area          end,
-         expected_rent      = case when excluded.enriched then excluded.expected_rent      else call_logs.expected_rent      end,
-         possession         = case when excluded.enriched then excluded.possession         else call_logs.possession         end,
-         confidence         = case when excluded.enriched then excluded.confidence         else call_logs.confidence         end,
-         notes              = case when excluded.enriched then excluded.notes              else call_logs.notes              end,
-         enrichment         = case when excluded.enriched then excluded.enrichment         else call_logs.enrichment         end,
-         inference_model    = case when excluded.enriched then excluded.inference_model    else call_logs.inference_model    end,
-         needs_review       = case when excluded.enriched then excluded.needs_review       else call_logs.needs_review       end,
-         enriched           = call_logs.enriched or excluded.enriched,
-         inference_version  = greatest(call_logs.inference_version, excluded.inference_version),
+         llm_availability   = case when excluded.enriched then excluded.llm_availability   else bolna_call_logs.llm_availability   end,
+         built_up_area_sqft = case when excluded.enriched then excluded.built_up_area_sqft else bolna_call_logs.built_up_area_sqft end,
+         city_area          = case when excluded.enriched then excluded.city_area          else bolna_call_logs.city_area          end,
+         expected_rent      = case when excluded.enriched then excluded.expected_rent      else bolna_call_logs.expected_rent      end,
+         possession         = case when excluded.enriched then excluded.possession         else bolna_call_logs.possession         end,
+         confidence         = case when excluded.enriched then excluded.confidence         else bolna_call_logs.confidence         end,
+         notes              = case when excluded.enriched then excluded.notes              else bolna_call_logs.notes              end,
+         enrichment         = case when excluded.enriched then excluded.enrichment         else bolna_call_logs.enrichment         end,
+         inference_model    = case when excluded.enriched then excluded.inference_model    else bolna_call_logs.inference_model    end,
+         needs_review       = case when excluded.enriched then excluded.needs_review       else bolna_call_logs.needs_review       end,
+         enriched           = bolna_call_logs.enriched or excluded.enriched,
+         inference_version  = greatest(bolna_call_logs.inference_version, excluded.inference_version),
+         phone_id           = excluded.phone_id,
          processed_at       = now()`,
       [
         c.id,
@@ -142,11 +157,12 @@ async function processEvent(row: ClaimedRow) {
         f.inference_version,
         f.inference_model,
         f.needs_review,
+        phoneId,
       ],
     );
 
     await pool.query(
-      `update webhook_events
+      `update bolna_webhook_events
           set status = 'processed', processed_at = now(), last_error = null
         where id = $1`,
       [c.id],
@@ -156,7 +172,7 @@ async function processEvent(row: ClaimedRow) {
     const msg = err instanceof Error ? err.message : String(err);
     const nextAttempt = row.attempts + 1;
     await pool.query(
-      `update webhook_events
+      `update bolna_webhook_events
           set status          = 'failed',
               attempts        = attempts + 1,
               last_error      = $2,

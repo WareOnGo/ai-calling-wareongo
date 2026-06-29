@@ -7,3 +7,11 @@ node_modules
 .vercel
 next-env.d.ts
 *.tsbuildinfo
+
+# Source datasets & cleaned outputs (large; not for version control)
+rawdata/
+cleandata/
+
+# DB schema + data pipeline — kept private (sources, schemas, migrations, loaders)
+scripts/
+sql/

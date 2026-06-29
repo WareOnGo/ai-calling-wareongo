@@ -108,6 +108,12 @@ a:hover { text-decoration: underline; }
 .filterbar .spacer { flex: 1; }
 .btn-text { background: none; border: none; color: var(--blue); font-size: 14px; font-weight: 500; cursor: pointer; padding: 9px 12px; border-radius: 4px; font-family: inherit; }
 .btn-text:hover { background: #f1f3f4; }
+.btn-export {
+  display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 16px;
+  border: 1px solid var(--green); border-radius: 20px; background: var(--fill-green-bg);
+  color: var(--fill-green-tx); font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: none;
+}
+.btn-export:hover { background: #d6ecdd; }
 
 /* ---- the grid ---- */
 .filterbar { flex: none; }
@@ -119,13 +125,9 @@ table.sheet th, table.sheet td {
   white-space: nowrap; height: 30px; font-weight: 400; text-align: left; color: var(--text);
 }
 
-/* column-letter row + corner */
-table.sheet tr.colletters th { background: var(--gutter-bg); color: var(--gutter-text); text-align: center; font-weight: 400; font-size: 11px; height: 22px; border-color: var(--grid-line-strong); position: sticky; top: 0; z-index: 3; }
-table.sheet th.corner { width: 46px; min-width: 46px; background: var(--gutter-bg); position: sticky; left: 0; top: 0; z-index: 4; }
-
-/* field-name header row (frozen, bold) */
-table.sheet tr.colheads th { background: var(--gutter-bg); color: #3c4043; font-weight: 700; font-size: 12px; position: sticky; top: 22px; z-index: 3; }
-table.sheet tr.colheads th.rowgutter { left: 0; z-index: 4; }
+/* field-name header row (frozen, bold) — the only header row */
+table.sheet tr.colheads th { background: var(--gutter-bg); color: #3c4043; font-weight: 700; font-size: 12px; position: sticky; top: 0; z-index: 3; }
+table.sheet tr.colheads th.rowgutter { width: 46px; min-width: 46px; left: 0; z-index: 4; }
 
 /* row-number gutter */
 table.sheet td.rownum { width: 46px; min-width: 46px; background: var(--gutter-bg); color: var(--gutter-text); text-align: center; font-size: 11px; position: sticky; left: 0; }
@@ -151,6 +153,35 @@ td.cf-red   { background: var(--fill-red-bg);   color: var(--fill-red-tx);   fon
 td.cf-yel   { background: var(--fill-yel-bg);   color: var(--fill-yel-tx); }
 td.cf-gray  { background: var(--fill-gray-bg);  color: var(--fill-gray-tx); }
 td .review-tag { margin-left: 6px; color: var(--blue); font-size: 11px; }
+table.sheet td mark { background: #fff3a3; color: inherit; padding: 0 1px; border-radius: 2px; }
+
+/* ---- collapsible column groups (AI Call Details, DB) ---- */
+/* tint only the group header (name) cell light green */
+table.sheet tr.colheads th.grp-toggle { background: var(--fill-green-bg); color: var(--fill-green-tx); }
+table.sheet th.grp-toggle-head { cursor: pointer; user-select: none; font-weight: 700; }
+/* toggle column body cells get a green left edge to anchor the group */
+table.sheet td.db-toggle, table.sheet td.call-toggle { border-left: 2px solid var(--green); }
+.grp-head-inner { display: inline-flex; align-items: center; gap: 7px; justify-content: center; }
+/* bigger, bolder caret in brand green (points down when expanded) */
+.grp-caret { display: inline-block; width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 8px solid var(--green); }
+/* collapsed: hide that group's detail columns + point its caret right */
+table.sheet.db-collapsed .db-col { display: none; }
+table.sheet.call-collapsed .call-col { display: none; }
+table.sheet.db-collapsed .db-toggle .grp-caret,
+table.sheet.call-collapsed .call-toggle .grp-caret {
+  border-top: 6px solid transparent; border-bottom: 6px solid transparent;
+  border-left: 8px solid var(--green); border-right: 0;
+}
+
+/* ---- client-side resizable columns ---- */
+table.sheet.resizable { table-layout: fixed; }
+table.sheet.resizable th, table.sheet.resizable td { overflow: hidden; text-overflow: ellipsis; }
+/* collapse hides a group's columns by forcing their <col> width to 0 (fixed layout) */
+table.sheet.resizable.db-collapsed col.db-col { width: 0 !important; }
+table.sheet.resizable.call-collapsed col.call-col { width: 0 !important; }
+/* drag handle on the right edge of each header cell */
+table.sheet th .col-resizer { position: absolute; top: 0; right: 0; height: 100%; width: 7px; cursor: col-resize; z-index: 5; }
+table.sheet th .col-resizer:hover { background: var(--blue); opacity: 0.5; }
 
 /* ---- pager ---- */
 .pager { flex: none; display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 10px 14px; border-top: 1px solid var(--border); background: #fff; }

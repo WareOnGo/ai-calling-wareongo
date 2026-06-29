@@ -1,16 +1,35 @@
 import Link from "next/link";
-import { getCalls, getFilterOptions, calledByOptions, type CallFilters, type CallRow } from "@/lib/calls";
+import { getCalls, getFilterOptions, calledByOptions, type CallFilters, type CallRow, type RawMatch } from "@/lib/calls";
 import { GridInteractivity } from "./GridInteractivity";
 import { EditableCells } from "./EditableCells";
 import { ApplyButton } from "./ApplyButton";
+import { GroupToggle } from "./GroupToggle";
+import { ColumnResize } from "./ColumnResize";
 
 export const dynamic = "force-dynamic";
 
 const COLUMNS = [
-  "When", "Dir", "Number", "Owner", "Area", "Availability",
-  "Segment", "Sqft", "Rent", "Conf", "Notes", "Status", "Recording", "Transcript",
+  "When", "Direction", "Number", "Owner", "Area", "Availability", "Sqft", "Rent",
+  "AI Call Details", "Notes", "Transcript", "Recording",
+  "DB", "DB Owner", "DB Type", "DB City", "DB State", "DB Sqft",
   "Call Status", "Called By", "Added", "WH ID",
 ];
+
+// Collapsible column groups: a green toggle column (always shown, holds a summary
+// value) that collapses/expands its detail columns.
+//  - "AI Call Details": summary = Status; collapses Notes / Transcript / Recording
+//  - "DB":              summary = Source; collapses the matched-listing detail columns
+const GROUPS = [
+  { key: "call", toggle: "AI Call Details", members: ["Notes", "Transcript", "Recording"] },
+  { key: "db", toggle: "DB", members: ["DB Owner", "DB Type", "DB City", "DB State", "DB Sqft"] },
+];
+function colClass(label: string): string | undefined {
+  for (const g of GROUPS) {
+    if (label === g.toggle) return `${g.key}-toggle grp-toggle`;
+    if (g.members.includes(label)) return `${g.key}-col`;
+  }
+  return undefined;
+}
 
 // Build a compact page list with ellipses: 1 … 4 5 [6] 7 8 … 20
 function pageList(page: number, pages: number): (number | "…")[] {
@@ -29,8 +48,27 @@ function pageList(page: number, pages: number): (number | "…")[] {
   return out;
 }
 
-function colLetter(i: number) {
-  return String.fromCharCode(65 + i); // A, B, C, …
+// Wrap any occurrences of the search terms in <mark> for highlighting.
+function hl(text: string | null | undefined, terms: string[]): React.ReactNode {
+  const s = text ?? "";
+  if (!s || terms.length === 0) return s;
+  const esc = terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).filter(Boolean);
+  if (esc.length === 0) return s;
+  const parts = s.split(new RegExp(`(${esc.join("|")})`, "ig"));
+  const isMatch = (p: string) => esc.some((e) => new RegExp(`^${e}$`, "i").test(p));
+  return parts.map((p, i) => (isMatch(p) ? <mark key={i}>{p}</mark> : <span key={i}>{p}</span>));
+}
+
+// Full list for the hover tooltip on the matched-owner cell — one matched listing per line.
+function matchesTooltip(matches: RawMatch[] | null): string {
+  if (!matches || matches.length === 0) return "";
+  return matches
+    .map((m) => {
+      const loc = [m.city, m.state].filter(Boolean).join(", ");
+      const tag = m.contact_type === "probable broker" ? " [broker]" : "";
+      return `${m.source} · ${m.owner_name ?? "—"}${loc ? ` · ${loc}` : ""}${m.area_sqft ? ` · ${m.area_sqft} sqft` : ""}${tag}`;
+    })
+    .join("\n");
 }
 
 function cfClass(availability: string | null) {
@@ -66,15 +104,17 @@ export default async function Dashboard({
   const filters: CallFilters = {
     q: sp.q,
     availability: sp.availability,
-    segment: sp.segment,
     agent_id: sp.agent_id,
     status: sp.status,
-    confidence: sp.confidence,
+    source: sp.source,
+    state: sp.state,
+    contact: sp.contact,
+    call_type: sp.call_type,
     needs_review: sp.needs_review === "1",
     page: sp.page ? Number(sp.page) : 1,
   };
 
-  const [{ rows, total, page, pages, pageSize }, opts] = await Promise.all([
+  const [{ rows, total, page, pages, pageSize, terms }, opts] = await Promise.all([
     getCalls(filters),
     getFilterOptions(),
   ]);
@@ -82,6 +122,14 @@ export default async function Dashboard({
 
   const numCols = COLUMNS.length;
   const startRow = (page - 1) * pageSize;
+
+  // Export link mirrors the currently-applied filters (not pagination) so the CSV
+  // contains the whole filtered set, however many pages it spans.
+  const exportParams = new URLSearchParams();
+  for (const k of ["q", "availability", "agent_id", "status", "source", "state", "contact", "call_type", "needs_review"]) {
+    if (sp[k]) exportParams.set(k, sp[k] as string);
+  }
+  const exportHref = `/api/calls/export?${exportParams.toString()}`;
 
   return (
     <>
@@ -91,7 +139,7 @@ export default async function Dashboard({
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
-          <input name="q" defaultValue={sp.q ?? ""} placeholder="Search number, owner, transcript" />
+          <input name="q" defaultValue={sp.q ?? ""} placeholder="Fuzzy search — number, owner, source, state, transcript…" />
         </div>
 
         <div className={`chip${sp.availability ? " active" : ""}`}>
@@ -100,10 +148,30 @@ export default async function Dashboard({
             {opts.availabilities.map((v) => <option key={v} value={v}>{v}</option>)}
           </select>
         </div>
-        <div className={`chip${sp.segment ? " active" : ""}`}>
-          <select name="segment" defaultValue={sp.segment ?? ""}>
-            <option value="">Segment</option>
-            {opts.segments.map((v) => <option key={v} value={v}>{v}</option>)}
+        <div className={`chip${sp.call_type ? " active" : ""}`}>
+          <select name="call_type" defaultValue={sp.call_type ?? ""}>
+            <option value="">Direction</option>
+            <option value="inbound">Inbound</option>
+            <option value="outbound">Outbound</option>
+          </select>
+        </div>
+        <div className={`chip${sp.source ? " active" : ""}`}>
+          <select name="source" defaultValue={sp.source ?? ""}>
+            <option value="">DB Source</option>
+            {opts.sources.map((v) => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </div>
+        <div className={`chip${sp.state ? " active" : ""}`}>
+          <select name="state" defaultValue={sp.state ?? ""}>
+            <option value="">DB State</option>
+            {opts.states.map((v) => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </div>
+        <div className={`chip${sp.contact ? " active" : ""}`}>
+          <select name="contact" defaultValue={sp.contact ?? ""}>
+            <option value="">Contact</option>
+            <option value="owner">Owner</option>
+            <option value="broker">Broker</option>
           </select>
         </div>
         <div className={`chip${sp.agent_id ? " active" : ""}`}>
@@ -118,12 +186,6 @@ export default async function Dashboard({
             {opts.statuses.map((v) => <option key={v} value={v}>{v}</option>)}
           </select>
         </div>
-        <div className={`chip${sp.confidence ? " active" : ""}`}>
-          <select name="confidence" defaultValue={sp.confidence ?? ""}>
-            <option value="">Confidence</option>
-            {opts.confidences.map((v) => <option key={v} value={v}>{v}</option>)}
-          </select>
-        </div>
 
         <label className={`toggle${sp.needs_review === "1" ? " active" : ""}`}>
           <input type="checkbox" name="needs_review" value="1" defaultChecked={sp.needs_review === "1"} />
@@ -131,20 +193,22 @@ export default async function Dashboard({
         </label>
 
         <span className="spacer" />
+        <a className="btn-export" href={exportHref}>⬇ Export CSV</a>
         <ApplyButton />
         <a className="btn-text" href="/dashboard">Reset</a>
       </form>
 
       <div className="gridwrap">
-        <table className="sheet">
+        <table className="sheet db-collapsed call-collapsed">
           <thead>
-            <tr className="colletters">
-              <th className="corner"></th>
-              {COLUMNS.map((_, i) => <th key={i}>{colLetter(i)}</th>)}
-            </tr>
             <tr className="colheads">
               <th className="rowgutter"></th>
-              {COLUMNS.map((c) => <th key={c}>{c}</th>)}
+              {COLUMNS.map((c) => {
+                const g = GROUPS.find((g) => g.toggle === c);
+                return g
+                  ? <GroupToggle key={c} group={g.key} label={c} />
+                  : <th key={c} className={colClass(c)}>{c}</th>;
+              })}
             </tr>
           </thead>
           <tbody>
@@ -160,22 +224,30 @@ export default async function Dashboard({
               <tr key={r.id}>
                 <td className="rownum">{startRow + i + 1}</td>
                 <td>{fmtDate(r.call_created_at)}</td>
-                <td>{r.call_type === "inbound" ? "In" : "Out"}</td>
-                <td>{r.call_type === "inbound" ? r.from_number : r.to_number}</td>
-                <td>{r.owner_name ?? ""}</td>
-                <td>{r.db_area ?? ""}</td>
+                <td>{r.call_type === "inbound" ? "Inbound" : "Outbound"}</td>
+                <td>{hl(r.call_type === "inbound" ? r.from_number : r.to_number, terms)}</td>
+                <td>{hl(r.owner_name, terms)}</td>
+                <td>{hl(r.db_area, terms)}</td>
                 <td className={cfClass(r.availability)}>
                   {r.availability ?? ""}
                   {r.needs_review && <span className="review-tag">review</span>}
                 </td>
-                <td>{r.segment || ""}</td>
                 <td>{r.built_up_area_sqft || ""}</td>
                 <td>{r.expected_rent || ""}</td>
-                <td>{r.confidence ?? ""}</td>
-                <td className="clip" title={r.notes ?? ""}>{r.notes ?? ""}</td>
-                <td>{r.status}</td>
-                <td>{r.recording_url ? <a href={r.recording_url} target="_blank" rel="noreferrer">Play</a> : ""}</td>
-                <td className="clip" title={r.transcript ?? ""}>{r.transcript ?? ""}</td>
+                <td className="call-toggle">{r.status}</td>
+                <td className="call-col clip" title={r.notes ?? ""}>{hl(r.notes, terms)}</td>
+                <td className="call-col clip" title={r.transcript ?? ""}>{hl(r.transcript, terms)}</td>
+                <td className="call-col">{r.recording_url ? <a href={r.recording_url} target="_blank" rel="noreferrer">Play</a> : ""}</td>
+                <td className="db-toggle">{hl(r.raw_source, terms)}</td>
+                <td className="db-col" title={r.raw_match_count > 1 ? matchesTooltip(r.raw_matches) : undefined}>
+                  {hl(r.raw_owner_name, terms)}
+                  {r.raw_contact_type === "probable broker" && <span className="review-tag">broker</span>}
+                  {r.raw_match_count > 1 && <span className="review-tag">+{r.raw_match_count - 1}</span>}
+                </td>
+                <td className="db-col">{hl(r.raw_warehouse_type, terms)}</td>
+                <td className="db-col">{hl(r.raw_city, terms)}</td>
+                <td className="db-col">{hl(r.raw_state, terms)}</td>
+                <td className="db-col">{r.raw_area_sqft ?? ""}</td>
                 <EditableCells
                   id={r.id}
                   callStatus={r.call_status}
@@ -208,7 +280,9 @@ export default async function Dashboard({
           <Link className={page >= pages ? "disabled" : ""} href={qs(sp, { page: String(pages) })} aria-label="Last">»</Link>
         </div>
       </div>
+
       <GridInteractivity />
+      <ColumnResize />
     </>
   );
 }
