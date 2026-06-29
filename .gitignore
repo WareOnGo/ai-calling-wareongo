@@ -15,3 +15,6 @@ cleandata/
 # DB schema + data pipeline — kept private (sources, schemas, migrations, loaders)
 scripts/
 sql/
+
+# Internal project skill — documents sources/schema, keep private
+.claude/skills/
