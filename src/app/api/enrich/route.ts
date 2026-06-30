@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { inferCall, INFERENCE_VERSION } from "@/lib/openai";
-import { inferenceFields, MIN_COST_CENTS } from "@/lib/inference";
+import { inferenceFields, MIN_COST_CENTS, NEEDS_INFERENCE_SQL } from "@/lib/inference";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,10 +31,7 @@ async function claimRows(): Promise<Row[]> {
   const { rows } = await getPool().query<Row>(
     `select id, transcript
        from bolna_call_logs
-      where status = 'completed'
-        and total_cost > $1
-        and length(trim(coalesce(transcript, ''))) > 0
-        and (enriched = false or inference_version < $2)
+      where ${NEEDS_INFERENCE_SQL}
       order by total_cost desc
       limit $3`,
     [MIN_COST_CENTS, INFERENCE_VERSION, BATCH],

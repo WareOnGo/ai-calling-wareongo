@@ -160,15 +160,17 @@ table.sheet td mark { background: #fff3a3; color: inherit; padding: 0 1px; borde
 table.sheet tr.colheads th.grp-toggle { background: var(--fill-green-bg); color: var(--fill-green-tx); }
 table.sheet th.grp-toggle-head { cursor: pointer; user-select: none; font-weight: 700; }
 /* toggle column body cells get a green left edge to anchor the group */
-table.sheet td.db-toggle, table.sheet td.call-toggle { border-left: 2px solid var(--green); }
+table.sheet td.db-toggle, table.sheet td.call-toggle, table.sheet td.calls-toggle { border-left: 2px solid var(--green); }
 .grp-head-inner { display: inline-flex; align-items: center; gap: 7px; justify-content: center; }
 /* bigger, bolder caret in brand green (points down when expanded) */
 .grp-caret { display: inline-block; width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 8px solid var(--green); }
 /* collapsed: hide that group's detail columns + point its caret right */
 table.sheet.db-collapsed .db-col { display: none; }
 table.sheet.call-collapsed .call-col { display: none; }
+table.sheet.calls-collapsed .calls-col { display: none; }
 table.sheet.db-collapsed .db-toggle .grp-caret,
-table.sheet.call-collapsed .call-toggle .grp-caret {
+table.sheet.call-collapsed .call-toggle .grp-caret,
+table.sheet.calls-collapsed .calls-toggle .grp-caret {
   border-top: 6px solid transparent; border-bottom: 6px solid transparent;
   border-left: 8px solid var(--green); border-right: 0;
 }
@@ -179,6 +181,7 @@ table.sheet.resizable th, table.sheet.resizable td { overflow: hidden; text-over
 /* collapse hides a group's columns by forcing their <col> width to 0 (fixed layout) */
 table.sheet.resizable.db-collapsed col.db-col { width: 0 !important; }
 table.sheet.resizable.call-collapsed col.call-col { width: 0 !important; }
+table.sheet.resizable.calls-collapsed col.calls-col { width: 0 !important; }
 /* drag handle on the right edge of each header cell */
 table.sheet th .col-resizer { position: absolute; top: 0; right: 0; height: 100%; width: 7px; cursor: col-resize; z-index: 5; }
 table.sheet th .col-resizer:hover { background: var(--blue); opacity: 0.5; }
@@ -206,3 +209,160 @@ table.sheet td.edit.err { box-shadow: inset 3px 0 0 #c5221f; }   /* red on error
 .pager .pages a, .pager .pages span.cur { min-width: 34px; text-align: center; }
 .pager .ellipsis { padding: 5px 4px; color: var(--muted); }
 .pager a.disabled { opacity: .4; pointer-events: none; }
+
+/* ---- dark mode toggle button (top-right) ---- */
+.theme-toggle {
+  width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--border);
+  background: transparent; color: var(--muted); cursor: pointer; font-size: 15px;
+  display: inline-grid; place-items: center; padding: 0; line-height: 1;
+  font-family: inherit;
+}
+.theme-toggle:hover { background: var(--hover); color: var(--text); }
+
+/* ==================================================================
+   Soft dark theme — muted charcoal surfaces, no pure black/white.
+   Overrides the CSS variables, then the few hardcoded light surfaces.
+   ================================================================== */
+:root[data-theme="dark"] {
+  color-scheme: dark;            /* native dropdowns, checkboxes, scrollbars render dark */
+  --grid-line: #2c313b;
+  --grid-line-strong: #3b424e;
+  --gutter-bg: #23272f;
+  --gutter-text: #8b929d;
+  --text: #c9ced6;
+  --muted: #868d99;
+  --blue: #6ea8fe;
+  --green: #57b97e;
+  --border: #2f343d;
+  --hover: #262b34;
+  /* soft, desaturated conditional fills (availability cells) — muted, low-glare */
+  --fill-green-bg: #1b2920; --fill-green-tx: #74c08d;
+  --fill-red-bg: #2c1f1d;   --fill-red-tx: #d4928d;
+  --fill-yel-bg: #2c2716;   --fill-yel-tx: #c9b06a;
+  --fill-gray-bg: #23282f;  --fill-gray-tx: #99a0aa;
+  background: #16181d;       /* root/overscroll background */
+}
+
+:root[data-theme="dark"] body { background: #16181d; color: var(--text); }
+
+/* surfaces that were hardcoded white/grey in light mode */
+:root[data-theme="dark"] .header,
+:root[data-theme="dark"] .gridwrap,
+:root[data-theme="dark"] .pager,
+:root[data-theme="dark"] .filterbar { background: #1d2128; }
+:root[data-theme="dark"] .header h1 { color: var(--text); }
+:root[data-theme="dark"] .login { background: #16181d; }
+:root[data-theme="dark"] .card { background: #1d2128; box-shadow: 0 1px 3px rgba(0,0,0,.5); }
+
+/* search + chips + toggles */
+:root[data-theme="dark"] .search input { background: #262b34; color: var(--text); }
+:root[data-theme="dark"] .search input:hover { background: #2c323c; }
+:root[data-theme="dark"] .search input:focus { background: #262b34; box-shadow: 0 1px 4px rgba(0,0,0,.5); }
+:root[data-theme="dark"] .chip select { background: #262b34; color: var(--text); }
+:root[data-theme="dark"] .chip select:hover { background: #2c323c; }
+:root[data-theme="dark"] .chip.active select,
+:root[data-theme="dark"] .toggle.active { background: #1f3047; border-color: #2f486a; color: var(--blue); }
+:root[data-theme="dark"] .toggle { color: var(--text); }
+:root[data-theme="dark"] .toggle:hover { background: var(--hover); }
+:root[data-theme="dark"] .btn-text:hover { background: var(--hover); }
+
+/* primary / secondary / disabled buttons (login + apply) */
+:root[data-theme="dark"] .btn { color: #0e1014; }
+:root[data-theme="dark"] .btn.secondary { background: #1d2128; color: var(--blue); }
+:root[data-theme="dark"] .btn.secondary:hover { background: #262b34; }
+:root[data-theme="dark"] .btn:disabled,
+:root[data-theme="dark"] .btn:disabled:hover { background: #2a2f38; color: #6b7280; }
+:root[data-theme="dark"] .btn-export:hover { background: #244231; }
+
+/* grid — set the TABLE background only; plain cells stay transparent so the
+   conditional-format fills (cf-green/red/yel) remain visible. */
+:root[data-theme="dark"] table.sheet { background: #1d2128; }
+:root[data-theme="dark"] table.sheet tr.colheads th { color: var(--text); }
+:root[data-theme="dark"] table.sheet tbody tr:hover td.rownum { background: #2c323c; }
+:root[data-theme="dark"] table.sheet td.selected { background: #243650; }
+:root[data-theme="dark"] table.sheet td mark { background: #3d3415; color: #d9c074; }
+
+/* pager */
+:root[data-theme="dark"] .pager a, :root[data-theme="dark"] .pager span.cur { background: #262b34; }
+:root[data-theme="dark"] .pager span.cur { background: var(--blue); color: #16181d; }
+
+/* editable cell focus surfaces */
+:root[data-theme="dark"] .cell-input:focus,
+:root[data-theme="dark"] table.sheet td.edit:focus-within { background: #262b34; }
+
+/* ---- header nav + brand link ---- */
+.brand-link { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; }
+.brand-link:hover { text-decoration: none; }
+.topnav { display: inline-flex; gap: 4px; margin-left: 18px; }
+.topnav a { padding: 6px 12px; border-radius: 6px; font-size: 13px; color: var(--muted); text-decoration: none; }
+.topnav a:hover { background: var(--hover); color: var(--text); text-decoration: none; }
+
+/* ---- hub (home) ---- */
+.hub { flex: 1; min-height: 0; overflow: auto; display: grid; place-items: center; padding: 40px; }
+.hub-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 340px)); gap: 22px; }
+.hub-card {
+  display: flex; flex-direction: column; gap: 8px; padding: 28px; border-radius: 14px;
+  border: 1px solid var(--border); background: var(--gutter-bg); text-decoration: none; color: var(--text);
+  transition: border-color .15s, transform .15s;
+}
+.hub-card:hover { border-color: var(--blue); transform: translateY(-2px); text-decoration: none; }
+.hub-icon { font-size: 30px; }
+.hub-card h2 { margin: 0; font-size: 18px; font-weight: 600; }
+.hub-card p { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.5; }
+.hub-go { margin-top: 8px; color: var(--blue); font-size: 13px; font-weight: 600; }
+
+/* ---- raw-dataset extras ---- */
+.num-filter {
+  height: 38px; width: 92px; padding: 0 12px; font-size: 13px; font-family: inherit;
+  border: 1px solid var(--border); border-radius: 20px; background: #fff; color: var(--text);
+}
+.btn-export:disabled { opacity: .5; cursor: not-allowed; }
+table.sheet th.selcol, table.sheet td.selcol { width: 34px; min-width: 34px; text-align: center; padding: 0; }
+:root[data-theme="dark"] .num-filter { background: #262b34; }
+
+/* ---- page title bar (distinguishes the two grid views) ---- */
+.page-title {
+  flex: none; display: flex; align-items: center; gap: 9px;
+  padding: 12px 16px 4px; font-size: 17px; font-weight: 600; color: var(--text);
+}
+.page-title .pt-icon { font-size: 18px; }
+
+/* inline icons sit on the text baseline cleanly */
+.page-title .pt-icon { display: inline-flex; color: var(--green); }
+.theme-toggle svg, .btn-export svg, .hub-icon svg { display: block; }
+.hub-icon { color: var(--blue); }
+
+/* ---- date range filter (From / To) ---- */
+.datefld {
+  display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 12px;
+  border: 1px solid var(--border); border-radius: 20px; background: #fff; font-size: 13px; color: var(--muted);
+}
+.datefld span { font-weight: 500; }
+.datefld input { border: none; background: transparent; font-family: inherit; font-size: 13px; color: var(--text); padding: 0; }
+.datefld input:focus { outline: none; }
+.datefld.active { background: #e8f0fe; border-color: #d2e3fc; color: var(--blue); }
+:root[data-theme="dark"] .datefld { background: #262b34; }
+:root[data-theme="dark"] .datefld.active { background: #1f3047; border-color: #2f486a; color: var(--blue); }
+
+/* ---- Filters toggle + collapsible row (revealed below the search) ---- */
+.filters-toggle {
+  display: inline-flex; align-items: center; gap: 7px; height: 38px; padding: 0 16px;
+  border: 1px solid var(--border); border-radius: 20px; background: #fff; font-size: 13px;
+  color: #3c4043; cursor: pointer; font-family: inherit;
+}
+.filters-toggle:hover { background: #f8f9fa; }
+.filters-toggle.active { background: #e8f0fe; border-color: #d2e3fc; color: var(--blue); }
+.fbadge {
+  display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px;
+  border-radius: 9px; background: var(--blue); color: #fff; font-size: 11px; font-weight: 600;
+}
+/* full-width row that wraps onto its own line below search/buttons; hidden until toggled */
+.filters-panel {
+  display: none; width: 100%; flex-wrap: wrap; gap: 8px; align-items: center;
+  margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--border);
+}
+form.filterbar.filters-open .filters-panel { display: flex; }
+
+:root[data-theme="dark"] .filters-toggle { background: #262b34; color: var(--text); }
+:root[data-theme="dark"] .filters-toggle:hover { background: #2c323c; }
+:root[data-theme="dark"] .filters-toggle.active { background: #1f3047; border-color: #2f486a; color: var(--blue); }

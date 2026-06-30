@@ -16,7 +16,8 @@ export const MODEL = process.env.OPENAI_MODEL || "gpt-4o";
 
 // Bump when the prompt/schema changes — lets us re-infer only stale rows
 // (select where inference_version < INFERENCE_VERSION).
-export const INFERENCE_VERSION = 1;
+// v2: availability counts "owner has any available space" (alt-property / callback), not just the exact listing.
+export const INFERENCE_VERSION = 2;
 
 // Property-verification inference fields (modeled on the GW call-log-inference skill).
 export type Inference = {
@@ -42,7 +43,10 @@ export const EMPTY_INFERENCE: Inference = {
 const SYSTEM_PROMPT = `You analyze transcripts of outbound phone calls where an AI agent named Priya cold-calls warehouse / property owners in India (Hindi / Hinglish / Devanagari, often noisy ASR) to verify a property listing. Priya asks whether the property is available for rent, its built-up area, the locality, the expected rent, and the possession timeline.
 
 From the transcript, extract:
-- availability: "Available" if the owner confirms the property is available to rent; "Unavailable" if it is not available / already rented / the person is not the owner of an available property; "Unclear" if it cannot be determined (no answer, off-topic, call dropped before the question was answered). A bare "हां" / "haan" / "yes" / "है" right after the availability question counts as Available.
+- availability: judge whether the OWNER HAS WAREHOUSE / COMMERCIAL SPACE AVAILABLE to rent or lease (the goal is sourcing available warehouses, not only the one listing we asked about).
+    - "Available" if the owner has space available — this INCLUDES: (a) the listed property is available; (b) the listed property is gone/rented but the owner offers a DIFFERENT available property (still Available — record that property's area/rent/location in the other fields and call out "different property" in notes); (c) the owner confirms they have it but asks to be called back later (Available; note the callback). A bare "हां" / "haan" / "yes" / "है" / "है मेरे पास" counts as Available ONLY when it is a direct answer to the availability question — NOT when it is just a reply to the opening greeting ("Kaise ho?") or a generic "boliye / tell me".
+    - "Unavailable" ONLY if the owner has NO space available — already rented out / sold / not the owner / flatly declines / says nothing is available.
+    - "Unclear" if it genuinely cannot be determined. IMPORTANT: if the owner only greeted ("hello" / "हां जी" / "boliye") and the call ended BEFORE they actually answered the availability question, it is "Unclear" — a greeting is NOT an availability confirmation. Also Unclear for off-topic, wrong number, or a call that dropped before the question was answered.
 - built_up_area_sqft: the built-up / carpet area as DIGITS in square feet. Convert spoken Indian numbers ("forty five hundred" -> 4500, "बीस हज़ार" -> 20000, "saade teen hazaar" -> 3500). "" if not stated.
 - city_area: locality / area / landmark mentioned. "" if none.
 - expected_rent: rent WITH its unit preserved ("1 lakh per month", "13 rs/sqft"). "" if not stated or the owner declined to quote.

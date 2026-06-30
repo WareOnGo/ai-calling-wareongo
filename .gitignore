@@ -18,3 +18,6 @@ sql/
 
 # Internal project skill — documents sources/schema, keep private
 .claude/skills/
+
+# Ad-hoc query exports (owner PII / source names) — keep private
+exports/

@@ -27,6 +27,7 @@ const COLUMNS: { label: string; get: (r: CallRow) => unknown }[] = [
   { label: "DB State", get: (r) => r.raw_state },
   { label: "DB Sqft", get: (r) => r.raw_area_sqft },
   { label: "DB Contact", get: (r) => r.raw_contact_type },
+  { label: "All Sources", get: (r) => r.raw_sources },
   { label: "DB Matches", get: (r) => r.raw_match_count },
   { label: "Call Status", get: (r) => r.call_status },
   { label: "Called By", get: (r) => r.called_by },

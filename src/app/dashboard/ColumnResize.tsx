@@ -6,7 +6,9 @@ import { useEffect } from "react";
 // table to fixed layout backed by a <colgroup>, and adds drag handles to each
 // header cell. Widths persist in localStorage. Works alongside the DB-collapse
 // (collapsed .db-col columns are hidden via the colgroup).
-const KEY = "sheet-col-widths-v4";
+// Per-path key: the calls and raw grids have different columns, so they must not
+// share saved widths. v5: fill-to-viewport default sizing.
+const KEY = "sheet-col-widths-v5:" + (typeof location !== "undefined" ? location.pathname : "");
 
 export function ColumnResize() {
   useEffect(() => {
@@ -31,10 +33,18 @@ export function ColumnResize() {
       // Expand every collapsed group first, else its hidden columns measure as 0px.
       const collapsed = Array.from(table.classList).filter((c) => c.endsWith("-collapsed"));
       collapsed.forEach((c) => table.classList.remove(c));
-      // +20px padding so columns are a little roomier than their content by default.
       widths = ths.map((th, i) =>
-        Math.max(i === 0 ? 46 : 60, Math.round(th.getBoundingClientRect().width) + (i === 0 ? 0 : 20)),
+        Math.max(i === 0 ? 46 : 70, Math.round(th.getBoundingClientRect().width) + 16),
       );
+      // If the columns don't fill the viewport, stretch the data columns to fill it
+      // (wider by default, no pointless horizontal scroll). Gutter (i=0) stays fixed.
+      const avail = (table.parentElement?.clientWidth ?? 0) - 2;
+      const total = widths.reduce((a, b) => a + b, 0);
+      if (avail > 0 && total < avail) {
+        const dataTotal = total - widths[0];
+        const factor = (avail - widths[0]) / dataTotal;
+        for (let i = 1; i < widths.length; i++) widths[i] = Math.round(widths[i] * factor);
+      }
       collapsed.forEach((c) => table.classList.add(c));
     }
 

@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import { query } from "@/lib/db";
 
 export type CallRow = {
@@ -32,6 +33,7 @@ export type CallRow = {
   raw_state: string | null;
   raw_area_sqft: string | null;
   raw_contact_type: string | null;
+  raw_sources: string | null;   // all distinct sources this number is listed in
   raw_matches: RawMatch[] | null;
 };
 
@@ -58,6 +60,8 @@ export type CallFilters = {
   state?: string;         // matched raw-dataset state
   contact?: string;       // "broker" | "owner"
   call_type?: string;     // "inbound" | "outbound"
+  date_from?: string;     // YYYY-MM-DD (inclusive)
+  date_to?: string;       // YYYY-MM-DD (inclusive)
   needs_review?: boolean;
   page?: number;
   pageSize?: number;
@@ -66,7 +70,7 @@ export type CallFilters = {
 // Columns the free-text search scans (substring) for highlighting + matching.
 const SEARCH_COLS = [
   "from_number", "to_number", "owner_name", "db_area", "city_area",
-  "raw_owner_name", "raw_source", "raw_city", "raw_state", "raw_warehouse_type",
+  "raw_owner_name", "raw_source", "raw_sources", "raw_city", "raw_state", "raw_warehouse_type",
   "expected_rent", "built_up_area_sqft", "status", "notes", "transcript",
 ];
 
@@ -77,7 +81,7 @@ const SELECT_LIST = `id, call_created_at, call_type, from_number, to_number, own
        notes, transcript, recording_url, needs_review,
        call_status, called_by, added_to_db, wh_id,
        raw_match_count, raw_source, raw_owner_name, raw_warehouse_type,
-       raw_city, raw_state, raw_area_sqft, raw_contact_type, raw_matches`;
+       raw_city, raw_state, raw_area_sqft, raw_contact_type, raw_sources, raw_matches`;
 
 // Build the WHERE clause + params shared by the paged list and the CSV export.
 function buildFilter(f: CallFilters): { whereSql: string; params: unknown[]; terms: string[] } {
@@ -101,11 +105,15 @@ function buildFilter(f: CallFilters): { whereSql: string; params: unknown[]; ter
   if (f.availability) { params.push(f.availability); where.push(`availability = $${params.length}`); }
   if (f.agent_id) { params.push(f.agent_id); where.push(`agent_id = $${params.length}`); }
   if (f.status) { params.push(f.status); where.push(`status = $${params.length}`); }
-  if (f.source) { params.push(f.source); where.push(`raw_source = $${params.length}`); }
+  // Match ANY source the number is listed in (cross-listed numbers count for each),
+  // not just the single representative — so a source filter never undercounts.
+  if (f.source) { params.push(f.source); where.push(`raw_sources ilike '%'||$${params.length}||'%'`); }
   if (f.state) { params.push(f.state); where.push(`raw_state = $${params.length}`); }
   if (f.contact === "broker") { where.push(`raw_contact_type = 'probable broker'`); }
   if (f.contact === "owner") { where.push(`raw_source is not null and raw_contact_type is null`); }
   if (f.call_type) { params.push(f.call_type); where.push(`call_type = $${params.length}`); }
+  if (f.date_from) { params.push(f.date_from); where.push(`call_created_at >= $${params.length}::date`); }
+  if (f.date_to) { params.push(f.date_to); where.push(`call_created_at < ($${params.length}::date + interval '1 day')`); }
   if (f.needs_review) { where.push(`needs_review = true`); }
 
   const whereSql = where.length ? `where ${where.join(" and ")}` : "";
@@ -154,7 +162,11 @@ export function calledByOptions(): string[] {
     .filter(Boolean);
 }
 
-export async function getFilterOptions() {
+// Filter dropdowns change rarely but the source/state options materialize the
+// view — cache for 10 min to cut repeated heavy queries (egress + compute).
+export const getFilterOptions = unstable_cache(_getFilterOptions, ["call-filter-options"], { revalidate: 600 });
+
+async function _getFilterOptions() {
   const agents = await query<{ agent_id: string }>(
     `select distinct agent_id from bolna_call_logs where agent_id is not null order by agent_id`,
   );

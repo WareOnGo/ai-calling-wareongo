@@ -6,9 +6,14 @@ export const MIN_COST_CENTS = Number(process.env.INFERENCE_MIN_COST_CENTS || "0.
 // Master switch for the LLM step (live path). When false, store call data only.
 export const ENABLE_ENRICHMENT = process.env.ENABLE_ENRICHMENT !== "false";
 
+// Statuses that represent a call that actually connected and had a conversation.
+// Bolna reports many real conversations as 'call-disconnected', so it counts too.
+export const CONNECTED_STATUSES = ["completed", "call-disconnected"];
+const CONNECTED_SQL = "('completed', 'call-disconnected')";
+
 /**
  * A call qualifies for LLM inference only if it actually connected
- * (status=completed), spent more than the cost gate, and has a transcript.
+ * (completed / call-disconnected), spent more than the cost gate, and has a transcript.
  * Non-connected calls are handled deterministically by the bolna_call_analysis view.
  */
 export function qualifiesForInference(
@@ -17,7 +22,7 @@ export function qualifiesForInference(
   transcript: string | null | undefined,
 ): boolean {
   return (
-    status === "completed" &&
+    CONNECTED_STATUSES.includes(status ?? "") &&
     (totalCost ?? 0) > MIN_COST_CENTS &&
     !!transcript &&
     transcript.trim().length > 0
@@ -44,7 +49,7 @@ export function inferenceFields(inf: Inference | null) {
 
 // SQL predicate (and the matching params) for "needs inference at the current version".
 export const NEEDS_INFERENCE_SQL = `
-  status = 'completed'
+  status in ${CONNECTED_SQL}
   and total_cost > $1
   and length(trim(coalesce(transcript, ''))) > 0
   and (enriched = false or inference_version < $2)
