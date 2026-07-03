@@ -1,11 +1,13 @@
 import Link from "next/link";
-import { getRawRecords, getRawFilterOptions, type RawFilters, type RawRow } from "@/lib/raw";
+import { getRawRecords, getRawFilterOptions, getQueuedNumberSet, type RawFilters, type RawRow } from "@/lib/raw";
 import { GridInteractivity } from "../GridInteractivity";
 import { ApplyButton } from "../ApplyButton";
 import { ColumnResize } from "../ColumnResize";
 import { GroupToggle } from "../GroupToggle";
-import { IconDataset, IconPhoneOutgoing } from "../icons";
+import { IconDataset } from "../icons";
 import { FiltersToggle } from "../FiltersToggle";
+import { QueueForCalling } from "../QueueForCalling";
+import { deriveCat, normNum } from "@/lib/queue";
 
 export const dynamic = "force-dynamic";
 
@@ -83,9 +85,10 @@ export default async function RawDataset({
     page: sp.page ? Number(sp.page) : 1,
   };
 
-  const [{ rows, total, page, pages, pageSize, terms }, opts] = await Promise.all([
+  const [{ rows, total, page, pages, pageSize, terms }, opts, queuedSet] = await Promise.all([
     getRawRecords(filters),
     getRawFilterOptions(),
+    getQueuedNumberSet(),
   ]);
 
   const numCols = COLUMNS.length + 1; // + select col (group toggles count as one col each)
@@ -107,10 +110,7 @@ export default async function RawDataset({
         <FiltersToggle count={activeFilters} />
 
         <span className="spacer" />
-        {/* Placeholder for the future batch action — selection wiring + Bolna dispatch comes later. */}
-        <button type="button" className="btn-export" disabled title="Coming soon — queue selected records for a Bolna batch">
-          <IconPhoneOutgoing size={15} /> Queue for calling
-        </button>
+        <QueueForCalling total={total} pageRows={rows.length} />
         <ApplyButton />
         <a className="btn-text" href="/dashboard/raw">Reset</a>
 
@@ -163,7 +163,7 @@ export default async function RawDataset({
           <thead>
             <tr className="colheads">
               <th className="rowgutter"></th>
-              <th className="selcol"><input type="checkbox" disabled title="Select all (coming soon)" /></th>
+              <th className="selcol"><input type="checkbox" className="selall" title="Select all on this page" /></th>
               {COLUMNS.map((c) => {
                 const g = GROUPS.find((g) => g.toggle === c);
                 return g
@@ -184,7 +184,21 @@ export default async function RawDataset({
             {rows.map((r: RawRow, i) => (
               <tr key={r.id}>
                 <td className="rownum">{startRow + i + 1}</td>
-                <td className="selcol"><input type="checkbox" disabled /></td>
+                <td className="selcol">
+                  <input
+                    type="checkbox"
+                    className="rowsel"
+                    disabled={!r.phone}
+                    title={r.phone ? undefined : "No phone number on this record"}
+                    data-id={r.id}
+                    data-name={r.owner_first_name ?? r.owner_name ?? ""}
+                    data-contact={r.phone ?? ""}
+                    data-area={r.city ?? ""}
+                    data-state={r.state ?? ""}
+                    data-cat={deriveCat(r.call_count, r.last_availability)}
+                    data-queued={r.phone && queuedSet.has(normNum(r.phone)) ? "1" : ""}
+                  />
+                </td>
                 <td>{hl(r.source, terms)}</td>
                 <td className="clip" title={r.source_record_id ?? ""}>{r.source_record_id ?? ""}</td>
                 <td>{hl(r.owner_name, terms)}</td>

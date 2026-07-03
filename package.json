@@ -8,6 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "db:init": "node --env-file=.env.local scripts/db-init.mjs",
     "backfill": "node --env-file=.env.local scripts/backfill.mjs",
     "drain": "node --env-file=.env.local scripts/drain.mjs http://localhost:3000/api/process",
@@ -25,6 +27,7 @@
     "@types/node": "^22.10.0",
     "@types/pg": "^8.11.10",
     "@types/react": "^19.0.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.9"
   }
 }

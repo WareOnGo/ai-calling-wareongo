@@ -55,6 +55,8 @@ export async function GET(req: NextRequest) {
     state: sp.get("state") ?? undefined,
     contact: sp.get("contact") ?? undefined,
     call_type: sp.get("call_type") ?? undefined,
+    date_from: sp.get("date_from") ?? undefined,
+    date_to: sp.get("date_to") ?? undefined,
     needs_review: sp.get("needs_review") === "1",
   };
 

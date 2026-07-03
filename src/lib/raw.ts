@@ -1,5 +1,6 @@
 import { unstable_cache } from "next/cache";
 import { query } from "@/lib/db";
+import { deriveCat, normNum, type QueueSel } from "@/lib/queue";
 
 // Read layer for the raw master warehouse dataset (raw_records). Mirrors lib/calls.ts.
 // Powers the "Raw Dataset" view/filter page; the selected set will later feed a
@@ -156,6 +157,94 @@ export async function getRawRecords(f: RawFilters) {
     params,
   );
   return { rows: rowsRes.rows, total, page, pageSize, pages: Math.max(1, Math.ceil(total / pageSize)), terms };
+}
+
+// Minimal row for the "queue for calling" batch — one per matching record that has
+// a phone, across ALL pages (not just the current one). Feeds the CSV preview; the
+// client dedups by number in preprocessing before dispatch. `cat` flags records whose
+// number was already called, by last outcome (''=fresh) so the UI can warn/purge them.
+export type { CallCat, QueueSel as QueueRow } from "@/lib/queue";
+
+const QUEUE_CAP = 20000; // safety ceiling; Delhi (largest city set) is ~2.5k
+
+// Raw shape from SQL before classification; `cat` is derived in JS via the shared,
+// unit-tested deriveCat() so server and client tag identically.
+type QueueRowSql = {
+  id: string; name: string; contact: string | null; area: string; state: string;
+  call_count: string; last_avail: string | null;
+};
+
+// Shared projection: primary phone, name/area/state, and last-call info for cat.
+// `where` and `params` are spliced in by the callers (filters vs. explicit ids).
+const QUEUE_SELECT = `
+  select r.id,
+         coalesce(r.owner_first_name, r.owner_name, '') as name,
+         (select pp.phone from raw_phones rp join raw_phone_numbers pp on pp.phone_id = rp.phone_id
+            where rp.master_id = r.id order by rp.is_primary desc limit 1) as contact,
+         coalesce(r.city, '')  as area,
+         coalesce(r.state, '') as state,
+         coalesce(c.n, 0)::text as call_count,
+         c.last_avail           as last_avail
+    from raw_records r
+    left join lateral (
+      select count(*) n,
+             (array_agg(cl.llm_availability order by cl.call_created_at desc nulls last))[1] as last_avail
+      from raw_phones rp join bolna_call_logs cl on cl.phone_id = rp.phone_id
+      where rp.master_id = r.id
+    ) c on true`;
+
+function toQueueSel(r: QueueRowSql, queued: Set<string>): QueueSel {
+  const contact = r.contact ?? "";
+  return {
+    id: r.id, name: r.name, contact, area: r.area, state: r.state,
+    cat: deriveCat(r.call_count, r.last_avail),
+    queued: queued.has(normNum(contact)),
+  };
+}
+
+// Normalized (last-10-digit) set of every number already in a LIVE batch — i.e. one
+// that's sending or scheduled. Failed batches don't block, so a failed dispatch can be
+// retried. Used to skip re-queueing numbers that are already out for calling.
+export async function getQueuedNumberSet(): Promise<Set<string>> {
+  const res = await query<{ contact_number: string }>(
+    `select distinct i.contact_number
+       from call_batch_items i join call_batches b on b.id = i.batch_id
+      where b.state in ('sending', 'scheduled')`,
+  );
+  return new Set(res.rows.map((r) => normNum(r.contact_number)));
+}
+
+export async function getRawQueueRows(f: RawFilters): Promise<{ rows: QueueSel[]; capped: boolean }> {
+  const { whereSql, params } = buildFilter(f);
+  // Must have a phone to call. Already-called records are NOT excluded here — they
+  // are flagged via `cat` so the client can warn and let the user purge them.
+  const phoneExists = `exists (select 1 from raw_phones rp where rp.master_id = r.id)`;
+  const where = whereSql ? `${whereSql} and ${phoneExists}` : `where ${phoneExists}`;
+
+  const [res, queued] = await Promise.all([
+    query<QueueRowSql>(
+      `${QUEUE_SELECT} ${where}
+         order by r.area_sqft desc nulls last, r.id
+         limit ${QUEUE_CAP + 1}`,
+      params,
+    ),
+    getQueuedNumberSet(),
+  ]);
+  const rows = res.rows.map((r) => toQueueSel(r, queued));
+  const capped = rows.length > QUEUE_CAP;
+  return { rows: capped ? rows.slice(0, QUEUE_CAP) : rows, capped };
+}
+
+// Re-fetch specific records by id — the dispatch path uses this so the numbers sent
+// to Bolna come from the DB, never from client-supplied data.
+export async function getRawQueueRowsByIds(ids: string[]): Promise<QueueSel[]> {
+  if (ids.length === 0) return [];
+  const capped = ids.slice(0, QUEUE_CAP);
+  const [res, queued] = await Promise.all([
+    query<QueueRowSql>(`${QUEUE_SELECT} where r.id = any($1)`, [capped]),
+    getQueuedNumberSet(),
+  ]);
+  return res.rows.map((r) => toQueueSel(r, queued));
 }
 
 export const getRawFilterOptions = unstable_cache(_getRawFilterOptions, ["raw-filter-options"], { revalidate: 600 });
