@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { assembleBatch } from "./dispatch";
+import { assembleBatch, batchFileName } from "./dispatch";
 import type { QueueSel } from "./queue";
 
 function sel(over: Partial<QueueSel> = {}): QueueSel {
@@ -95,5 +95,41 @@ describe("assembleBatch", () => {
     const s = assembleBatch([]);
     expect(s).toMatchObject({ total: 0, excludedByCat: 0, skippedNoNumber: 0 });
     expect(s.callable).toEqual([]);
+  });
+});
+
+describe("batchFileName", () => {
+  const AT = "2026-07-03T12:10:00.000+00:00"; // 17:40 IST, same day
+
+  it("names by single city + IST execution date", () => {
+    expect(batchFileName([sel({ area: "Rajkot" })], AT)).toBe("Rajkot-2026-07-03.csv");
+  });
+
+  it("ranks cities by frequency, most-called first", () => {
+    const rows = [sel({ area: "Delhi" }), sel({ area: "Rajkot" }), sel({ area: "Rajkot" })];
+    expect(batchFileName(rows, AT)).toBe("Rajkot-Delhi-2026-07-03.csv");
+  });
+
+  it("caps at 3 cities and appends +N for the rest (ties broken alphabetically)", () => {
+    const rows = ["Rajkot", "Delhi", "Surat", "Pune", "Mumbai"].map((area) => sel({ area }));
+    expect(batchFileName(rows, AT)).toBe("Delhi-Mumbai-Pune+2-2026-07-03.csv");
+  });
+
+  it("frequency beats alphabetical: a high-count city leads regardless of name", () => {
+    const rows = [sel({ area: "Surat" }), sel({ area: "Surat" }), sel({ area: "Ahmedabad" })];
+    expect(batchFileName(rows, AT)).toBe("Surat-Ahmedabad-2026-07-03.csv");
+  });
+
+  it("strips spaces/punctuation from city names", () => {
+    expect(batchFileName([sel({ area: "New Delhi" })], AT)).toBe("NewDelhi-2026-07-03.csv");
+  });
+
+  it("rolls the date into IST (late-UTC crosses midnight)", () => {
+    // 2026-07-02T20:00Z + 5:30 = 2026-07-03T01:30 IST → next day.
+    expect(batchFileName([sel({ area: "Delhi" })], "2026-07-02T20:00:00.000+00:00")).toBe("Delhi-2026-07-03.csv");
+  });
+
+  it("falls back to 'batch' when no city is present", () => {
+    expect(batchFileName([sel({ area: "" })], AT)).toBe("batch-2026-07-03.csv");
   });
 });

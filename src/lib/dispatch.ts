@@ -48,6 +48,29 @@ export function assembleBatch(rows: QueueSel[], excludeCats: CallCat[] = []): Di
   };
 }
 
+// Bolna names the batch after the uploaded CSV's filename, so we build a descriptive
+// one: the cities being called + the (IST) execution date, e.g. "Rajkot-Delhi-2026-07-03".
+// Cities are ranked by frequency; beyond 3 we append "+N". IST is a fixed +5:30 offset
+// (no DST) so the date math is deterministic and testable.
+export function batchFileName(batch: QueueSel[], scheduledAt: string): string {
+  const counts = new Map<string, number>();
+  for (const r of batch) {
+    const city = (r.area ?? "").trim();
+    if (city) counts.set(city, (counts.get(city) ?? 0) + 1);
+  }
+  const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([c]) => c);
+  const clean = (s: string) => s.replace(/[^A-Za-z0-9]+/g, "");
+  const top = ranked.slice(0, 3).map(clean).filter(Boolean);
+  let cities = top.join("-") || "batch";
+  if (ranked.length > 3) cities += `+${ranked.length - 3}`;
+
+  const p = (n: number) => String(n).padStart(2, "0");
+  const ist = new Date(new Date(scheduledAt).getTime() + 330 * 60_000);
+  const date = `${ist.getUTCFullYear()}-${p(ist.getUTCMonth() + 1)}-${p(ist.getUTCDate())}`;
+
+  return `${cities}-${date}.csv`;
+}
+
 export type BolnaSendResult = { dispatched: number; bolnaBatchId: string; scheduledAt: string };
 
 // LIVE dispatch to Bolna: create the batch (multipart CSV upload + agent_id +
@@ -71,7 +94,7 @@ export async function sendBatchToBolna(batch: QueueSel[], scheduledAt: string): 
   const form = new FormData();
   form.append("agent_id", agentId);
   const csv = buildCsv(batch);
-  form.append("file", new Blob([csv], { type: "text/csv" }), "batch.csv");
+  form.append("file", new Blob([csv], { type: "text/csv" }), batchFileName(batch, scheduledAt));
   // FastAPI List[str] form fields are sent as repeated keys. Optional anyway — the
   // agent has a default caller ID configured (the same number), so omitting it is safe.
   if (fromNumber) form.append("from_phone_numbers", fromNumber);
