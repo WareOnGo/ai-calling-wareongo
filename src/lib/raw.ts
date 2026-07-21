@@ -159,6 +159,39 @@ export async function getRawRecords(f: RawFilters) {
   return { rows: rowsRes.rows, total, page, pageSize, pages: Math.max(1, Math.ceil(total / pageSize)), terms };
 }
 
+const EXPORT_CAP = 100000; // safety ceiling; whole dataset is ~59k rows
+
+// Export rows carry the full source metadata JSON on top of the grid columns. Kept
+// out of the grid's SELECT_LIST so per-page fetches don't haul the jsonb blob.
+export type RawExportRow = RawRow & { metadata: Record<string, unknown> | null };
+
+// Full filtered set (no pagination) for the raw-dataset CSV export. Same filters and
+// ordering as the grid so the CSV matches what the user is looking at.
+export async function getRawRecordsForExport(f: RawFilters): Promise<RawExportRow[]> {
+  const { whereSql, params } = buildFilter(f);
+  const res = await query<RawExportRow>(
+    `select ${SELECT_LIST}, r.metadata as metadata
+       from raw_records r ${CALLS_JOIN} ${whereSql}
+       order by r.area_sqft desc nulls last, r.id
+       limit ${EXPORT_CAP}`,
+    params,
+  );
+  return res.rows;
+}
+
+// Export only the explicitly-selected records (checkbox selection in the grid).
+export async function getRawRecordsByIds(ids: string[]): Promise<RawExportRow[]> {
+  if (ids.length === 0) return [];
+  const res = await query<RawExportRow>(
+    `select ${SELECT_LIST}, r.metadata as metadata
+       from raw_records r ${CALLS_JOIN}
+       where r.id = any($1)
+       order by r.area_sqft desc nulls last, r.id`,
+    [ids.slice(0, EXPORT_CAP)],
+  );
+  return res.rows;
+}
+
 // Minimal row for the "queue for calling" batch — one per matching record that has
 // a phone, across ALL pages (not just the current one). Feeds the CSV preview; the
 // client dedups by number in preprocessing before dispatch. `cat` flags records whose

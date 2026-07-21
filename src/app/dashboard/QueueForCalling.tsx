@@ -181,16 +181,18 @@ export function QueueForCalling({ total, pageRows }: { total: number; pageRows: 
   const callable = routable.filter((r) => !r.queued);
   const alreadyQueued = routable.length - callable.length;
 
-  // CSV download reflects the routable set (what would actually be dispatched).
+  // Download exports every previewed row that has a number — including held-back /
+  // already-queued ones — since a manual CSV is exactly what you'd hand off elsewhere
+  // (e.g. TN/KL/KA to an English agent). "Send to Bolna" still only sends `callable`.
   const download = useCallback(() => {
-    const blob = new Blob([buildCsv(callable)], { type: "text/csv;charset=utf-8" });
+    const blob = new Blob([buildCsv(withContact)], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
     a.download = "bolna-queue.csv";
     a.click();
     URL.revokeObjectURL(url);
-  }, [callable]);
+  }, [withContact]);
 
   // "Send to Bolna" — LIVE. Places real calls. Server re-fetches numbers by id, so we
   // only send ids + a filters snapshot + confirm:true. Guarded by a two-step confirm.
@@ -304,6 +306,20 @@ export function QueueForCalling({ total, pageRows }: { total: number; pageRows: 
               </div>
             )}
 
+            {!loading && !result && heldRegion > 0 && (
+              <div className="held-warn">
+                <div className="cw-head">
+                  <IconAlert size={16} />
+                  <span>
+                    <strong>{heldRegion.toLocaleString()}</strong> number(s) are in non-Hindi regions
+                    (Tamil Nadu / Kerala / Karnataka) and are <strong>excluded from calling</strong> — the Hindi
+                    agent can&apos;t serve them yet. They&apos;re marked <span className="cat-tag cat-held">held</span> below
+                    and are included in the CSV download so you can route them to an English agent.
+                  </span>
+                </div>
+              </div>
+            )}
+
             <div className="modal-body">
               {result ? (
                 <div className="dispatch-ok">
@@ -375,8 +391,8 @@ export function QueueForCalling({ total, pageRows }: { total: number; pageRows: 
                 </>
               ) : (
                 <>
-                  <button type="button" className="btn-text" onClick={download} disabled={loading || callable.length === 0}>
-                    <IconDownload size={15} /> Download CSV
+                  <button type="button" className="btn-text" onClick={download} disabled={loading || sending || withContact.length === 0}>
+                    <IconDownload size={15} /> Download CSV ({withContact.length.toLocaleString()})
                   </button>
                   <span className="spacer" />
                   <button type="button" className="btn-text" onClick={() => setOpen(false)}>Cancel</button>

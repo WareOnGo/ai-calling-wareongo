@@ -387,6 +387,7 @@ table.sheet input.rowsel:disabled { cursor: not-allowed; opacity: .4; }
   background: #fff; border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
   box-shadow: 0 8px 32px rgba(60,64,67,.3);
 }
+.modal.confirm-modal { width: min(440px, 100%); }
 .modal-head { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; border-bottom: 1px solid var(--border); }
 .modal-title { display: flex; align-items: center; gap: 9px; font-size: 15px; font-weight: 600; color: var(--text); }
 .modal-close { display: inline-flex; padding: 4px; border: none; background: none; color: var(--muted); cursor: pointer; border-radius: 6px; }
@@ -457,7 +458,17 @@ table.preview tr.row-skip td { background: var(--fill-gray-bg); color: var(--mut
 .cat-tag.cat-held { background: #ede7f6; color: #5e35b1; }
 .cat-tag.cat-queued { background: #e0f2f1; color: #00695c; }
 
+/* held-back (region-routing) banner — purple, distinct from the yellow called-warn */
+.held-warn {
+  flex: none; margin: 12px 18px 0; padding: 12px 14px; border-radius: 8px;
+  background: #ede7f6; border: 1px solid #d1c4e9; font-size: 13px; color: #4527a0;
+}
+.held-warn .cw-head { display: flex; align-items: flex-start; gap: 8px; }
+.held-warn .cw-head svg { flex: none; margin-top: 1px; }
+.held-warn strong { font-weight: 700; }
+
 :root[data-theme="dark"] .called-warn { background: #33290f; border-color: #5a4718; color: #e0c574; }
+:root[data-theme="dark"] .held-warn { background: #241a3a; border-color: #3d2f5e; color: #c7b6e8; }
 :root[data-theme="dark"] .cat-tag.cat-held { background: #2c2340; color: #b39ddb; }
 :root[data-theme="dark"] .cat-tag.cat-queued { background: #1a332f; color: #6fb5ab; }
 

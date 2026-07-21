@@ -7,6 +7,7 @@ import { GroupToggle } from "../GroupToggle";
 import { IconDataset } from "../icons";
 import { FiltersToggle } from "../FiltersToggle";
 import { QueueForCalling } from "../QueueForCalling";
+import { RawExportButton } from "../RawExportButton";
 import { deriveCat, normNum } from "@/lib/queue";
 
 export const dynamic = "force-dynamic";
@@ -110,6 +111,7 @@ export default async function RawDataset({
         <FiltersToggle count={activeFilters} />
 
         <span className="spacer" />
+        <RawExportButton total={total} />
         <QueueForCalling total={total} pageRows={rows.length} />
         <ApplyButton />
         <a className="btn-text" href="/dashboard/raw">Reset</a>

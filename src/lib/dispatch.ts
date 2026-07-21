@@ -13,6 +13,10 @@ import { isHindiBlocked } from "@/lib/routing";
 
 const BOLNA_API_BASE = "https://api.bolna.ai";
 
+// Auto-retry failed calls in a batch: 3 retries at 30 / 60 / 120 min after the prior
+// attempt. Bolna wants this as a JSON string in the create-batch form.
+const RETRY_CONFIG = { enabled: true, max_retries: 3, retry_intervals_minutes: [30, 60, 120] };
+
 export const KNOWN_CATS: CallCat[] = ["dead", "unclear", "available", "unavailable"];
 
 export type DispatchSummary = {
@@ -98,6 +102,7 @@ export async function sendBatchToBolna(batch: QueueSel[], scheduledAt: string): 
   // FastAPI List[str] form fields are sent as repeated keys. Optional anyway — the
   // agent has a default caller ID configured (the same number), so omitting it is safe.
   if (fromNumber) form.append("from_phone_numbers", fromNumber);
+  form.append("retry_config", JSON.stringify(RETRY_CONFIG));
 
   const createRes = await fetch(`${BOLNA_API_BASE}/batches`, { method: "POST", headers: auth, body: form });
   const createBody = await createRes.text();
