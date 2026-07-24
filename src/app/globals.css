@@ -153,6 +153,14 @@ td.cf-red   { background: var(--fill-red-bg);   color: var(--fill-red-tx);   fon
 td.cf-yel   { background: var(--fill-yel-bg);   color: var(--fill-yel-tx); }
 td.cf-gray  { background: var(--fill-gray-bg);  color: var(--fill-gray-tx); }
 td .review-tag { margin-left: 6px; color: var(--blue); font-size: 11px; }
+td .btn-infer {
+  margin-left: 6px; padding: 1px 8px; font-size: 11px; font-weight: 600; font-family: inherit;
+  color: var(--blue); background: none; border: 1px solid var(--blue); border-radius: 10px; cursor: pointer;
+  vertical-align: middle;
+}
+td .btn-infer:hover:not(:disabled) { background: var(--fill-green-bg); }
+td .btn-infer:disabled { opacity: .6; cursor: default; }
+td .btn-infer.err { color: var(--fill-red-tx); border-color: var(--fill-red-tx); }
 table.sheet td mark { background: #fff3a3; color: inherit; padding: 0 1px; border-radius: 2px; }
 
 /* ---- collapsible column groups (AI Call Details, DB) ---- */

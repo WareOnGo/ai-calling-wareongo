@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { inferCall, INFERENCE_VERSION } from "@/lib/openai";
-import { inferenceFields, MIN_COST_CENTS, NEEDS_INFERENCE_SQL } from "@/lib/inference";
+import { MIN_COST_CENTS, NEEDS_INFERENCE_SQL } from "@/lib/inference";
+import { writeInference } from "@/lib/enrich";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,38 +41,8 @@ async function claimRows(): Promise<Row[]> {
 }
 
 async function enrichRow(row: Row) {
-  const f = inferenceFields(await inferCall(row.transcript));
-  await getPool().query(
-    `update bolna_call_logs set
-       llm_availability   = $2,
-       built_up_area_sqft = $3,
-       city_area          = $4,
-       expected_rent      = $5,
-       possession         = $6,
-       confidence         = $7,
-       notes              = $8,
-       enrichment         = $9,
-       enriched           = true,
-       inference_version  = $10,
-       inference_model    = $11,
-       needs_review       = $12,
-       processed_at       = now()
-     where id = $1`,
-    [
-      row.id,
-      f.llm_availability,
-      f.built_up_area_sqft,
-      f.city_area,
-      f.expected_rent,
-      f.possession,
-      f.confidence,
-      f.notes,
-      f.inference,
-      f.inference_version,
-      f.inference_model,
-      f.needs_review,
-    ],
-  );
+  // Transcript already in hand from the bulk claim — infer here, share the write.
+  await writeInference(row.id, await inferCall(row.transcript));
 }
 
 export async function POST(req: NextRequest) {

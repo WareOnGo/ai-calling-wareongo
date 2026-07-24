@@ -77,7 +77,21 @@ async function processEvent(row: ClaimedRow) {
     const c = normalize(e);
     const shouldInfer =
       ENABLE_ENRICHMENT && qualifiesForInference(c.status, c.total_cost, c.transcript);
-    const inf = shouldInfer ? await inferCall(c.transcript) : null;
+    // Enrichment is best-effort: a bad/expired OpenAI key or transient API error
+    // must NOT lose the call. On failure we store the row with enriched=false so it
+    // still lands in the dashboard; /api/enrich (bulk) or the per-row "Infer" button
+    // can retry it later — NEEDS_INFERENCE_SQL already re-selects enriched=false rows.
+    let inf = null;
+    if (shouldInfer) {
+      try {
+        inf = await inferCall(c.transcript);
+      } catch (err) {
+        console.error(
+          `[process] enrichment failed for call ${c.id}; storing unenriched:`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
     const f = inferenceFields(inf);
 
     // FK: bolna_call_logs.phone_id references raw_phone_numbers. Ensure the canonical

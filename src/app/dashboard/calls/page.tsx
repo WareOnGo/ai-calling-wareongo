@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getCalls, getFilterOptions, calledByOptions, type CallFilters, type CallRow, type RawMatch } from "@/lib/calls";
 import { GridInteractivity } from "../GridInteractivity";
 import { EditableCells } from "../EditableCells";
+import { EnrichButton } from "../EnrichButton";
 import { ApplyButton } from "../ApplyButton";
 import { GroupToggle } from "../GroupToggle";
 import { ColumnResize } from "../ColumnResize";
@@ -251,6 +252,7 @@ export default async function Dashboard({
                 <td className={cfClass(r.availability)}>
                   {r.availability ?? ""}
                   {r.needs_review && <span className="review-tag">review</span>}
+                  {!r.inferred && r.can_enrich && <EnrichButton id={r.id} />}
                 </td>
                 <td>{r.built_up_area_sqft || ""}</td>
                 <td>{r.expected_rent || ""}</td>

@@ -1,5 +1,7 @@
 import { unstable_cache } from "next/cache";
 import { query } from "@/lib/db";
+import { MIN_COST_CENTS } from "@/lib/inference";
+import { INFERENCE_VERSION } from "@/lib/openai";
 
 export type CallRow = {
   id: string;
@@ -19,6 +21,8 @@ export type CallRow = {
   transcript: string | null;
   recording_url: string | null;
   needs_review: boolean;
+  inferred: boolean;      // has OpenAI enrichment run on this call?
+  can_enrich: boolean;    // qualifies for (re-)inference but isn't enriched at the current version
   // editable workflow fields
   call_status: string | null;
   called_by: string | null;
@@ -76,9 +80,20 @@ const SEARCH_COLS = [
 
 export const PAGE_SIZE = 25;
 
+// "Enrichable" = the same gate the worker/bulk-enrich use (connected + cost + has
+// transcript + not enriched at the current version), but against the view where the
+// enriched flag is surfaced as `inferred`. Constants are server-side numbers → safe
+// to inline; keep in sync with inference.ts NEEDS_INFERENCE_SQL.
+const CAN_ENRICH_SQL = `(
+  status in ('completed', 'call-disconnected')
+  and total_cost > ${MIN_COST_CENTS}
+  and length(trim(coalesce(transcript, ''))) > 0
+  and (inferred = false or inference_version < ${INFERENCE_VERSION})
+) as can_enrich`;
+
 const SELECT_LIST = `id, call_created_at, call_type, from_number, to_number, owner_name, db_area,
        status, availability, segment, confidence, built_up_area_sqft, expected_rent,
-       notes, transcript, recording_url, needs_review,
+       notes, transcript, recording_url, needs_review, inferred, ${CAN_ENRICH_SQL},
        call_status, called_by, added_to_db, wh_id,
        raw_match_count, raw_source, raw_owner_name, raw_warehouse_type,
        raw_city, raw_state, raw_area_sqft, raw_contact_type, raw_sources, raw_matches`;
