@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentAdmin } from "@/lib/auth";
 import { getRawQueueRowsByIds } from "@/lib/raw";
 import { assembleBatch, sendBatchToBolna } from "@/lib/dispatch";
 import { computeScheduleAt } from "@/lib/routing";
@@ -22,9 +22,10 @@ export const dynamic = "force-dynamic";
 // On Bolna failure the batch is marked state='failed' and a 502 is returned.
 //
 // `confirm` must be true — real phones ring — so an accidental POST is a no-op 400.
+// Admin only — placing live calls is not an employee capability.
 export async function POST(req: NextRequest) {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const user = await getCurrentAdmin();
+  if (!user) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   const body = await req.json().catch(() => ({}));
   const ids: string[] = Array.isArray(body?.ids) ? body.ids.filter((x: unknown) => typeof x === "string") : [];
@@ -36,7 +37,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "confirmation required — this places live calls" }, { status: 400 });
   }
 
-  const rows = await getRawQueueRowsByIds(ids);
+  const rows = await getRawQueueRowsByIds(user, ids);
   const summary = assembleBatch(rows);
   const scheduledAt = computeScheduleAt(new Date());
 

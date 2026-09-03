@@ -2,6 +2,7 @@ import { unstable_cache } from "next/cache";
 import { query } from "@/lib/db";
 import { MIN_COST_CENTS } from "@/lib/inference";
 import { INFERENCE_VERSION } from "@/lib/openai";
+import { assignmentScope, type Viewer } from "@/lib/scope";
 
 export type CallRow = {
   id: string;
@@ -25,9 +26,17 @@ export type CallRow = {
   can_enrich: boolean;    // qualifies for (re-)inference but isn't enriched at the current version
   // editable workflow fields
   call_status: string | null;
-  called_by: string | null;
+  called_by: string | null;      // who actually dialled — distinct from assigned_to
   added_to_db: boolean;
   wh_id: string | null;
+  // current assignment (who owns the follow-up)
+  assigned_to: string | null;
+  assignment_id: string | null;   // bigint → pg returns a string; used as a URL segment
+  assignment_state: string | null;
+  assignment_outcome: string | null;
+  assignment_remarks: string | null;
+  assignment_note: string | null;
+  assignment_attempts: number | null;
   // Representative matched listing (scalar columns) + count + full set.
   raw_match_count: number;
   raw_source: string | null;
@@ -67,6 +76,7 @@ export type CallFilters = {
   date_from?: string;     // YYYY-MM-DD (inclusive)
   date_to?: string;       // YYYY-MM-DD (inclusive)
   needs_review?: boolean;
+  assignee?: string;      // admin-only: filter by owner ("none" = unassigned)
   page?: number;
   pageSize?: number;
 };
@@ -95,13 +105,22 @@ const SELECT_LIST = `id, call_created_at, call_type, from_number, to_number, own
        status, availability, segment, confidence, built_up_area_sqft, expected_rent,
        notes, transcript, recording_url, needs_review, inferred, ${CAN_ENRICH_SQL},
        call_status, called_by, added_to_db, wh_id,
+       assigned_to, assignment_id, assignment_state, assignment_outcome,
+       assignment_remarks, assignment_note, assignment_attempts,
        raw_match_count, raw_source, raw_owner_name, raw_warehouse_type,
        raw_city, raw_state, raw_area_sqft, raw_contact_type, raw_sources, raw_matches`;
 
-// Build the WHERE clause + params shared by the paged list and the CSV export.
-function buildFilter(f: CallFilters): { whereSql: string; params: unknown[]; terms: string[] } {
+// Build the WHERE clause + params shared by the paged list, the CSV export and the
+// id resolver. `viewer` is FIRST and required so a new call site can't forget the
+// employee scope — that scope is the only thing standing between an employee and
+// every call in the system, and it has to be applied here to cover the export too.
+function buildFilter(viewer: Viewer, f: CallFilters): { whereSql: string; params: unknown[]; terms: string[] } {
   const where: string[] = [];
   const params: unknown[] = [];
+
+  // Mandatory row-level scope (no-op for admins), before any user-supplied filter.
+  const scope = assignmentScope(viewer, "call", "bolna_call_analysis.id", params);
+  if (scope) where.push(scope);
 
   // Multi-term fuzzy search: every whitespace-separated term must match (substring
   // OR trigram-similar) at least one search column. Fuzzy = typo tolerance on names.
@@ -130,14 +149,27 @@ function buildFilter(f: CallFilters): { whereSql: string; params: unknown[]; ter
   if (f.date_from) { params.push(f.date_from); where.push(`call_created_at >= $${params.length}::date`); }
   if (f.date_to) { params.push(f.date_to); where.push(`call_created_at < ($${params.length}::date + interval '1 day')`); }
   if (f.needs_review) { where.push(`needs_review = true`); }
+  // Admin-only in practice: an employee already sees only their own rows, so this
+  // narrows nothing for them.
+  // "none" = no OPEN owner; a named assignee matches their open or completed work.
+  if (f.assignee === "none") {
+    where.push(`not exists (select 1 from bolna_assignments a
+                  where a.entity_type = 'call' and a.entity_id = bolna_call_analysis.id
+                    and a.state = 'open')`);
+  } else if (f.assignee) {
+    params.push(f.assignee.toLowerCase());
+    where.push(`exists (select 1 from bolna_assignments a
+                 where a.entity_type = 'call' and a.entity_id = bolna_call_analysis.id
+                   and a.state <> 'dropped' and a.assignee = $${params.length})`);
+  }
 
   const whereSql = where.length ? `where ${where.join(" and ")}` : "";
   return { whereSql, params, terms };
 }
 
 // All rows matching the filters, ignoring pagination — used by the CSV export.
-export async function getCallsForExport(f: CallFilters): Promise<CallRow[]> {
-  const { whereSql, params } = buildFilter(f);
+export async function getCallsForExport(viewer: Viewer, f: CallFilters): Promise<CallRow[]> {
+  const { whereSql, params } = buildFilter(viewer, f);
   const res = await query<CallRow>(
     `select ${SELECT_LIST} from bolna_call_analysis ${whereSql}
        order by call_created_at desc nulls last`,
@@ -146,8 +178,21 @@ export async function getCallsForExport(f: CallFilters): Promise<CallRow[]> {
   return res.rows;
 }
 
-export async function getCalls(f: CallFilters) {
-  const { whereSql, params, terms } = buildFilter(f);
+// Just the ids matching the filters — the "assign everything that matches" path.
+// Same builder, so the set is exactly what the grid shows.
+export async function getCallIds(viewer: Viewer, f: CallFilters, cap: number): Promise<{ ids: string[]; capped: boolean }> {
+  const { whereSql, params } = buildFilter(viewer, f);
+  const res = await query<{ id: string }>(
+    `select id from bolna_call_analysis ${whereSql}
+       order by call_created_at desc nulls last limit ${cap + 1}`,
+    params,
+  );
+  const ids = res.rows.map((r) => r.id);
+  return ids.length > cap ? { ids: ids.slice(0, cap), capped: true } : { ids, capped: false };
+}
+
+export async function getCalls(viewer: Viewer, f: CallFilters) {
+  const { whereSql, params, terms } = buildFilter(viewer, f);
   const page = Math.max(1, f.page ?? 1);
   const pageSize = f.pageSize ?? PAGE_SIZE;
   const offset = (page - 1) * pageSize;

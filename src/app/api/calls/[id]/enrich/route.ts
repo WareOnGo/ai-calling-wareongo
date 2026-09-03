@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { enrichCallById } from "@/lib/enrich";
+import { ownsEntity } from "@/lib/assignments";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,6 +16,11 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  // Single-id action: can't go through a filter builder, so check ownership directly.
+  // Same 404 as a missing row — don't confirm the call exists to a non-owner.
+  if (!(await ownsEntity(user, "call", id))) {
+    return NextResponse.json({ error: "not found" }, { status: 404 });
+  }
   try {
     const res = await enrichCallById(id);
     if (!res.ok) return NextResponse.json({ error: "not found" }, { status: 404 });

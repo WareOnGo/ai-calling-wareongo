@@ -29,6 +29,9 @@ const COLUMNS: { label: string; get: (r: CallRow) => unknown }[] = [
   { label: "DB Contact", get: (r) => r.raw_contact_type },
   { label: "All Sources", get: (r) => r.raw_sources },
   { label: "DB Matches", get: (r) => r.raw_match_count },
+  { label: "Assigned To", get: (r) => r.assigned_to },
+  { label: "Human Result", get: (r) => r.assignment_outcome },
+  { label: "Human Remarks", get: (r) => r.assignment_remarks },
   { label: "Call Status", get: (r) => r.call_status },
   { label: "Called By", get: (r) => r.called_by },
   { label: "Added to DB", get: (r) => (r.added_to_db ? "yes" : "no") },
@@ -58,9 +61,12 @@ export async function GET(req: NextRequest) {
     date_from: sp.get("date_from") ?? undefined,
     date_to: sp.get("date_to") ?? undefined,
     needs_review: sp.get("needs_review") === "1",
+    assignee: sp.get("assignee") ?? undefined,
   };
 
-  const rows = await getCallsForExport(filters);
+  // Scoped by the shared filter builder: an employee's export contains exactly the
+  // rows their grid shows.
+  const rows = await getCallsForExport(user, filters);
 
   const lines = [
     COLUMNS.map((c) => csvCell(c.label)).join(","),

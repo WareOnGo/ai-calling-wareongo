@@ -1,5 +1,8 @@
 import Link from "next/link";
 import { getRawRecords, getRawFilterOptions, getQueuedNumberSet, type RawFilters, type RawRow } from "@/lib/raw";
+import { requireAdmin } from "@/lib/auth";
+import { listAssignees } from "@/lib/users";
+import { AssignButton } from "../AssignButton";
 import { GridInteractivity } from "../GridInteractivity";
 import { ApplyButton } from "../ApplyButton";
 import { ColumnResize } from "../ColumnResize";
@@ -12,10 +15,13 @@ import { deriveCat, normNum } from "@/lib/queue";
 
 export const dynamic = "force-dynamic";
 
+// Admin-only page: this is the full scraped corpus with owner PII, and it's the
+// launch point for Bolna dispatch. Employees see their assigned slice at
+// /dashboard/my instead.
 const COLUMNS = [
   "Source", "Record ID", "Owner", "Phone", "Sqft",
   "Calls", "Last Status", "Last Result", "Last Called", "Transcript", "Audio", "Notes",
-  "Contact", "City", "State", "Address",
+  "Contact", "City", "State", "Address", "Assigned To",
 ];
 
 // Collapsible "Calls" group: green toggle shows the call count; collapses the
@@ -68,6 +74,7 @@ export default async function RawDataset({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const user = await requireAdmin();
   const rawSp = await searchParams;
   const sp: SP = {};
   for (const [k, v] of Object.entries(rawSp)) sp[k] = Array.isArray(v) ? v[0] : v;
@@ -83,18 +90,20 @@ export default async function RawDataset({
     min_area: sp.min_area ? Number(sp.min_area) : undefined,
     max_area: sp.max_area ? Number(sp.max_area) : undefined,
     has_phone: sp.has_phone === "1",
+    assignee: sp.assignee,
     page: sp.page ? Number(sp.page) : 1,
   };
 
-  const [{ rows, total, page, pages, pageSize, terms }, opts, queuedSet] = await Promise.all([
-    getRawRecords(filters),
+  const [{ rows, total, page, pages, pageSize, terms }, opts, queuedSet, assignees] = await Promise.all([
+    getRawRecords(user, filters),
     getRawFilterOptions(),
     getQueuedNumberSet(),
+    listAssignees(),
   ]);
 
   const numCols = COLUMNS.length + 1; // + select col (group toggles count as one col each)
   const startRow = (page - 1) * pageSize;
-  const activeFilters = ["source", "state", "contact", "called", "last_result", "min_area", "max_area", "has_phone"]
+  const activeFilters = ["source", "state", "contact", "called", "last_result", "min_area", "max_area", "has_phone", "assignee"]
     .filter((k) => sp[k]).length;
 
   return (
@@ -112,6 +121,7 @@ export default async function RawDataset({
 
         <span className="spacer" />
         <RawExportButton total={total} />
+        <AssignButton entity="record" total={total} assignees={assignees} />
         <QueueForCalling total={total} pageRows={rows.length} />
         <ApplyButton />
         <a className="btn-text" href="/dashboard/raw">Reset</a>
@@ -157,6 +167,15 @@ export default async function RawDataset({
               <input type="checkbox" name="has_phone" value="1" defaultChecked={sp.has_phone === "1"} />
               Has phone
             </label>
+            <div className={`chip${sp.assignee ? " active" : ""}`}>
+              <select name="assignee" defaultValue={sp.assignee ?? ""}>
+                <option value="">Assigned to</option>
+                <option value="none">Unassigned</option>
+                {assignees.map((a) => (
+                  <option key={a.email} value={a.email}>{a.name || a.email}</option>
+                ))}
+              </select>
+            </div>
         </div>
       </form>
 
@@ -221,6 +240,10 @@ export default async function RawDataset({
                 <td>{hl(r.city, terms)}</td>
                 <td>{hl(r.state, terms)}</td>
                 <td className="clip" title={r.address ?? ""}>{hl(r.address, terms)}</td>
+                <td className="clip" title={r.assignment_note ?? ""}>
+                  {r.assigned_to ?? <span className="muted">—</span>}
+                  {r.assignment_state === "done" && <span className="review-tag">done</span>}
+                </td>
               </tr>
             ))}
           </tbody>

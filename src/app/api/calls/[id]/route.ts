@@ -38,8 +38,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   vals.push(id);
+  const idParam = `$${vals.length}`;
+
+  // Employees may only edit calls currently assigned to them. Enforced INSIDE the
+  // update rather than as a pre-check: no TOCTOU window, and a non-owner falls
+  // straight through to the existing rowCount===0 → 404 path.
+  let ownership = "";
+  if (!user.isAdmin) {
+    vals.push(user.email.toLowerCase());
+    ownership = ` and exists (select 1 from bolna_assignments a
+                    where a.entity_type = 'call' and a.entity_id = bolna_call_logs.id
+                      and a.state <> 'dropped' and a.assignee = $${vals.length})`;
+  }
+
   const res = await query(
-    `update bolna_call_logs set ${sets.join(", ")} where id = $${vals.length}`,
+    `update bolna_call_logs set ${sets.join(", ")} where id = ${idParam}${ownership}`,
     vals,
   );
   if (res.rowCount === 0) return NextResponse.json({ error: "not found" }, { status: 404 });

@@ -108,7 +108,7 @@ a:hover { text-decoration: underline; }
 .filterbar .spacer { flex: 1; }
 .btn-text { background: none; border: none; color: var(--blue); font-size: 14px; font-weight: 500; cursor: pointer; padding: 9px 12px; border-radius: 4px; font-family: inherit; }
 .btn-text:hover { background: #f1f3f4; }
-.btn-export {
+.btn-export, .btn-assign {
   display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 16px;
   border: 1px solid var(--green); border-radius: 20px; background: var(--fill-green-bg);
   color: var(--fill-green-tx); font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: none;
@@ -307,7 +307,14 @@ table.sheet td.edit.err { box-shadow: inset 3px 0 0 #c5221f; }   /* red on error
 
 /* ---- hub (home) ---- */
 .hub { flex: 1; min-height: 0; overflow: auto; display: grid; place-items: center; padding: 40px; }
-.hub-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 340px)); gap: 22px; }
+/* width:100% matters: .hub is `place-items: center`, which shrink-wraps this grid to
+   min-content, and `auto-fit` then resolves to a SINGLE column — the cards stacked
+   vertically no matter how wide the window was. Filling the parent (capped, tracks
+   centred) lets auto-fit lay them out across. */
+.hub-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 340px));
+  gap: 22px; width: 100%; max-width: 1460px; justify-content: center;
+}
 .hub-card {
   display: flex; flex-direction: column; gap: 8px; padding: 28px; border-radius: 14px;
   border: 1px solid var(--border); background: var(--gutter-bg); text-decoration: none; color: var(--text);
@@ -324,7 +331,7 @@ table.sheet td.edit.err { box-shadow: inset 3px 0 0 #c5221f; }   /* red on error
   height: 38px; width: 92px; padding: 0 12px; font-size: 13px; font-family: inherit;
   border: 1px solid var(--border); border-radius: 20px; background: #fff; color: var(--text);
 }
-.btn-export:disabled { opacity: .5; cursor: not-allowed; }
+.btn-export:disabled, .btn-assign:disabled { opacity: .5; cursor: not-allowed; }
 table.sheet th.selcol, table.sheet td.selcol { width: 34px; min-width: 34px; text-align: center; padding: 0; }
 :root[data-theme="dark"] .num-filter { background: #262b34; }
 
@@ -337,7 +344,7 @@ table.sheet th.selcol, table.sheet td.selcol { width: 34px; min-width: 34px; tex
 
 /* inline icons sit on the text baseline cleanly */
 .page-title .pt-icon { display: inline-flex; color: var(--green); }
-.theme-toggle svg, .btn-export svg, .hub-icon svg { display: block; }
+.theme-toggle svg, .btn-export svg, .btn-assign svg, .hub-icon svg { display: block; }
 .hub-icon { color: var(--blue); }
 
 /* ---- date range filter (From / To) ---- */
@@ -382,8 +389,9 @@ table.sheet input.rowsel:disabled { cursor: not-allowed; opacity: .4; }
 .selectall-link { color: var(--blue); font-size: 13px; }
 .selectall-note { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
 .selectall-note .btn-text { padding: 4px 8px; font-size: 13px; }
-.btn-export:disabled { opacity: .5; cursor: not-allowed; }
+.btn-export:disabled, .btn-assign:disabled { opacity: .5; cursor: not-allowed; }
 .btn-export:disabled:hover { background: var(--fill-green-bg); }
+.btn-assign:disabled:hover { background: var(--fill-blue-bg, #e8f0fe); }
 
 /* ---- Queue-for-calling modal (CSV preview before Bolna dispatch) ---- */
 .modal-backdrop {
@@ -506,3 +514,70 @@ table.preview tr.row-skip td { background: var(--fill-gray-bg); color: var(--mut
   background: #fff; font-size: 14px;
 }
 :root[data-theme="dark"] .grid-loading { background: #1d2128; }
+
+/* ---- Assignment: admin assign modal, team page, employee outcome cells ---- */
+.btn-assign { background: var(--fill-blue-bg, #e8f0fe); color: var(--blue); }
+.btn-assign:hover { background: #d7e5fb; }
+:root[data-theme="dark"] .btn-assign { background: #1e2a3d; color: #8ab4f8; }
+:root[data-theme="dark"] .btn-assign:hover { background: #253449; }
+
+.assign-scope { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.assign-scope label {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px; font-size: 13px;
+  border: 1px solid var(--border); border-radius: 6px; cursor: pointer; color: var(--text);
+}
+.assign-scope label.active { border-color: var(--blue); background: #e8f0fe; color: var(--blue); }
+.assign-scope input:disabled + * , .assign-scope label:has(input:disabled) { opacity: .5; cursor: not-allowed; }
+:root[data-theme="dark"] .assign-scope label.active { background: #1e2a3d; }
+
+.assign-field { display: block; margin-bottom: 12px; font-size: 13px; color: var(--muted); }
+.assign-field span { display: block; margin-bottom: 4px; }
+.assign-field select, .assign-field input {
+  width: 100%; padding: 7px 9px; font-family: inherit; font-size: 13px; color: var(--text);
+  background: transparent; border: 1px solid var(--border); border-radius: 6px;
+}
+.assign-field select:focus, .assign-field input:focus { outline: none; border-color: var(--blue); }
+
+.assign-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); }
+.assign-check input { accent-color: var(--blue); cursor: pointer; }
+.assign-error { margin: 12px 0 0; font-size: 13px; color: var(--fill-red-tx); }
+.assign-done { margin: 0 0 10px; font-size: 14px; color: var(--text); }
+.assign-summary { margin: 0; padding-left: 18px; font-size: 13px; color: var(--muted); line-height: 1.7; }
+.assign-summary .warn { color: var(--fill-yel-tx); }
+
+.section-head {
+  display: flex; align-items: center; gap: 8px; margin: 18px 14px 8px;
+  font-size: 15px; font-weight: 600; color: var(--text);
+}
+.section-head .count {
+  padding: 1px 7px; border-radius: 10px; background: var(--fill-gray-bg);
+  font-size: 12px; font-weight: 500; color: var(--muted);
+}
+.section-head .assign-note-tag { font-size: 12px; font-weight: 400; color: var(--muted); font-style: italic; }
+.empty-note { margin: 14px; font-size: 14px; color: var(--muted); max-width: 70ch; line-height: 1.6; }
+.empty-note code { background: var(--fill-gray-bg); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+
+table.sheet tr.row-done td { opacity: .55; }
+.done-check { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; font-size: 13px; cursor: pointer; }
+.done-check input { accent-color: var(--blue); cursor: pointer; margin: 0; }
+.btn-attempt {
+  width: 100%; padding: 5px 9px; border: none; background: transparent; cursor: pointer;
+  font-family: inherit; font-size: 13px; color: var(--blue);
+}
+.btn-attempt:hover { background: var(--hover, #f1f3f4); }
+
+.team-add { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 14px 14px; }
+.team-add input, .team-add select {
+  padding: 8px 10px; font-family: inherit; font-size: 13px; color: var(--text);
+  background: transparent; border: 1px solid var(--border); border-radius: 6px;
+}
+.team-add input:focus, .team-add select:focus { outline: none; border-color: var(--blue); }
+
+/* ---- pages that stack several grids (My Work) ----
+   .gridwrap is `flex: 1` so a single-grid page fills the viewport. Stack two of
+   them in the column-flex .dash-main and they each grow, leaving a huge dead gap
+   between the sections. Inside .stacked the wrappers size to their content and the
+   PAGE scrolls instead. */
+.stacked { flex: 1; min-height: 0; overflow-y: auto; }
+.stacked .gridwrap { flex: none; }
+.stacked .section-head:first-child { margin-top: 8px; }

@@ -2,7 +2,7 @@
   "name": "bolna-processing",
   "version": "0.1.0",
   "private": true,
-  "description": "Bolna Processing — receives Bolna post-call webhooks, enriches them with OpenAI, and stores results in Supabase Postgres.",
+  "description": "Bolna Processing \u2014 receives Bolna post-call webhooks, enriches them with OpenAI, and stores results in Supabase Postgres.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -11,6 +11,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:init": "node --env-file=.env.local scripts/db-init.mjs",
+    "db:pull": "prisma db pull",
+    "db:diff": "prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script",
+    "db:push": "prisma db push --skip-generate",
+    "db:post-push": "prisma db execute --file prisma/post-push.sql",
+    "db:status": "prisma migrate status",
     "backfill": "node --env-file=.env.local scripts/backfill.mjs",
     "drain": "node --env-file=.env.local scripts/drain.mjs http://localhost:3000/api/process",
     "enrich": "node --env-file=.env.local scripts/drain.mjs http://localhost:3000/api/enrich"
@@ -27,6 +32,7 @@
     "@types/node": "^22.10.0",
     "@types/pg": "^8.11.10",
     "@types/react": "^19.0.0",
+    "prisma": "^7.9.1",
     "typescript": "^5.7.0",
     "vitest": "^2.1.9"
   }

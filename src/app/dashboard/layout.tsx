@@ -15,9 +15,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <span className="logo">B</span>
             <h1>Bolna Calls</h1>
           </Link>
+          {/* Nav is role-aware; the pages guard themselves too (requireAdmin), so a
+              hidden link is convenience, not the access control. */}
           <nav className="topnav">
+            <Link href="/dashboard/my">My Work</Link>
             <Link href="/dashboard/calls">Call Analytics</Link>
-            <Link href="/dashboard/raw">Raw Dataset</Link>
+            {user.isAdmin && <Link href="/dashboard/raw">Raw Dataset</Link>}
+            {user.isAdmin && <Link href="/dashboard/team">Team</Link>}
           </nav>
         </div>
         <div className="user">

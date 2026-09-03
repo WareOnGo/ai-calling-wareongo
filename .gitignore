@@ -15,6 +15,9 @@ cleandata/
 # DB schema + data pipeline — kept private (sources, schemas, migrations, loaders)
 scripts/
 sql/
+# Prisma owns the schema now; schema.prisma + migrations describe it in full,
+# so they stay private for the same reason sql/ does.
+prisma/
 
 # Internal project skill — documents sources/schema, keep private
 .claude/skills/

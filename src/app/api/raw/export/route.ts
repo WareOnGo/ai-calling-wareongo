@@ -30,6 +30,11 @@ const COLUMNS: { label: string; get: (r: RawExportRow) => unknown }[] = [
   { label: "AI Notes", get: (r) => r.last_notes },
   { label: "AI Transcript", get: (r) => r.last_transcript },
   { label: "AI Recording", get: (r) => r.last_recording_url },
+  // Human-calling channel: who owns this record and what they found.
+  { label: "Assigned To", get: (r) => r.assigned_to },
+  { label: "Human Result", get: (r) => r.assignment_outcome },
+  { label: "Human Remarks", get: (r) => r.assignment_remarks },
+  { label: "Human Attempts", get: (r) => r.assignment_attempts },
   { label: "Metadata (JSON)", get: (r) => (r.metadata ? JSON.stringify(r.metadata) : "") },
 ];
 
@@ -51,7 +56,7 @@ export async function GET(req: NextRequest) {
 
   let rows: RawExportRow[];
   if (ids && ids.length > 0) {
-    rows = await getRawRecordsByIds(ids);
+    rows = await getRawRecordsByIds(user, ids);
   } else {
     const filters: RawFilters = {
       q: sp.get("q") ?? undefined,
@@ -64,8 +69,9 @@ export async function GET(req: NextRequest) {
       min_area: sp.get("min_area") ? Number(sp.get("min_area")) : undefined,
       max_area: sp.get("max_area") ? Number(sp.get("max_area")) : undefined,
       has_phone: sp.get("has_phone") === "1",
+      assignee: sp.get("assignee") ?? undefined,
     };
-    rows = await getRawRecordsForExport(filters);
+    rows = await getRawRecordsForExport(user, filters);
   }
 
   const lines = [

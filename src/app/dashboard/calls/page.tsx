@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { getCalls, getFilterOptions, calledByOptions, type CallFilters, type CallRow, type RawMatch } from "@/lib/calls";
+import { requireUser } from "@/lib/auth";
+import { listAssignees } from "@/lib/users";
 import { GridInteractivity } from "../GridInteractivity";
 import { EditableCells } from "../EditableCells";
 import { EnrichButton } from "../EnrichButton";
@@ -8,10 +10,15 @@ import { GroupToggle } from "../GroupToggle";
 import { ColumnResize } from "../ColumnResize";
 import { IconPhone, IconDownload } from "../icons";
 import { FiltersToggle } from "../FiltersToggle";
+import { AssignButton } from "../AssignButton";
+import { RowSelection } from "../RowSelection";
 
 export const dynamic = "force-dynamic";
 
-const COLUMNS = [
+// One grid for both roles: the role changes what's RENDERED (assignment column,
+// bulk-assign, assignee filter), the scope in lib/calls.ts changes what's FETCHED.
+// Forking the page per role would mean fixing every grid bug twice.
+const BASE_COLUMNS = [
   "When", "Direction", "Number", "Owner", "Area", "Availability", "Sqft", "Rent",
   "AI Call Details", "Notes", "Transcript", "Recording",
   "DB", "DB Owner", "DB Type", "DB City", "DB State", "DB Sqft", "All Sources",
@@ -100,6 +107,7 @@ export default async function Dashboard({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const user = await requireUser();
   const raw = await searchParams;
   const sp: SP = {};
   for (const [k, v] of Object.entries(raw)) sp[k] = Array.isArray(v) ? v[0] : v;
@@ -116,22 +124,26 @@ export default async function Dashboard({
     date_from: sp.date_from,
     date_to: sp.date_to,
     needs_review: sp.needs_review === "1",
+    assignee: user.isAdmin ? sp.assignee : undefined,
     page: sp.page ? Number(sp.page) : 1,
   };
 
-  const [{ rows, total, page, pages, pageSize, terms }, opts] = await Promise.all([
-    getCalls(filters),
+  const [{ rows, total, page, pages, pageSize, terms }, opts, assignees] = await Promise.all([
+    getCalls(user, filters),
     getFilterOptions(),
+    user.isAdmin ? listAssignees() : Promise.resolve([]),
   ]);
   const cbOpts = calledByOptions();
 
-  const numCols = COLUMNS.length;
+  // Admins get an owner column; employees are only ever looking at their own rows.
+  const COLUMNS = user.isAdmin ? [...BASE_COLUMNS, "Assigned To"] : BASE_COLUMNS;
+  const numCols = COLUMNS.length + (user.isAdmin ? 1 : 0); // + selection column
   const startRow = (page - 1) * pageSize;
 
   // Export link mirrors the currently-applied filters (not pagination) so the CSV
   // contains the whole filtered set, however many pages it spans.
   const exportParams = new URLSearchParams();
-  for (const k of ["q", "availability", "agent_id", "status", "source", "state", "contact", "call_type", "date_from", "date_to", "needs_review"]) {
+  for (const k of ["q", "availability", "agent_id", "status", "source", "state", "contact", "call_type", "date_from", "date_to", "needs_review", "assignee"]) {
     if (sp[k]) exportParams.set(k, sp[k] as string);
   }
   const exportHref = `/api/calls/export?${exportParams.toString()}`;
@@ -156,6 +168,7 @@ export default async function Dashboard({
 
         <span className="spacer" />
         <a className="btn-export" href={exportHref}><IconDownload size={15} /> Export CSV</a>
+        {user.isAdmin && <AssignButton entity="call" total={total} assignees={assignees} />}
         <ApplyButton />
         <a className="btn-text" href="/dashboard/calls">Reset</a>
 
@@ -216,6 +229,17 @@ export default async function Dashboard({
               <input type="checkbox" name="needs_review" value="1" defaultChecked={sp.needs_review === "1"} />
               Needs review
             </label>
+            {user.isAdmin && (
+              <div className={`chip${sp.assignee ? " active" : ""}`}>
+                <select name="assignee" defaultValue={sp.assignee ?? ""}>
+                  <option value="">Assigned to</option>
+                  <option value="none">Unassigned</option>
+                  {assignees.map((a) => (
+                    <option key={a.email} value={a.email}>{a.name || a.email}</option>
+                  ))}
+                </select>
+              </div>
+            )}
         </div>
       </form>
 
@@ -224,6 +248,9 @@ export default async function Dashboard({
           <thead>
             <tr className="colheads">
               <th className="rowgutter"></th>
+              {user.isAdmin && (
+                <th className="selcol"><input type="checkbox" className="selall" title="Select all on this page" /></th>
+              )}
               {COLUMNS.map((c) => {
                 const g = GROUPS.find((g) => g.toggle === c);
                 return g
@@ -244,6 +271,11 @@ export default async function Dashboard({
             {rows.map((r: CallRow, i) => (
               <tr key={r.id}>
                 <td className="rownum">{startRow + i + 1}</td>
+                {user.isAdmin && (
+                  <td className="selcol">
+                    <input type="checkbox" className="rowsel" data-id={r.id} />
+                  </td>
+                )}
                 <td>{fmtDate(r.call_created_at)}</td>
                 <td>{r.call_type === "inbound" ? "Inbound" : "Outbound"}</td>
                 <td>{hl(r.call_type === "inbound" ? r.from_number : r.to_number, terms)}</td>
@@ -281,6 +313,12 @@ export default async function Dashboard({
                   whId={r.wh_id}
                   calledByOptions={cbOpts}
                 />
+                {user.isAdmin && (
+                  <td className="clip" title={r.assignment_note ?? ""}>
+                    {r.assigned_to ?? <span className="muted">—</span>}
+                    {r.assignment_state === "done" && <span className="review-tag">done</span>}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -308,6 +346,7 @@ export default async function Dashboard({
 
       <GridInteractivity />
       <ColumnResize />
+      {user.isAdmin && <RowSelection />}
     </>
   );
 }

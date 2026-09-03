@@ -2,6 +2,7 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createHmac, timingSafeEqual } from "crypto";
+import { getUser } from "@/lib/users";
 
 // Cookie-based session. The cookie value is the email plus an HMAC signature, so
 // it CANNOT be forged: a user can set their own cookie, but without SESSION_SECRET
@@ -40,7 +41,7 @@ function verifyToken(token: string): string | null {
   return email;
 }
 
-export type CurrentUser = { email: string; isAdmin: boolean };
+export type CurrentUser = { email: string; name: string | null; isAdmin: boolean };
 
 // Derive the public origin from the request (works on localhost and behind
 // Vercel's proxy) so the OAuth redirect_uri always matches the host the user
@@ -98,14 +99,53 @@ export async function getSessionEmail(): Promise<string | null> {
   return verifyToken(token); // null if the signature doesn't validate (forged/tampered)
 }
 
+// Role resolution: the app_users row wins when present, otherwise the env allowlist
+// decides (so the table can be populated incrementally). Deactivating a user in
+// app_users revokes access even if their email is still in ALLOWED_EMAILS.
+//
+// A DB error must NOT lock everyone out of the dashboard, so it degrades to the env
+// allowlist — the same behaviour as before this table existed.
+async function resolveRole(email: string): Promise<{ name: string | null; isAdmin: boolean } | null> {
+  const envAdmin = emailSet("ADMIN_EMAILS").has(email.toLowerCase());
+  try {
+    const row = await getUser(email);
+    if (row) {
+      if (!row.active) return null;
+      return { name: row.name, isAdmin: row.role === "admin" };
+    }
+  } catch (err) {
+    console.error("[auth] app_users lookup failed; falling back to env allowlist:", err);
+  }
+  return isAllowed(email) ? { name: null, isAdmin: envAdmin } : null;
+}
+
+// cache() → one resolution (and at most one app_users query) per request.
 export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   const email = await getSessionEmail();
-  if (!email || !isAllowed(email)) return null;
-  return { email, isAdmin: emailSet("ADMIN_EMAILS").has(email.toLowerCase()) };
+  if (!email) return null;
+  // The env allowlist is still the outer gate: an app_users row alone can't grant
+  // access to someone who was never allowlisted.
+  if (!isAllowed(email)) return null;
+  const role = await resolveRole(email);
+  if (!role) return null;
+  return { email, name: role.name, isAdmin: role.isAdmin };
 });
 
 export async function requireUser(): Promise<CurrentUser> {
   const u = await getCurrentUser();
   if (!u) redirect("/");
   return u;
+}
+
+/** Page guard for admin-only routes — employees are bounced to their own view. */
+export async function requireAdmin(): Promise<CurrentUser> {
+  const u = await requireUser();
+  if (!u.isAdmin) redirect("/dashboard/my");
+  return u;
+}
+
+/** API guard for admin-only routes. Returns null for anonymous AND for employees. */
+export async function getCurrentAdmin(): Promise<CurrentUser | null> {
+  const u = await getCurrentUser();
+  return u?.isAdmin ? u : null;
 }

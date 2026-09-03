@@ -1,6 +1,7 @@
 import { unstable_cache } from "next/cache";
 import { query } from "@/lib/db";
 import { deriveCat, normNum, type QueueSel } from "@/lib/queue";
+import { assignmentScope, currentAssignmentLateral, type Viewer } from "@/lib/scope";
 
 // Read layer for the raw master warehouse dataset (raw_records). Mirrors lib/calls.ts.
 // Powers the "Raw Dataset" view/filter page; the selected set will later feed a
@@ -32,6 +33,16 @@ export type RawRow = {
   last_recording_url: string | null;
   last_notes: string | null;
   calls_history: { at: string | null; status: string | null; availability: string | null }[] | null;
+  // current assignment — the human-calling channel, parallel to the AI calls above
+  assigned_to: string | null;
+  // bigint → pg hands these back as strings, not numbers (same reason area_sqft and
+  // the count(*) columns are read as text). Only ever used as a URL segment.
+  assignment_id: string | null;
+  assignment_state: string | null;
+  assignment_outcome: string | null;
+  assignment_remarks: string | null;
+  assignment_note: string | null;
+  assignment_attempts: number | null;
 };
 
 export type RawFilters = {
@@ -46,6 +57,7 @@ export type RawFilters = {
   min_area?: number;
   max_area?: number;
   has_phone?: boolean;
+  assignee?: string;             // admin-only: filter by owner ("none" = unassigned)
   page?: number;
   pageSize?: number;
 };
@@ -74,7 +86,14 @@ const SELECT_LIST = `
   calls.last_transcript                as last_transcript,
   calls.last_recording_url             as last_recording_url,
   calls.last_notes                     as last_notes,
-  calls.calls_history                  as calls_history`;
+  calls.calls_history                  as calls_history,
+  asg.assignee                         as assigned_to,
+  asg.assignment_id                    as assignment_id,
+  asg.state                            as assignment_state,
+  asg.outcome                          as assignment_outcome,
+  asg.remarks                          as assignment_remarks,
+  asg.note                             as assignment_note,
+  asg.attempts                         as assignment_attempts`;
 
 // Call history aggregated across all of a record's phone numbers.
 const CALLS_JOIN = `
@@ -94,9 +113,19 @@ const CALLS_JOIN = `
     where rp.master_id = r.id
   ) calls on true`;
 
-function buildFilter(f: RawFilters): { whereSql: string; params: unknown[]; terms: string[] } {
+// The current assignment (human-calling channel). Same shape and precedence as the
+// one baked into bolna_call_analysis, so both grids answer "who owns this" alike.
+const ASSIGN_JOIN = currentAssignmentLateral("record", "r.id");
+
+// `viewer` is FIRST and required: the employee scope applied here is what keeps an
+// employee from reading the whole scraped corpus, and putting it in the shared
+// builder means the CSV export and queue endpoint inherit it automatically.
+function buildFilter(viewer: Viewer, f: RawFilters): { whereSql: string; params: unknown[]; terms: string[] } {
   const where: string[] = [];
   const params: unknown[] = [];
+
+  const scope = assignmentScope(viewer, "record", "r.id", params);
+  if (scope) where.push(scope);
 
   const terms = (f.q ?? "").trim().split(/\s+/).filter(Boolean).slice(0, 6);
   for (const term of terms) {
@@ -132,13 +161,25 @@ function buildFilter(f: RawFilters): { whereSql: string; params: unknown[]; term
                  on cl.phone_id = rp.phone_id where rp.master_id = r.id
                  order by cl.call_created_at desc nulls last limit 1) = $${params.length}`);
   }
+  // Admin-only in practice: an employee already sees only their own rows.
+  // "none" means no OPEN owner (a finished record is available to hand out again),
+  // while a named assignee matches their open or completed work.
+  if (f.assignee === "none") {
+    where.push(`not exists (select 1 from bolna_assignments a
+                  where a.entity_type = 'record' and a.entity_id = r.id and a.state = 'open')`);
+  } else if (f.assignee) {
+    params.push(f.assignee.toLowerCase());
+    where.push(`exists (select 1 from bolna_assignments a
+                 where a.entity_type = 'record' and a.entity_id = r.id
+                   and a.state <> 'dropped' and a.assignee = $${params.length})`);
+  }
 
   const whereSql = where.length ? `where ${where.join(" and ")}` : "";
   return { whereSql, params, terms };
 }
 
-export async function getRawRecords(f: RawFilters) {
-  const { whereSql, params, terms } = buildFilter(f);
+export async function getRawRecords(viewer: Viewer, f: RawFilters) {
+  const { whereSql, params, terms } = buildFilter(viewer, f);
   const page = Math.max(1, f.page ?? 1);
   const pageSize = f.pageSize ?? RAW_PAGE_SIZE;
   const offset = (page - 1) * pageSize;
@@ -151,7 +192,7 @@ export async function getRawRecords(f: RawFilters) {
 
   const rowsRes = await query<RawRow>(
     `select ${SELECT_LIST}
-       from raw_records r ${CALLS_JOIN} ${whereSql}
+       from raw_records r ${CALLS_JOIN} ${ASSIGN_JOIN} ${whereSql}
        order by r.area_sqft desc nulls last, r.id
        limit ${pageSize} offset ${offset}`,
     params,
@@ -167,11 +208,11 @@ export type RawExportRow = RawRow & { metadata: Record<string, unknown> | null }
 
 // Full filtered set (no pagination) for the raw-dataset CSV export. Same filters and
 // ordering as the grid so the CSV matches what the user is looking at.
-export async function getRawRecordsForExport(f: RawFilters): Promise<RawExportRow[]> {
-  const { whereSql, params } = buildFilter(f);
+export async function getRawRecordsForExport(viewer: Viewer, f: RawFilters): Promise<RawExportRow[]> {
+  const { whereSql, params } = buildFilter(viewer, f);
   const res = await query<RawExportRow>(
     `select ${SELECT_LIST}, r.metadata as metadata
-       from raw_records r ${CALLS_JOIN} ${whereSql}
+       from raw_records r ${CALLS_JOIN} ${ASSIGN_JOIN} ${whereSql}
        order by r.area_sqft desc nulls last, r.id
        limit ${EXPORT_CAP}`,
     params,
@@ -180,16 +221,60 @@ export async function getRawRecordsForExport(f: RawFilters): Promise<RawExportRo
 }
 
 // Export only the explicitly-selected records (checkbox selection in the grid).
-export async function getRawRecordsByIds(ids: string[]): Promise<RawExportRow[]> {
+// Goes through buildFilter too, so an employee can't widen their export by posting
+// ids they don't own.
+export async function getRawRecordsByIds(viewer: Viewer, ids: string[]): Promise<RawExportRow[]> {
   if (ids.length === 0) return [];
+  const { whereSql, params } = buildFilter(viewer, {});
+  params.push(ids.slice(0, EXPORT_CAP));
+  const idClause = `r.id = any($${params.length})`;
+  const where = whereSql ? `${whereSql} and ${idClause}` : `where ${idClause}`;
   const res = await query<RawExportRow>(
     `select ${SELECT_LIST}, r.metadata as metadata
-       from raw_records r ${CALLS_JOIN}
-       where r.id = any($1)
+       from raw_records r ${CALLS_JOIN} ${ASSIGN_JOIN} ${where}
        order by r.area_sqft desc nulls last, r.id`,
-    [ids.slice(0, EXPORT_CAP)],
+    params,
   );
   return res.rows;
+}
+
+// Just the ids matching the filters — the "assign everything that matches" path.
+export async function getRawRecordIds(
+  viewer: Viewer,
+  f: RawFilters,
+  cap: number,
+  opts: { requirePhone?: boolean } = {},
+): Promise<{ ids: string[]; capped: boolean; excludedNoPhone: number }> {
+  const { whereSql, params } = buildFilter(viewer, f);
+
+  // Assignment means "someone should ring this", so a record with no number is not
+  // assignable — the grid already renders its checkbox disabled for exactly that
+  // reason, and the dispatch path drops it as skippedNoNumber. Without this, an
+  // "assign all matching" would hand out rows the employee cannot action. The count
+  // is returned rather than hidden, same as every other drop in the dispatch flow.
+  const phoneExists = `exists (select 1 from raw_phones rp where rp.master_id = r.id)`;
+  const where = (extra: string) =>
+    whereSql ? (extra ? `${whereSql} and ${extra}` : whereSql) : (extra ? `where ${extra}` : "");
+
+  const res = await query<{ id: string }>(
+    `select r.id from raw_records r ${where(opts.requirePhone ? phoneExists : "")}
+       order by r.area_sqft desc nulls last, r.id limit ${cap + 1}`,
+    params,
+  );
+
+  let excludedNoPhone = 0;
+  if (opts.requirePhone) {
+    const n = await query<{ n: string }>(
+      `select count(*)::text n from raw_records r ${where(`not ${phoneExists}`)}`,
+      params,
+    );
+    excludedNoPhone = Number(n.rows[0].n);
+  }
+
+  const ids = res.rows.map((r) => r.id);
+  return ids.length > cap
+    ? { ids: ids.slice(0, cap), capped: true, excludedNoPhone }
+    : { ids, capped: false, excludedNoPhone };
 }
 
 // Minimal row for the "queue for calling" batch — one per matching record that has
@@ -247,8 +332,8 @@ export async function getQueuedNumberSet(): Promise<Set<string>> {
   return new Set(res.rows.map((r) => normNum(r.contact_number)));
 }
 
-export async function getRawQueueRows(f: RawFilters): Promise<{ rows: QueueSel[]; capped: boolean }> {
-  const { whereSql, params } = buildFilter(f);
+export async function getRawQueueRows(viewer: Viewer, f: RawFilters): Promise<{ rows: QueueSel[]; capped: boolean }> {
+  const { whereSql, params } = buildFilter(viewer, f);
   // Must have a phone to call. Already-called records are NOT excluded here — they
   // are flagged via `cat` so the client can warn and let the user purge them.
   const phoneExists = `exists (select 1 from raw_phones rp where rp.master_id = r.id)`;
@@ -270,11 +355,14 @@ export async function getRawQueueRows(f: RawFilters): Promise<{ rows: QueueSel[]
 
 // Re-fetch specific records by id — the dispatch path uses this so the numbers sent
 // to Bolna come from the DB, never from client-supplied data.
-export async function getRawQueueRowsByIds(ids: string[]): Promise<QueueSel[]> {
+export async function getRawQueueRowsByIds(viewer: Viewer, ids: string[]): Promise<QueueSel[]> {
   if (ids.length === 0) return [];
-  const capped = ids.slice(0, QUEUE_CAP);
+  const { whereSql, params } = buildFilter(viewer, {});
+  params.push(ids.slice(0, QUEUE_CAP));
+  const idClause = `r.id = any($${params.length})`;
+  const where = whereSql ? `${whereSql} and ${idClause}` : `where ${idClause}`;
   const [res, queued] = await Promise.all([
-    query<QueueRowSql>(`${QUEUE_SELECT} where r.id = any($1)`, [capped]),
+    query<QueueRowSql>(`${QUEUE_SELECT} ${where}`, params),
     getQueuedNumberSet(),
   ]);
   return res.rows.map((r) => toQueueSel(r, queued));
