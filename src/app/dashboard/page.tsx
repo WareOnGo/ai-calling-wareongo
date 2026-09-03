@@ -40,6 +40,15 @@ export default async function DashboardHome() {
         )}
 
         {user.isAdmin && (
+          <Link className="hub-card" href="/dashboard/assignments">
+            <div className="hub-icon"><IconClipboard size={28} /></div>
+            <h2>Assignments</h2>
+            <p>Everything you&apos;ve handed out, in one log — who has it, how many tries, what they found, and what&apos;s still open.</p>
+            <span className="hub-go">Open →</span>
+          </Link>
+        )}
+
+        {user.isAdmin && (
           <Link className="hub-card" href="/dashboard/team">
             <div className="hub-icon"><IconUsers size={28} /></div>
             <h2>Team</h2>

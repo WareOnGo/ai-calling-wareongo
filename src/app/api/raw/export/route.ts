@@ -34,7 +34,8 @@ const COLUMNS: { label: string; get: (r: RawExportRow) => unknown }[] = [
   { label: "Assigned To", get: (r) => r.assigned_to },
   { label: "Human Result", get: (r) => r.assignment_outcome },
   { label: "Human Remarks", get: (r) => r.assignment_remarks },
-  { label: "Human Attempts", get: (r) => r.assignment_attempts },
+  { label: "Human In DB", get: (r) => (r.assignment_added_to_db ? "yes" : "") },
+  { label: "Human WH ID", get: (r) => r.assignment_wh_id },
   { label: "Metadata (JSON)", get: (r) => (r.metadata ? JSON.stringify(r.metadata) : "") },
 ];
 

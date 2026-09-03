@@ -2,33 +2,41 @@
 
 import { useState } from "react";
 import { OUTCOMES } from "@/lib/scope";
+import { IconCheck } from "./icons";
 
-// Editable cells for an assignment (the unit of work). Used on the employee's
-// "My Work" grids, where a manually-dialled listing has no bolna_call_logs row —
-// the outcome has to land on the assignment itself.
+// The employee's editable cells for one unit of work: what they found, their notes,
+// whether it made it into the warehouse DB and under which id, and whether they're
+// finished.
 //
-// Deliberately the same optimistic save-on-change pattern as EditableCells: PATCH
-// per field, brief saved/error state, no form submit.
+// There is deliberately NO attempt counter. It shipped as a click-to-increment
+// button and was dropped as noise — a number nobody acted on, costing a click each
+// time. The DB columns remain but are never written.
+//
+// `added_to_db` / `wh_id` here are the EMPLOYEE's; the same-named columns on
+// bolna_call_logs stay the admin's on Call Analytics. Different owners, same split
+// as called_by vs assignee.
 
 type Props = {
-  assignmentId: string;   // bigint from pg — a URL segment, never arithmetic
+  assignmentId: string;
   outcome: string | null;
   remarks: string | null;
-  attempts: number;
+  addedToDb: boolean;
+  whId: string | null;
   state?: string;
 };
 
-export function OutcomeCells({ assignmentId, outcome, remarks, attempts, state = "open" }: Props) {
+export function OutcomeCells({
+  assignmentId, outcome, remarks, addedToDb, whId, state = "open",
+}: Props) {
   const [outcomeV, setOutcome] = useState(outcome ?? "");
   const [remarksV, setRemarks] = useState(remarks ?? "");
-  const [attemptsV, setAttempts] = useState(attempts);
+  const [addedV, setAdded] = useState(addedToDb);
+  const [whIdV, setWhId] = useState(whId ?? "");
   const [stateV, setState] = useState(state);
   const [save, setSave] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
-  // `rollback` runs if the request fails. Callers that own a controlled input update
-  // their state BEFORE calling this (optimistically) and hand us the undo, so the
-  // control tracks the click immediately instead of snapping back until the server
-  // answers — a round trip during which a checkbox visibly un-ticks itself.
+  // `rollback` restores optimistic state on failure, so a control tracks the click
+  // immediately instead of snapping back for a round trip.
   async function patch(body: Record<string, unknown>, rollback?: () => void) {
     setSave("saving");
     try {
@@ -39,61 +47,88 @@ export function OutcomeCells({ assignmentId, outcome, remarks, attempts, state =
       });
       if (!res.ok) throw new Error(String(res.status));
       const data = await res.json();
-      // Trust the server's echo for anything it computes (attempts increments
-      // server-side); the optimistic value stands otherwise.
-      if (typeof data.attempts === "number") setAttempts(data.attempts);
       if (typeof data.state === "string") setState(data.state);
       setSave("saved");
-      window.setTimeout(() => setSave("idle"), 800);
+      window.setTimeout(() => setSave("idle"), 1000);
     } catch {
       rollback?.();
       setSave("error");
     }
   }
 
-  const cls = save === "saving" ? "saving" : save === "error" ? "err" : "";
+  const status = save === "saving" ? "saving" : save === "error" ? "err" : save === "saved" ? "ok" : "";
+  const done = stateV === "done";
 
   return (
     <>
-      <td className={`edit ${cls}`}>
+      <td className={`edit-cell edit-first ${status}`}>
         <select
-          className="cell-input"
+          className="field field-select"
+          aria-label="Result of the call"
           value={outcomeV}
-          onChange={(e) => { setOutcome(e.target.value); patch({ outcome: e.target.value }); }}
+          onChange={(e) => {
+            const prev = outcomeV;
+            setOutcome(e.target.value);
+            patch({ outcome: e.target.value }, () => setOutcome(prev));
+          }}
         >
-          <option value="">—</option>
+          <option value="">Not called yet</option>
           {OUTCOMES.map((o) => <option key={o} value={o}>{o}</option>)}
         </select>
       </td>
-      <td className={`edit ${cls}`}>
+
+      <td className={`edit-cell ${status}`}>
         <input
-          className="cell-input"
+          className="field"
+          aria-label="Your notes"
           value={remarksV}
-          placeholder="what they said…"
+          placeholder="What did they say?"
           onChange={(e) => setRemarks(e.target.value)}
           onBlur={() => remarksV !== (remarks ?? "") && patch({ remarks: remarksV })}
         />
       </td>
-      <td className="edit">
-        {/* "I tried" — server-side increment so two tabs can't clobber the count. */}
-        <button type="button" className="btn-attempt" onClick={() => patch({ log_attempt: true })}>
-          {attemptsV > 0 ? `${attemptsV}×` : "log"}
-        </button>
-      </td>
-      <td className={`edit ${cls}`}>
-        <label className="done-check">
+
+      <td className={`edit-cell center ${status}`}>
+        <label className="checkfield" title="Tick once this warehouse is in the database">
           <input
             type="checkbox"
-            checked={stateV === "done"}
+            checked={addedV}
             onChange={(e) => {
-              const prev = stateV;
-              const next = e.target.checked ? "done" : "open";
-              setState(next);                              // optimistic
-              patch({ state: next }, () => setState(prev)); // undo if it fails
+              const prev = addedV;
+              setAdded(e.target.checked);
+              patch({ added_to_db: e.target.checked }, () => setAdded(prev));
             }}
           />
-          Done
+          <span>{addedV ? "Added" : "Not yet"}</span>
         </label>
+      </td>
+
+      <td className={`edit-cell ${status}`}>
+        <input
+          className="field field-narrow"
+          aria-label="Warehouse ID"
+          value={whIdV}
+          placeholder="WH ID"
+          onChange={(e) => setWhId(e.target.value)}
+          onBlur={() => whIdV !== (whId ?? "") && patch({ wh_id: whIdV })}
+        />
+      </td>
+
+      <td className={`edit-cell ${status}`}>
+        <button
+          type="button"
+          className={`btn-done${done ? " is-done" : ""}`}
+          aria-pressed={done}
+          onClick={() => {
+            const prev = stateV;
+            const next = done ? "open" : "done";
+            setState(next);
+            patch({ state: next }, () => setState(prev));
+          }}
+          title={done ? "Reopen this one" : "Mark finished — it stays visible"}
+        >
+          <IconCheck size={14} /> {done ? "Done" : "Mark done"}
+        </button>
       </td>
     </>
   );

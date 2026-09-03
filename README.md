@@ -546,7 +546,7 @@ and `db:post-push` applies it. `prisma/POST-PUSH-README.md` says the same thing 
 to the file, because this is the step that will be forgotten.
 
 `prisma/migrations/` is retained even though push doesn't use it: it is how the eval
-harness (§29) builds a local schema from scratch, and `0_init` is a baseline of prod
+harness (§30) builds a local schema from scratch, and `0_init` is a baseline of prod
 as it already existed — never run it against production.
 
 Four Prisma-specific traps, all hit and worked around:
@@ -569,7 +569,39 @@ Four Prisma-specific traps, all hit and worked around:
    full of them (the webhook due-rows index, the unenriched-calls index, the exclusive
    assignment constraint). Without the flag every command fails validation.
 
-### 29. The frontend is verified by a separate Playwright harness
+### 29. Two audiences, two table densities
+
+The admin grids are deliberately Sheets-like — 30px rows, `cursor: cell`, arrow-key
+navigation — because an analyst scans and copies. An employee working a call list does
+the opposite: reads one row, then types into it. Same data, opposite ergonomics.
+
+So `/dashboard/my` uses `.task-sheet` rather than restyling the shared grid: 48px rows,
+form fields with borders, and only the columns that fit a laptop screen (address and
+transcript move into tooltips). Editability is visible rather than discoverable — the
+employee's four columns are tinted, fenced by a blue rule, and headed with a pencil,
+with a one-line legend saying which is which.
+
+Three specific fixes, all found by looking at the harness screenshots:
+
+- **The attempt counter was a bare button** flipping between "log" and "3×" — it
+  incremented an opaque number and named nothing. It now says **"No answer"** (the
+  event that actually happened) with "N tries · last <date>" as read-only context
+  beside it. Incrementing stays server-side so two tabs can't race.
+- **Anything that looks disabled must be disabled.** A finished row dimmed its own
+  editable cells, and a locked admin switch sat at 55% opacity looking half-on.
+  Both now keep full-strength controls; the locked switch shows a padlock and says
+  why in its tooltip.
+- **Stacked grids fought over height.** Two `flex: 1` sections split the viewport and
+  left a dead void between two short tables. Sections are content-height now, and the
+  column trim means the horizontal scrollbar that prompted this never appears.
+
+The admin's counterpart is `/dashboard/assignments`: a log, newest first, spanning both
+channels and all three states, with headline counts over the whole table rather than the
+filtered page. It flags rows where the employee's verdict disagreed with the AI's — for
+a manual assignment that comparison comes from the latest AI call on the listing's
+number, since such a row has no call of its own.
+
+### 30. The frontend is verified by a separate Playwright harness
 
 `~/dev/bolna-eval` drives the real app in a real browser against a real Postgres and
 asserts behaviour **and appearance** — 44 cases across auth/roles, scope, look-and-feel
@@ -594,11 +626,18 @@ The harness bends to the app, never the reverse: its Postgres has TLS enabled be
 `src/lib/db.ts` hard-codes `ssl`, rather than weakening `db.ts` for tests and shipping
 something different from what was verified.
 
-It found four real defects (a single-column hub grid, dead vertical space on My Work,
-assignment handing out unreachable records, and a checkbox that un-ticked itself while
-waiting on the server) — all fixed, each with a regression test.
+It has found seven real defects so far — a single-column hub grid, dead vertical space
+on My Work, assignment handing out unreachable records, a checkbox that un-ticked itself
+while waiting on the server, an AI-verdict comparison that silently never fired for
+manual assignments, and two controls that looked disabled while being perfectly usable.
+All fixed, each with a regression test.
 
-### 30. The data pipeline and schema are intentionally private
+It also earns its keep on questions a screenshot can't settle: the locked access switch
+*looked* half-on, and asserting its computed `transform` and track colour proved the
+state was right and only the opacity was wrong — so the fix went to the dimming, not to
+the toggle logic.
+
+### 31. The data pipeline and schema are intentionally private
 
 `scripts/`, `sql/`, `rawdata/`, `cleandata/`, `exports/` and `.claude/skills/` are
 **gitignored in their entirety** — they reveal which sources are scraped, their schemas,
@@ -650,6 +689,7 @@ Scale: ≈58.8k listings across 7 sources, ≈41.6k unique numbers.
 | `PATCH /api/assignments/[id]` | record outcome / remarks / attempts / done | assignee or admin |
 | `DELETE /api/assignments/[id]` | unassign | **admin** |
 | `GET\|POST /api/users` | list / upsert accounts and roles | **admin** |
+| `/dashboard/assignments` | the assignment log — who has what, and what happened | **admin** |
 | `GET /api/raw/queue` | all filtered dataset rows with a phone (select-all-across-pages) | **admin** |
 | `POST /api/raw/dispatch` | **places live calls** — assemble + schedule a Bolna batch | **admin** + `confirm: true` |
 | `/api/auth/google`, `/callback`, `/logout` | OAuth | — |

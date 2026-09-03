@@ -12,6 +12,7 @@ import { IconPhone, IconDownload } from "../icons";
 import { FiltersToggle } from "../FiltersToggle";
 import { AssignButton } from "../AssignButton";
 import { RowSelection } from "../RowSelection";
+import { CopyText } from "../CopyText";
 
 export const dynamic = "force-dynamic";
 
@@ -278,7 +279,13 @@ export default async function Dashboard({
                 )}
                 <td>{fmtDate(r.call_created_at)}</td>
                 <td>{r.call_type === "inbound" ? "Inbound" : "Outbound"}</td>
-                <td>{hl(r.call_type === "inbound" ? r.from_number : r.to_number, terms)}</td>
+                <td>
+                  <CopyText
+                    value={r.call_type === "inbound" ? r.from_number : r.to_number}
+                    display={hl(r.call_type === "inbound" ? r.from_number : r.to_number, terms)}
+                    label="phone number"
+                  />
+                </td>
                 <td>{hl(r.owner_name, terms)}</td>
                 <td>{hl(r.db_area, terms)}</td>
                 <td className={cfClass(r.availability)}>

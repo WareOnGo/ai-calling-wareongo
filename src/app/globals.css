@@ -14,6 +14,12 @@
   --fill-red-bg: #fce8e6;   --fill-red-tx: #c5221f;
   --fill-yel-bg: #fef7e0;   --fill-yel-tx: #b06000;
   --fill-gray-bg: #f1f3f4;  --fill-gray-tx: #5f6368;
+  --fill-blue-bg: #e8f0fe;  --fill-blue-tx: #1a73e8;
+  --fill-purple-bg: #f1e7fd; --fill-purple-tx: #7627bb;
+  /* the employee's editable columns, and the borders on real form controls */
+  --edit-bg: #f3f7ff;       --edit-hover: #e9f1ff;
+  --field-bg: #ffffff;      --field-border: #c8d6ea;
+  --track: #cdd3da;
 }
 
 * { box-sizing: border-box; }
@@ -59,7 +65,7 @@ a:hover { text-decoration: underline; }
 .btn:disabled, .btn:disabled:hover { background: #e8eaed; color: #9aa0a6; cursor: default; }
 .btn.secondary { background: #fff; color: var(--blue); border: 1px solid var(--border); }
 .btn.secondary:hover { background: #f5f9ff; }
-.error-banner { background: var(--fill-red-bg); border: 1px solid #f5c2c0; color: var(--fill-red-tx); padding: 10px 14px; border-radius: 8px; font-size: 13px; }
+.error-banner { background: var(--fill-red-bg); border: 1px solid var(--fill-red-tx); color: var(--fill-red-tx); padding: 10px 14px; border-radius: 8px; font-size: 13px; }
 .muted { color: var(--muted); }
 
 /* ---- filter bar: Google-style chips ---- */
@@ -248,6 +254,12 @@ table.sheet td.edit.err { box-shadow: inset 3px 0 0 #c5221f; }   /* red on error
   --fill-red-bg: #2c1f1d;   --fill-red-tx: #d4928d;
   --fill-yel-bg: #2c2716;   --fill-yel-tx: #c9b06a;
   --fill-gray-bg: #23282f;  --fill-gray-tx: #99a0aa;
+  --fill-blue-bg: #1b2536;  --fill-blue-tx: #8ab4f8;
+  --fill-purple-bg: #251d33; --fill-purple-tx: #c9a3f0;
+  /* a shade LIGHTER than the grid so the form area still reads as a form */
+  --edit-bg: #1e242e;       --edit-hover: #232b37;
+  --field-bg: #22272f;      --field-border: #3b4553;
+  --track: #3b424e;
   background: #16181d;       /* root/overscroll background */
 }
 
@@ -391,7 +403,7 @@ table.sheet input.rowsel:disabled { cursor: not-allowed; opacity: .4; }
 .selectall-note .btn-text { padding: 4px 8px; font-size: 13px; }
 .btn-export:disabled, .btn-assign:disabled { opacity: .5; cursor: not-allowed; }
 .btn-export:disabled:hover { background: var(--fill-green-bg); }
-.btn-assign:disabled:hover { background: var(--fill-blue-bg, #e8f0fe); }
+.btn-assign:disabled:hover { background: var(--fill-blue-bg); }
 
 /* ---- Queue-for-calling modal (CSV preview before Bolna dispatch) ---- */
 .modal-backdrop {
@@ -516,7 +528,7 @@ table.preview tr.row-skip td { background: var(--fill-gray-bg); color: var(--mut
 :root[data-theme="dark"] .grid-loading { background: #1d2128; }
 
 /* ---- Assignment: admin assign modal, team page, employee outcome cells ---- */
-.btn-assign { background: var(--fill-blue-bg, #e8f0fe); color: var(--blue); }
+.btn-assign { background: var(--fill-blue-bg); color: var(--fill-blue-tx); }
 .btn-assign:hover { background: #d7e5fb; }
 :root[data-theme="dark"] .btn-assign { background: #1e2a3d; color: #8ab4f8; }
 :root[data-theme="dark"] .btn-assign:hover { background: #253449; }
@@ -558,20 +570,11 @@ table.preview tr.row-skip td { background: var(--fill-gray-bg); color: var(--mut
 .empty-note code { background: var(--fill-gray-bg); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
 
 table.sheet tr.row-done td { opacity: .55; }
-.done-check { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; font-size: 13px; cursor: pointer; }
-.done-check input { accent-color: var(--blue); cursor: pointer; margin: 0; }
-.btn-attempt {
-  width: 100%; padding: 5px 9px; border: none; background: transparent; cursor: pointer;
-  font-family: inherit; font-size: 13px; color: var(--blue);
-}
-.btn-attempt:hover { background: var(--hover, #f1f3f4); }
+table.sheet tr.row-done td.edit-cell { opacity: 1; }
+table.sheet tr.row-done td.edit-cell .field,
+table.sheet tr.row-done td.edit-cell .checkfield { opacity: .75; }
 
-.team-add { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 14px 14px; }
-.team-add input, .team-add select {
-  padding: 8px 10px; font-family: inherit; font-size: 13px; color: var(--text);
-  background: transparent; border: 1px solid var(--border); border-radius: 6px;
-}
-.team-add input:focus, .team-add select:focus { outline: none; border-color: var(--blue); }
+
 
 /* ---- pages that stack several grids (My Work) ----
    .gridwrap is `flex: 1` so a single-grid page fills the viewport. Stack two of
@@ -581,3 +584,261 @@ table.sheet tr.row-done td { opacity: .55; }
 .stacked { flex: 1; min-height: 0; overflow-y: auto; }
 .stacked .gridwrap { flex: none; }
 .stacked .section-head:first-child { margin-top: 8px; }
+
+/* ==========================================================================
+   Employee task list (.task-sheet) and the assignment log (.log-sheet).
+
+   The admin grids are intentionally Sheets-like: 30px rows, cursor:cell, dense.
+   That is the wrong ergonomics for someone working a call list one row at a time,
+   so these two tables opt out of the density rather than the whole design.
+   ========================================================================== */
+
+/* ---- the horizontal-scrollbar complaint ----
+   .stacked children were content-height (`flex: none`), so a short table's own
+   h-scrollbar sat directly under its two rows — i.e. near the TOP of a mostly
+   empty screen, which is not where anyone looks for it. Each section now grows to
+   share the available height, so the scroll area's bottom edge is the bottom of
+   the viewport. Fewer columns (see my/page.tsx) means it usually isn't needed. */
+.stacked { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; }
+/* Sections size to their CONTENT: making them share the height (flex: 1) left a
+   large void between two short tables, which looked broken on every load. Long
+   lists scroll inside their own capped box instead. The original complaint — an
+   h-scrollbar hugging two rows near the top — is addressed by fitting the columns
+   to the viewport (see RECORD_COLS in my/page.tsx), so it should never appear. */
+.worklist { display: flex; flex-direction: column; flex: 0 0 auto; margin-bottom: 6px; }
+.worklist .gridwrap { flex: 0 1 auto; max-height: 52vh; }
+
+table.task-sheet th, table.task-sheet td {
+  height: 48px; padding: 8px 12px; font-size: 13.5px; vertical-align: middle;
+}
+table.task-sheet tbody td { cursor: default; }        /* not a spreadsheet cell */
+table.task-sheet tbody td:hover { background: transparent; }
+table.task-sheet tbody tr:hover td { background: var(--hover); }
+table.task-sheet tr.colheads th { height: 34px; font-size: 11.5px; letter-spacing: .02em; }
+table.task-sheet td.num { text-align: right; font-variant-numeric: tabular-nums; }
+table.task-sheet .who-name { font-weight: 600; }
+table.task-sheet td.who { max-width: 260px; white-space: normal; line-height: 1.35; }
+.brief {
+  display: block; font-size: 11.5px; color: var(--muted); font-style: italic;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px;
+}
+.ai-count { margin-left: 6px; font-size: 11px; color: var(--muted); }
+.playlink { margin-left: 8px; font-size: 12px; }
+.title-sub { margin-left: 10px; font-size: 12.5px; font-weight: 400; color: var(--muted); }
+.section-foot { margin: 6px 14px 12px; font-size: 12.5px; color: var(--muted); }
+
+/* ---- "which columns can I edit?" ----
+   Answered by looking: the employee's columns are tinted, carry a pencil in the
+   header, and are fenced off by a heavier left border. */
+table.sheet th.mine, table.sheet td.edit-cell { background: var(--edit-bg); }
+table.sheet th.mine { color: var(--blue); font-weight: 700; }
+table.sheet th.mine svg { vertical-align: -2px; margin-right: 3px; }
+table.sheet th.mine-first, table.sheet td.edit-first { border-left: 2px solid var(--blue); }
+table.sheet td.edit-cell { padding: 6px 8px; }
+table.task-sheet tbody tr:hover td.edit-cell { background: var(--edit-hover); }
+
+/* save state, shown on the cell being written */
+table.sheet td.edit-cell.saving { box-shadow: inset 3px 0 0 var(--blue); }
+table.sheet td.edit-cell.ok     { box-shadow: inset 3px 0 0 var(--green, #1e8e3e); }
+table.sheet td.edit-cell.err    { box-shadow: inset 3px 0 0 #c5221f; }
+
+/* real form fields, not borderless grid cells */
+.field {
+  width: 100%; min-width: 120px; padding: 7px 9px; font-family: inherit; font-size: 13px;
+  color: var(--text); background: var(--field-bg); border: 1px solid var(--field-border);
+  border-radius: 6px;
+}
+.field:hover { border-color: var(--blue); }
+.field:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(26,115,232,.15); }
+.field-select { cursor: pointer; min-width: 140px; }
+
+.btn-done {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px;
+  font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer;
+  /* not var(--muted): a muted label made an enabled button look disabled */
+  color: var(--text); background: var(--field-bg); border: 1px solid var(--border); border-radius: 6px;
+}
+.btn-done:hover { border-color: var(--green, #1e8e3e); color: var(--green, #1e8e3e); }
+.btn-done.is-done {
+  background: var(--fill-green-bg); border-color: var(--fill-green-tx);
+  color: var(--fill-green-tx); font-weight: 600;
+}
+.btn-done svg { display: block; opacity: .45; }
+.btn-done.is-done svg { opacity: 1; }
+
+/* ---- status pills, shared by the task list and the log ---- */
+.pill {
+  display: inline-block; padding: 2px 9px; border-radius: 11px;
+  font-size: 11.5px; font-weight: 600; white-space: nowrap;
+}
+.pill-available   { background: var(--fill-green-bg); color: var(--fill-green-tx); }
+.pill-unavailable { background: var(--fill-red-bg);   color: var(--fill-red-tx); }
+.pill-unclear     { background: var(--fill-yel-bg);   color: var(--fill-yel-tx); }
+.pill-dead        { background: var(--fill-gray-bg);  color: var(--muted); }
+.pill-open        { background: var(--fill-blue-bg); color: var(--fill-blue-tx); }
+.pill-done        { background: var(--fill-green-bg); color: var(--fill-green-tx); }
+.pill-dropped     { background: var(--fill-gray-bg);  color: var(--muted); }
+.pill-record      { background: var(--fill-purple-bg); color: var(--fill-purple-tx); }
+.pill-call        { background: var(--fill-blue-bg); color: var(--fill-blue-tx); }
+
+/* ---- click-to-copy ---- */
+.copytext { display: inline-flex; align-items: center; gap: 6px; }
+.copytext-v { font-variant-numeric: tabular-nums; }
+.copybtn {
+  display: inline-flex; padding: 3px; border: none; background: none; cursor: pointer;
+  color: var(--muted); border-radius: 4px; line-height: 0;
+}
+.copybtn:hover { background: var(--fill-blue-bg); color: var(--fill-blue-tx); }
+.copybtn.ok { color: var(--fill-green-tx); background: var(--fill-green-bg); }
+.copybtn.err { color: var(--fill-red-tx); }
+.copybtn svg { display: block; }
+
+/* ---- legend ---- */
+.legend { margin: 0 14px 8px; font-size: 12.5px; color: var(--muted); }
+.legend-sys { padding: 1px 6px; border-radius: 4px; background: var(--gutter-bg); color: var(--text); }
+.legend-mine {
+  padding: 1px 6px; border-radius: 4px; background: var(--edit-bg);
+  color: var(--fill-blue-tx); font-weight: 600;
+}
+.legend-mine svg { vertical-align: -1px; }
+
+/* ---- assignment log ---- */
+table.log-sheet th, table.log-sheet td { height: 40px; padding: 7px 11px; }
+table.log-sheet tbody td { cursor: default; }
+table.log-sheet tbody tr:hover td { background: var(--hover); }
+table.log-sheet td.num, table.log-sheet th.num { text-align: right; font-variant-numeric: tabular-nums; }
+table.log-sheet th.acts, table.log-sheet td.actions { width: 104px; text-align: right; }
+table.sheet tr.row-muted td { opacity: .5; }
+td.actions { text-align: right; }
+.btn-row {
+  padding: 4px 9px; font-family: inherit; font-size: 12px; cursor: pointer;
+  color: var(--blue); background: transparent; border: 1px solid var(--border); border-radius: 5px;
+}
+.btn-row:hover { background: var(--fill-blue-bg); border-color: var(--blue); }
+.btn-row.danger { color: var(--fill-red-tx); border-color: var(--fill-red-tx); }
+.btn-row.danger:hover { background: var(--fill-red-bg); }
+.confirm-inline { display: inline-flex; gap: 5px; }
+
+/* ---- headline counts ---- */
+.stat-row { display: flex; gap: 10px; flex-wrap: wrap; margin: 0 14px 12px; }
+.stat {
+  display: flex; flex-direction: column; gap: 1px; padding: 10px 16px; min-width: 96px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--gutter-bg);
+  text-decoration: none; color: var(--text);
+}
+a.stat:hover { border-color: var(--blue); text-decoration: none; }
+.stat-n { font-size: 20px; font-weight: 700; line-height: 1.1; }
+.stat-l { font-size: 11.5px; color: var(--muted); }
+.stat-quiet { background: transparent; }
+
+/* ==========================================================================
+   Team — a people directory, not a grid. This page is access control now, so
+   every control names its consequence and the ones that would lock you out are
+   disabled with an explanation rather than failing on click.
+   ========================================================================== */
+.team { flex: 1; min-height: 0; overflow-y: auto; padding: 0 14px 24px; }
+.callout {
+  margin: 0 0 14px; padding: 11px 14px; font-size: 13px; line-height: 1.55;
+  border: 1px solid var(--field-border); border-left: 3px solid var(--blue);
+  border-radius: 8px; background: var(--edit-bg); color: var(--text); max-width: 78ch;
+}
+
+.add-trigger { margin-bottom: 18px; }
+.addcard {
+  max-width: 760px; margin-bottom: 18px; border: 1px solid var(--border);
+  border-radius: 10px; background: var(--gutter-bg); overflow: hidden;
+}
+.addcard-head { padding: 11px 16px; font-size: 13.5px; font-weight: 600; border-bottom: 1px solid var(--border); }
+.addcard-fields { display: flex; flex-wrap: wrap; gap: 12px; padding: 16px; }
+.fld { display: flex; flex-direction: column; gap: 5px; flex: 1 1 200px; font-size: 12px; color: var(--muted); }
+.fld > span em { font-style: normal; opacity: .7; }
+.fld-narrow { flex: 0 0 150px; }
+.fld input, .fld select {
+  padding: 8px 10px; font-family: inherit; font-size: 13px; color: var(--text);
+  background: var(--field-bg); border: 1px solid var(--field-border); border-radius: 6px;
+}
+.fld input:focus, .fld select:focus {
+  outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(26,115,232,.15);
+}
+.addcard-foot {
+  display: flex; align-items: center; gap: 8px; padding: 11px 16px;
+  border-top: 1px solid var(--border); font-size: 12px;
+}
+.addcard-foot .spacer { flex: 1; }
+
+.people-group { margin-bottom: 22px; }
+.group-head {
+  display: flex; align-items: baseline; gap: 9px; margin: 0 0 8px;
+  font-size: 14px; font-weight: 600; color: var(--text);
+}
+.group-head .count {
+  padding: 1px 8px; border-radius: 10px; background: var(--fill-gray-bg);
+  font-size: 11.5px; font-weight: 600; color: var(--muted);
+}
+.group-hint { font-size: 12px; font-weight: 400; color: var(--muted); }
+.group-empty { margin: 0; font-size: 12.5px; color: var(--muted); }
+.people { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; max-width: 940px; }
+.person {
+  display: grid; grid-template-columns: 36px minmax(180px, 1fr) auto 150px 148px;
+  align-items: center; gap: 14px; padding: 10px 14px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--field-bg);
+}
+.person:hover { border-color: var(--blue); }
+.person.is-off { background: var(--gutter-bg); }
+.person.is-off .avatar { filter: grayscale(1); opacity: .6; }
+
+.avatar {
+  display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%;
+  background: var(--fill-blue-bg); color: var(--fill-blue-tx); font-size: 12.5px; font-weight: 700;
+}
+.person-id { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.person-name { font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
+.person-email { font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+.you {
+  padding: 0 6px; border-radius: 9px; background: var(--fill-gray-bg);
+  font-size: 10.5px; font-weight: 600; color: var(--muted); text-transform: uppercase;
+}
+.person-load { display: flex; gap: 5px; font-size: 12px; align-items: center; }
+.person-role .field-select { min-width: 0; width: 100%; }
+
+/* access switch — a real switch, labelled with what it means */
+.switch {
+  display: inline-flex; align-items: center; gap: 8px; padding: 5px 8px;
+  border: 1px solid var(--border); border-radius: 20px; background: transparent;
+  font-family: inherit; font-size: 11.5px; font-weight: 500; color: var(--muted); cursor: pointer;
+}
+.switch:hover:not(:disabled) { border-color: var(--blue); }
+.switch:disabled { cursor: not-allowed; opacity: .55; }
+/* A locked-ON switch must not look half-on: keep the colour, show the reason. */
+.switch.locked { opacity: 1; border-style: dashed; }
+.switch.locked .switch-track { background: var(--fill-green-tx); }
+.switch-track {
+  position: relative; width: 30px; height: 17px; border-radius: 9px;
+  background: var(--track); transition: background .15s; flex: none;
+}
+.switch-knob {
+  position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%;
+  background: #fff; transition: transform .15s; box-shadow: 0 1px 2px rgba(0,0,0,.25);
+}
+.switch.on .switch-track { background: var(--green, #1e8e3e); }
+.switch.on .switch-knob { transform: translateX(13px); }
+.switch.on { color: var(--fill-green-tx); border-color: var(--fill-green-tx); background: var(--fill-green-bg); }
+.switch-label { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.switch-label svg { display: block; }
+
+@media (max-width: 900px) {
+  .person { grid-template-columns: 36px 1fr; row-gap: 10px; }
+  .person-load, .person-role, .switch { grid-column: 2; }
+}
+
+/* the two workflow cells the employee owns: "is it in the DB" and its id */
+table.sheet td.edit-cell.center { text-align: center; }
+.checkfield {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 8px;
+  font-size: 12px; color: var(--muted); cursor: pointer; white-space: nowrap;
+}
+.checkfield input { accent-color: var(--blue); cursor: pointer; margin: 0; transform: scale(1.1); }
+.checkfield:hover { color: var(--text); }
+.field-narrow { min-width: 84px; }
+
+table.sheet td.nowrap { white-space: nowrap; }

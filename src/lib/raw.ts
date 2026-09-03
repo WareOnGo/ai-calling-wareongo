@@ -42,7 +42,8 @@ export type RawRow = {
   assignment_outcome: string | null;
   assignment_remarks: string | null;
   assignment_note: string | null;
-  assignment_attempts: number | null;
+  assignment_added_to_db: boolean | null;
+  assignment_wh_id: string | null;
 };
 
 export type RawFilters = {
@@ -93,7 +94,8 @@ const SELECT_LIST = `
   asg.outcome                          as assignment_outcome,
   asg.remarks                          as assignment_remarks,
   asg.note                             as assignment_note,
-  asg.attempts                         as assignment_attempts`;
+  asg.asg_added                        as assignment_added_to_db,
+  asg.asg_wh                           as assignment_wh_id`;
 
 // Call history aggregated across all of a record's phone numbers.
 const CALLS_JOIN = `

@@ -6,7 +6,8 @@ import { isOutcome, isAssignmentState } from "@/lib/scope";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Record the outcome of a unit of work. The assignee edits their own; an admin can
+// Record what the employee found: outcome, notes, whether it reached the warehouse
+// DB and under which id, and whether they're finished. The assignee edits their own; an admin can
 // edit any. Ownership is enforced inside the UPDATE (see lib/assignments.ts), so a
 // non-owner simply gets 404.
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -35,7 +36,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     patch.state = body.state;
   }
-  if (body.log_attempt === true) patch.logAttempt = true;
+  if ("added_to_db" in body) patch.addedToDb = Boolean(body.added_to_db);
+  if ("wh_id" in body) {
+    patch.whId = body.wh_id == null || body.wh_id === "" ? null : String(body.wh_id);
+  }
 
   const row = await updateAssignment(id, user, patch);
   if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });

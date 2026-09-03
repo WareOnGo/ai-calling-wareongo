@@ -57,7 +57,8 @@ export function currentAssignmentLateral(entity: EntityType, idExpr: string): st
   // `id` is aliased: exposing a bare `id` from the lateral makes an unqualified `id`
   // in the outer select list ambiguous against the driving table's own id.
   return `left join lateral (
-    select a.id as assignment_id, a.assignee, a.state, a.outcome, a.remarks, a.note, a.attempts
+    select a.id as assignment_id, a.assignee, a.state, a.outcome, a.remarks, a.note,
+           a.added_to_db as asg_added, a.wh_id as asg_wh
       from bolna_assignments a
      where a.entity_type = '${entity}' and a.entity_id = ${idExpr} and a.state <> 'dropped'
      order by (a.state = 'open') desc, a.assigned_at desc

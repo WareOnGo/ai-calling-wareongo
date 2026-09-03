@@ -11,6 +11,7 @@ import { IconDataset } from "../icons";
 import { FiltersToggle } from "../FiltersToggle";
 import { QueueForCalling } from "../QueueForCalling";
 import { RawExportButton } from "../RawExportButton";
+import { CopyText } from "../CopyText";
 import { deriveCat, normNum } from "@/lib/queue";
 
 export const dynamic = "force-dynamic";
@@ -223,7 +224,7 @@ export default async function RawDataset({
                 <td>{hl(r.source, terms)}</td>
                 <td className="clip" title={r.source_record_id ?? ""}>{r.source_record_id ?? ""}</td>
                 <td>{hl(r.owner_name, terms)}</td>
-                <td>{hl(r.phone, terms)}</td>
+                <td><CopyText value={r.phone} display={hl(r.phone, terms)} label="phone number" /></td>
                 <td>{r.area_sqft ? Number(r.area_sqft).toLocaleString() : ""}</td>
                 {/* Calls group (collapsible, middle) */}
                 <td className="calls-toggle" title={r.call_count > 1 ? callsTooltip(r.calls_history) : undefined}>

@@ -36,7 +36,8 @@ export type CallRow = {
   assignment_outcome: string | null;
   assignment_remarks: string | null;
   assignment_note: string | null;
-  assignment_attempts: number | null;
+  assignment_added_to_db: boolean | null;
+  assignment_wh_id: string | null;
   // Representative matched listing (scalar columns) + count + full set.
   raw_match_count: number;
   raw_source: string | null;
@@ -106,7 +107,8 @@ const SELECT_LIST = `id, call_created_at, call_type, from_number, to_number, own
        notes, transcript, recording_url, needs_review, inferred, ${CAN_ENRICH_SQL},
        call_status, called_by, added_to_db, wh_id,
        assigned_to, assignment_id, assignment_state, assignment_outcome,
-       assignment_remarks, assignment_note, assignment_attempts,
+       assignment_remarks, assignment_note,
+       assignment_added_to_db, assignment_wh_id,
        raw_match_count, raw_source, raw_owner_name, raw_warehouse_type,
        raw_city, raw_state, raw_area_sqft, raw_contact_type, raw_sources, raw_matches`;
 
