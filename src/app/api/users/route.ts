@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentAdmin } from "@/lib/auth";
-import { listUsers, upsertUser, type Role } from "@/lib/users";
+import { listUsers, upsertUser, getUser, countActiveAdmins, type Role } from "@/lib/users";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,6 +30,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "you can't demote or deactivate yourself" }, { status: 400 });
   }
 
+  // Now that bolna_app_users is the ONLY access gate, removing the last admin would
+  // leave nobody able to reach this endpoint — recoverable only by hand-editing the
+  // database. The ADMIN_EMAILS bootstrap does not help: it only applies when there
+  // is no admin ROW, and a demoted/deactivated row still exists.
+  const losingAdmin = body.role === "employee" || body.active === false;
+  if (losingAdmin) {
+    const target = await getUser(email);
+    if (target?.active && target.role === "admin" && (await countActiveAdmins()) <= 1) {
+      return NextResponse.json(
+        { error: "that's the last active admin — promote someone else first" },
+        { status: 400 },
+      );
+    }
+  }
+
   const user = await upsertUser({
     email,
     name: typeof body?.name === "string" ? body.name.trim() || null : undefined,
@@ -37,7 +52,6 @@ export async function POST(req: NextRequest) {
     active: typeof body?.active === "boolean" ? body.active : undefined,
   });
 
-  // NB: app_users grants a ROLE, not access. ALLOWED_EMAILS / ADMIN_EMAILS is still
-  // the outer gate in lib/auth.ts, so a new row also needs the email allowlisted.
+  // A row here IS the access grant — no env allowlist to keep in sync any more.
   return NextResponse.json({ ok: true, user });
 }

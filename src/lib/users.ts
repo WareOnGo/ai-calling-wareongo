@@ -1,11 +1,11 @@
 import { query } from "@/lib/db";
 
-// app_users is the real account list, replacing the CALLED_BY_OPTIONS env var
-// (which held bare first names and couldn't be assigned to).
+// bolna_app_users is THE access list. A row here is what lets someone sign in, and
+// its role is what makes them an admin — there is no env allowlist any more.
 //
-// Role resolution is DB-first with an ENV FALLBACK: if there's no app_users row,
-// the ADMIN_EMAILS / ALLOWED_EMAILS allowlist still decides. That keeps the table
-// optional during rollout and means a bad/missing row can never lock an admin out.
+// The one exception is bootstrap: ADMIN_EMAILS still applies while this table has no
+// active admin, otherwise an empty table would lock everyone out of the very page
+// that populates it. See resolveAccess() in lib/auth.ts.
 
 export type Role = "admin" | "employee";
 
@@ -32,6 +32,18 @@ export async function listAssignees(): Promise<AppUser[]> {
       where active order by coalesce(nullif(name, ''), email)`,
   );
   return res.rows;
+}
+
+/**
+ * How many active admins exist. Used for two things that both protect against
+ * lockout: gating the ADMIN_EMAILS bootstrap (it stops applying once a real admin
+ * row exists) and refusing to demote or deactivate the last admin.
+ */
+export async function countActiveAdmins(): Promise<number> {
+  const res = await query<{ n: string }>(
+    `select count(*)::text n from bolna_app_users where active and role = 'admin'`,
+  );
+  return Number(res.rows[0].n);
 }
 
 export async function getUser(email: string): Promise<AppUser | null> {

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { setSessionEmail, isAllowed, originFromRequest, callbackUrl } from "@/lib/auth";
+import { setSessionEmail, canSignIn, originFromRequest, callbackUrl } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
@@ -58,7 +58,7 @@ export async function GET(req: Request) {
   if (!userInfo.email || !userInfo.email_verified) {
     return NextResponse.redirect(`${origin}/?error=email_not_verified`);
   }
-  if (!isAllowed(userInfo.email)) {
+  if (!(await canSignIn(userInfo.email))) {
     return NextResponse.redirect(
       `${origin}/?error=not_allowed&email=${encodeURIComponent(userInfo.email)}`,
     );

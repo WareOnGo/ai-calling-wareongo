@@ -432,23 +432,40 @@ already funnels through two builders. The tradeoff is that this only holds while
 nobody queries `bolna_call_logs` / `raw_records` outside `lib/calls.ts` and
 `lib/raw.ts`.
 
-### 23. Roles are DB-first with an env fallback
+### 23. The database is the access list, not an env var
 
-`app_users` (email, name, role, active) replaces the `CALLED_BY_OPTIONS` env list of
-bare first names. Role resolution prefers the row, falls back to the
-`ADMIN_EMAILS` / `ALLOWED_EMAILS` allowlist when there is none, and **degrades to the
-env allowlist if the query fails** — a DB blip must not lock everyone out of the
-dashboard.
+`bolna_app_users` decides both **access** and **role**. There is no `ALLOWED_EMAILS`.
 
-The allowlist stays the outer gate: an `app_users` row grants a *role*, not access.
-Deactivating a user revokes access even while their email is still allowlisted.
+```
+row + active   -> in, role from the row
+row + inactive -> out
+no row         -> out
+```
 
-One role-aware dashboard rather than two page trees — the grid is 95% identical and
-forking it means fixing every bug twice. The role changes what's **rendered**
-(assignment column, bulk-assign, assignee filter); the scope changes what's
-**fetched**. Employees are blocked from the raw dataset and from dispatch entirely:
-that page is the full scraped corpus with owner PII, and dispatch spends money and
-rings real phones.
+Why move it off env: an allowlist in Vercel's environment meant onboarding required a
+redeploy, offboarding required a redeploy, and the grant lived in two places that
+could disagree (a row could exist for someone the env didn't allow, and vice versa).
+Now `/dashboard/team` is the whole mechanism and revocation is immediate.
+
+**Bootstrap.** An empty table would lock everyone out of the page that populates it,
+so `ADMIN_EMAILS` admits its addresses as admins — but **only while the table has no
+active admin row**. The instant a real admin row exists the variable is inert, so it
+can't linger as a second, invisible access path. It logs a warning when it fires.
+Keep one address in it as the recovery route for a table with no admins left.
+
+**Fails closed.** The previous version degraded to the env allowlist if the lookup
+threw, so a DB blip couldn't lock everyone out. That is no longer coherent — env
+isn't the access list — and every page behind the guard needs Postgres to render
+anyway. A database error now means "signed out", never "signed in with guessed
+permissions".
+
+**Last-admin protection.** Because a row is the only way in, demoting or deactivating
+the final active admin would leave nobody able to reach `/api/users` — recoverable
+only by hand-editing the database. The endpoint refuses it, on top of the existing
+"you can't demote yourself" guard. The bootstrap doesn't rescue this case: it applies
+only when there is no admin *row*, and a demoted row still exists.
+
+Access is resolved once per request (React `cache()`), normally in one query.
 
 ### 24. Bulk assign reuses the export's contract, with one difference
 
@@ -606,7 +623,7 @@ written to be idempotent).
 | `raw_phone_numbers` | one unique number | the join spine (§11) |
 | `call_batches` | one dispatch | audit trail + double-call protection (§18) |
 | `call_batch_items` | one queued number | what was actually sent |
-| `bolna_app_users` | one account | role + active flag; DB-first with env fallback (§23) |
+| `bolna_app_users` | one account | **the access list** — role + active flag (§23) |
 | `bolna_assignments` | one unit of work | polymorphic over record/call, carries the outcome (§21) |
 
 Cardinalities: listing → phones is 1:N, phone → listings is N:1 (brokers reuse
@@ -662,7 +679,8 @@ Key env vars (full list with comments in `.env.example`):
 | `ENABLE_ENRICHMENT` | `false` to store calls without inference |
 | `PROCESS_BATCH_SIZE`, `ENRICH_BATCH_SIZE`, `ENRICH_CONCURRENCY`, `MAX_ATTEMPTS` | tuning |
 | `BOLNA_API_KEY`, `BOLNA_AGENT_ID`, `BOLNA_FROM_NUMBER` | dispatch |
-| `GOOGLE_CLIENT_ID/SECRET`, `ALLOWED_EMAILS`, `ADMIN_EMAILS`, `SESSION_SECRET` | auth |
+| `GOOGLE_CLIENT_ID/SECRET`, `SESSION_SECRET` | auth |
+| `ADMIN_EMAILS` | bootstrap admin only, inert once an admin row exists (§23) |
 | `CALLED_BY_OPTIONS` | options for the "Called By" dropdown |
 
 ### Deploy

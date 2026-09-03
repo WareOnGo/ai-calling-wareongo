@@ -24,10 +24,11 @@ export default async function Team() {
     <>
       <div className="page-title"><span className="pt-icon"><IconUsers size={18} /></span> Team</div>
       <p className="empty-note" style={{ marginBottom: 16 }}>
-        Roles live in <code>bolna_app_users</code>. Access is still gated by the{" "}
-        <code>ALLOWED_EMAILS</code> env allowlist — adding someone here does not let
-        them sign in unless their email is allowlisted too. Anyone signed in without
-        a row here is treated as an employee (admin if in <code>ADMIN_EMAILS</code>).
+        This list <strong>is</strong> the access list. Adding someone here lets them
+        sign in with that Google account; unticking <em>Active</em> revokes it
+        immediately — no env var, no redeploy. Someone with no row here cannot sign in
+        at all. <code>ADMIN_EMAILS</code> only applies as a bootstrap while no active
+        admin row exists, so it stops having any effect once this table has one.
       </p>
 
       <TeamEditor

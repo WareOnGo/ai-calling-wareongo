@@ -2,7 +2,7 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createHmac, timingSafeEqual } from "crypto";
-import { getUser } from "@/lib/users";
+import { getUser, countActiveAdmins } from "@/lib/users";
 
 // Cookie-based session. The cookie value is the email plus an HMAC signature, so
 // it CANNOT be forged: a user can set their own cookie, but without SESSION_SECRET
@@ -66,15 +66,8 @@ function emailSet(envVar: string): Set<string> {
   );
 }
 
-export function allowedEmails(): Set<string> {
-  const allowed = emailSet("ALLOWED_EMAILS");
-  for (const a of emailSet("ADMIN_EMAILS")) allowed.add(a);
-  return allowed;
-}
-
-export function isAllowed(email: string): boolean {
-  return allowedEmails().has(email.toLowerCase());
-}
+// ALLOWED_EMAILS is gone: access is granted by a bolna_app_users row, not by env.
+// ADMIN_EMAILS survives only as the bootstrap escape hatch below.
 
 export async function setSessionEmail(email: string): Promise<void> {
   const c = await cookies();
@@ -99,36 +92,52 @@ export async function getSessionEmail(): Promise<string | null> {
   return verifyToken(token); // null if the signature doesn't validate (forged/tampered)
 }
 
-// Role resolution: the app_users row wins when present, otherwise the env allowlist
-// decides (so the table can be populated incrementally). Deactivating a user in
-// app_users revokes access even if their email is still in ALLOWED_EMAILS.
-//
-// A DB error must NOT lock everyone out of the dashboard, so it degrades to the env
-// allowlist — the same behaviour as before this table existed.
-async function resolveRole(email: string): Promise<{ name: string | null; isAdmin: boolean } | null> {
-  const envAdmin = emailSet("ADMIN_EMAILS").has(email.toLowerCase());
+/**
+ * THE access decision. `bolna_app_users` is the only thing that grants access:
+ *
+ *   row + active   -> in, role from the row
+ *   row + inactive -> out (offboarding without touching env or redeploying)
+ *   no row         -> out, EXCEPT the bootstrap case below
+ *
+ * Bootstrap: an empty table would lock everyone out of the page that populates it,
+ * so an email in ADMIN_EMAILS is admitted as an admin *only while no active admin
+ * row exists*. The moment a real admin row is created, ADMIN_EMAILS stops having any
+ * effect — so it can't quietly persist as a second, invisible access path.
+ *
+ * Fails CLOSED on a database error. The previous version degraded to the env
+ * allowlist to survive a DB blip, but that is no longer a coherent fallback (env is
+ * not the access list any more), and every page behind this guard needs Postgres to
+ * render anyway — so a DB outage means "signed out", not "signed in with guessed
+ * permissions".
+ */
+async function resolveAccess(email: string): Promise<CurrentUser | null> {
+  const e = email.toLowerCase();
   try {
-    const row = await getUser(email);
+    const row = await getUser(e);
     if (row) {
       if (!row.active) return null;
-      return { name: row.name, isAdmin: row.role === "admin" };
+      return { email: e, name: row.name, isAdmin: row.role === "admin" };
     }
+    if (!emailSet("ADMIN_EMAILS").has(e)) return null;
+    if ((await countActiveAdmins()) > 0) return null;   // bootstrap already used
+    console.warn(`[auth] bootstrap admin ${e} admitted via ADMIN_EMAILS — no admin row exists yet`);
+    return { email: e, name: null, isAdmin: true };
   } catch (err) {
-    console.error("[auth] app_users lookup failed; falling back to env allowlist:", err);
+    console.error("[auth] access lookup failed; denying:", err);
+    return null;
   }
-  return isAllowed(email) ? { name: null, isAdmin: envAdmin } : null;
 }
 
-// cache() → one resolution (and at most one app_users query) per request.
+/** Can this Google account sign in at all? Used by the OAuth callback. */
+export async function canSignIn(email: string): Promise<boolean> {
+  return (await resolveAccess(email)) !== null;
+}
+
+// cache() → one access resolution (normally one query) per request.
 export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   const email = await getSessionEmail();
   if (!email) return null;
-  // The env allowlist is still the outer gate: an app_users row alone can't grant
-  // access to someone who was never allowlisted.
-  if (!isAllowed(email)) return null;
-  const role = await resolveRole(email);
-  if (!role) return null;
-  return { email, name: role.name, isAdmin: role.isAdmin };
+  return resolveAccess(email);
 });
 
 export async function requireUser(): Promise<CurrentUser> {
