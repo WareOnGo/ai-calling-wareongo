@@ -148,7 +148,7 @@ export async function updateAssignment(
 
   const res = await query<AssignmentRow>(
     `update bolna_assignments set ${sets.join(", ")}
-      where id = ${idParam}${ownership}
+      where id = ${idParam}${ownership} and state <> 'dropped'
       returning id, state, outcome, remarks, added_to_db, wh_id`,
     vals,
   );
@@ -180,6 +180,7 @@ export type AssignmentHistoryRow = {
   assignee: string;
   assignee_name: string | null;
   assigned_by: string;
+  assigned_by_name: string | null;
   assigned_at: string;
   note: string | null;
   state: string;
@@ -192,11 +193,17 @@ export type AssignmentHistoryRow = {
 };
 
 export type HistoryFilters = {
+  entity_id?: string;
+  activeOnly?: boolean;
   q?: string;
   assignee?: string;
   state?: string;         // open | done | dropped
   entity_type?: string;   // record | call
   outcome?: string;
+  city?: string;
+  assigned_by?: string;
+  added_to_db?: "yes" | "no";
+  sort?: "oldest" | "name";
   page?: number;
   pageSize?: number;
 };
@@ -209,6 +216,7 @@ export const HISTORY_PAGE_SIZE = 50;
 const HISTORY_FROM = `
   from bolna_assignments a
   left join bolna_app_users u on u.email = a.assignee
+  left join bolna_app_users assigner on assigner.email = a.assigned_by
   left join raw_records r
          on a.entity_type = 'record' and r.id = a.entity_id
   left join bolna_call_logs cl
@@ -233,18 +241,26 @@ const HISTORY_FROM = `
 function historyWhere(f: HistoryFilters): { sql: string; params: unknown[] } {
   const where: string[] = [];
   const params: unknown[] = [];
+  if (f.entity_id) { params.push(f.entity_id); where.push(`a.entity_id = $${params.length}`); }
+  if (f.activeOnly) where.push(`a.state <> 'dropped'`);
   if (f.assignee) { params.push(f.assignee.toLowerCase()); where.push(`a.assignee = $${params.length}`); }
   if (f.state) { params.push(f.state); where.push(`a.state = $${params.length}`); }
   if (f.entity_type) { params.push(f.entity_type); where.push(`a.entity_type = $${params.length}`); }
+  if (f.assigned_by) { params.push(f.assigned_by.toLowerCase()); where.push(`a.assigned_by = $${params.length}`); }
+  if (f.city?.trim()) { params.push(f.city.trim()); where.push(`coalesce(r.city, cl.context_details -> 'recipient_data' ->> 'area', '') ilike '%' || $${params.length} || '%'`); }
+  if (f.added_to_db) { params.push(f.added_to_db === "yes"); where.push(`a.added_to_db = $${params.length}`); }
   if (f.outcome === "none") { where.push(`a.outcome is null`); }
   else if (f.outcome) { params.push(f.outcome); where.push(`a.outcome = $${params.length}`); }
   if (f.q?.trim()) {
     params.push(f.q.trim());
     const p = `$${params.length}`;
     where.push(`(coalesce(r.owner_name,'') ilike '%'||${p}||'%'
+              or coalesce(cl.context_details -> 'recipient_data' ->> 'name','') ilike '%'||${p}||'%'
               or coalesce(r.city,'') ilike '%'||${p}||'%'
               or coalesce(a.assignee,'') ilike '%'||${p}||'%'
+              or coalesce(u.name,'') ilike '%'||${p}||'%'
               or coalesce(a.remarks,'') ilike '%'||${p}||'%'
+              or coalesce(a.note,'') ilike '%'||${p}||'%'
               or coalesce(cl.to_number,'') ilike '%'||${p}||'%'
               or coalesce(rphone.phone,'') ilike '%'||${p}||'%')`);
   }
@@ -253,25 +269,26 @@ function historyWhere(f: HistoryFilters): { sql: string; params: unknown[] } {
 
 export async function listAssignments(f: HistoryFilters) {
   const { sql: whereSql, params } = historyWhere(f);
-  const page = Math.max(1, f.page ?? 1);
+  const requestedPage = Number.isFinite(f.page) ? Math.max(1, Math.floor(f.page!)) : 1;
   const pageSize = f.pageSize ?? HISTORY_PAGE_SIZE;
 
   const countRes = await query<{ n: string }>(
     `select count(*)::text n ${HISTORY_FROM} ${whereSql}`, params);
   const total = Number(countRes.rows[0].n);
+  const page = Math.min(requestedPage, Math.max(1, Math.ceil(total / pageSize)));
 
   const rowsRes = await query<AssignmentHistoryRow>(
     `select a.id::text as id, a.entity_type, a.entity_id::text as entity_id,
             coalesce(r.owner_name, cl.context_details -> 'recipient_data' ->> 'name') as subject,
             coalesce(rphone.phone, cl.to_number) as phone,
             coalesce(r.city, initcap(cl.context_details -> 'recipient_data' ->> 'area')) as city,
-            a.assignee, u.name as assignee_name, a.assigned_by,
+            a.assignee, u.name as assignee_name, a.assigned_by, assigner.name as assigned_by_name,
             a.assigned_at::text as assigned_at, a.note, a.state, a.outcome, a.remarks,
             a.added_to_db, a.wh_id,
             a.completed_at::text as completed_at,
             coalesce(cl.llm_availability, rai.llm_availability) as ai_availability
        ${HISTORY_FROM} ${whereSql}
-       order by a.assigned_at desc, a.id desc
+       order by ${f.activeOnly ? "(a.state = 'open') desc," : ""} ${f.sort === "name" ? "lower(coalesce(r.owner_name, cl.context_details -> 'recipient_data' ->> 'name', '')) asc," : ""} a.assigned_at ${f.sort === "oldest" ? "asc" : "desc"}, a.id ${f.sort === "oldest" ? "asc" : "desc"}
        limit ${pageSize} offset ${(page - 1) * pageSize}`,
     params);
 
@@ -281,14 +298,22 @@ export async function listAssignments(f: HistoryFilters) {
   };
 }
 
+/** Counts use the same predicates as the rows, across every matching page. */
+export async function matchingAssignmentTotals(filters: HistoryFilters) {
+  const { sql, params } = historyWhere(filters);
+  return (await query<{ entity_type: string; state: string; n: string }>(
+    `select a.entity_type, a.state, count(*)::text n ${HISTORY_FROM} ${sql} group by a.entity_type, a.state`, params,
+  )).rows;
+}
+
 /** Headline counts for the history page, over the WHOLE table (not the page). */
-export async function assignmentTotals(): Promise<{ open: number; done: number; dropped: number; people: number }> {
+export async function assignmentTotals(assignee?: string): Promise<{ open: number; done: number; dropped: number; people: number }> {
   const res = await query<{ open: string; done: string; dropped: string; people: string }>(
     `select count(*) filter (where state = 'open')::text     as open,
             count(*) filter (where state = 'done')::text     as done,
             count(*) filter (where state = 'dropped')::text  as dropped,
             count(distinct assignee) filter (where state = 'open')::text as people
-       from bolna_assignments`);
+       from bolna_assignments${assignee ? " where assignee = $1" : ""}`, assignee ? [assignee.toLowerCase()] : []);
   const r = res.rows[0];
   return { open: Number(r.open), done: Number(r.done), dropped: Number(r.dropped), people: Number(r.people) };
 }

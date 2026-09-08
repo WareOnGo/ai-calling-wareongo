@@ -29,6 +29,5 @@ export async function GET(req: NextRequest) {
     assignee: sp.get("assignee") ?? undefined,
   };
 
-  const { rows, capped } = await getRawQueueRows(user, filters);
-  return NextResponse.json({ rows, capped });
+  return NextResponse.json(await getRawQueueRows(user, filters));
 }

@@ -1,110 +1,60 @@
 "use client";
-
-import { useEffect } from "react";
-
-// Client-side resizable columns. Measures the current column widths, switches the
-// table to fixed layout backed by a <colgroup>, and adds drag handles to each
-// header cell. Widths persist in localStorage. Works alongside the DB-collapse
-// (collapsed .db-col columns are hidden via the colgroup).
-// Per-path key: the calls and raw grids have different columns, so they must not
-// share saved widths. v5: fill-to-viewport default sizing.
-const KEY = "sheet-col-widths-v5:" + (typeof location !== "undefined" ? location.pathname : "");
+import { useEffect, useState } from "react";
+import { readColumnPreferences } from "./sheet-columns";
+import { usePathname } from "next/navigation";
 
 export function ColumnResize() {
+  const path = usePathname();
+  const [revision, setRevision] = useState(0);
+  const [options, setOptions] = useState<string[]>([]);
+  const [hidden, setHidden] = useState<string[]>([]);
   useEffect(() => {
-    const table = document.querySelector("table.sheet") as HTMLTableElement | null;
-    const headRow = table?.querySelector("tr.colheads") as HTMLTableRowElement | null;
-    if (!table || !headRow) return;
-
-    const ths = Array.from(headRow.children) as HTMLElement[]; // [rowgutter, ...columns]
-
-    // Restore saved widths if they match the current column count, else measure.
-    // IMPORTANT: measure with the DB group expanded, otherwise the hidden columns
-    // measure as 0px and get locked to zero width.
-    let widths: number[] | null = null;
-    try {
-      const saved = JSON.parse(localStorage.getItem(KEY) || "null");
-      if (Array.isArray(saved) && saved.length === ths.length && saved.every((w) => w > 0)) {
-        widths = saved;
-      }
-    } catch { /* ignore */ }
-
-    if (!widths) {
-      // Expand every collapsed group first, else its hidden columns measure as 0px.
-      const collapsed = Array.from(table.classList).filter((c) => c.endsWith("-collapsed"));
-      collapsed.forEach((c) => table.classList.remove(c));
-      widths = ths.map((th, i) =>
-        Math.max(i === 0 ? 46 : 70, Math.round(th.getBoundingClientRect().width) + 16),
-      );
-      // If the columns don't fill the viewport, stretch the data columns to fill it
-      // (wider by default, no pointless horizontal scroll). Gutter (i=0) stays fixed.
-      const avail = (table.parentElement?.clientWidth ?? 0) - 2;
-      const total = widths.reduce((a, b) => a + b, 0);
-      if (avail > 0 && total < avail) {
-        const dataTotal = total - widths[0];
-        const factor = (avail - widths[0]) / dataTotal;
-        for (let i = 1; i < widths.length; i++) widths[i] = Math.round(widths[i] * factor);
-      }
-      collapsed.forEach((c) => table.classList.add(c));
-    }
-
-    // (Re)build the colgroup, mirroring each header cell's class so CSS can target
-    // the matched-dataset columns for collapse.
-    table.querySelector("colgroup")?.remove();
-    const colgroup = document.createElement("colgroup");
-    ths.forEach((th, i) => {
-      const col = document.createElement("col");
-      col.style.width = `${widths![i]}px`;
-      if (th.className) col.className = th.className;
-      colgroup.appendChild(col);
-    });
-    table.insertBefore(colgroup, table.firstChild);
-    table.classList.add("resizable");
-    const cols = Array.from(colgroup.children) as HTMLElement[];
-
-    const save = () =>
-      localStorage.setItem(KEY, JSON.stringify(widths));
-
-    let active: { idx: number; startX: number; startW: number } | null = null;
-    const handles: HTMLElement[] = [];
-
-    ths.forEach((th, i) => {
-      if (i === 0) return; // skip the row-number gutter
-      const handle = document.createElement("div");
-      handle.className = "col-resizer";
-      handle.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        active = { idx: i, startX: e.clientX, startW: widths![i] };
-        document.body.style.cursor = "col-resize";
+    const table = document.querySelector<HTMLTableElement>("table.sheet");
+    const headers = table ? [...table.querySelectorAll<HTMLTableCellElement>("tr.colheads th")] : [];
+    if (!table || !headers.length) return;
+    const labels = headers.map((th, i) => th.textContent?.trim() || (i === 0 ? "Row" : "Select"));
+    const key = `sheet-col-widths-v6:${path}`;
+    const preferences = readColumnPreferences(path, labels);
+    const widths = preferences.widths;
+    let hiddenColumns = preferences.hiddenColumns;
+    const locked = new Set(['Row','Select','Owner','Number','Phone']);
+    setHidden(hiddenColumns);
+    setOptions(labels.filter((name,i) => !locked.has(name) && !headers[i].matches('.call-col,.db-col,.calls-col')));
+    table.querySelector('colgroup')?.remove();
+    const colgroup = document.createElement('colgroup');
+    labels.forEach((name,i) => { const col = document.createElement('col'); col.className = headers[i].className; col.style.width = `${widths[i]}px`; colgroup.append(col); headers[i].dataset.column = name; });
+    table.prepend(colgroup); table.classList.add('resizable');
+    const cols = [...colgroup.children] as HTMLElement[];
+    const rows = [...table.rows];
+    const pinEnd = labels.findIndex(name => name === 'Number' || name === 'Phone');
+    const sync = () => {
+      let left = 0;
+      headers.forEach((th,i) => {
+        for (const row of rows) { const cell = row.cells[i]; if (!cell || cell.colSpan > 1) continue; cell.classList.toggle('column-hidden', hiddenColumns.includes(labels[i])); if (i <= pinEnd) { cell.classList.add('frozen-cell'); cell.style.setProperty('--frozen-left', `${left}px`); } }
+        cols[i].classList.toggle('column-hidden', hiddenColumns.includes(labels[i]));
+        if (i <= pinEnd) left += th.getBoundingClientRect().width;
       });
-      // don't let a resize on the green "DB" header also toggle the collapse
-      handle.addEventListener("click", (e) => e.stopPropagation());
-      th.appendChild(handle);
-      handles.push(handle);
-    });
-
-    function onMove(e: MouseEvent) {
-      if (!active) return;
-      const w = Math.max(40, Math.round(active.startW + (e.clientX - active.startX)));
-      widths![active.idx] = w;
-      cols[active.idx].style.width = `${w}px`;
-    }
-    function onUp() {
-      if (!active) return;
-      active = null;
-      document.body.style.cursor = "";
-      try { save(); } catch { /* ignore */ }
-    }
-
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-    return () => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-      handles.forEach((h) => h.remove());
     };
-  }, []);
-
-  return null;
+    const persist = () => { try { localStorage.setItem(key, JSON.stringify(Object.fromEntries(labels.map((name,i) => [name,widths[i]])))); } catch { /* unavailable */ } };
+    let active: { idx: number; x: number; width: number } | null = null;
+    const handles = headers.map((th,i) => {
+      if (i === 0 || labels[i] === 'Select') return null;
+      const handle = document.createElement('span'); handle.className = 'col-resizer'; handle.tabIndex = 0;
+      handle.setAttribute('role','separator'); handle.setAttribute('aria-orientation','vertical'); handle.setAttribute('aria-label', `Resize ${labels[i]} column`); handle.setAttribute('aria-valuenow', String(widths[i]));
+      handle.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); active = { idx:i, x:e.clientX, width:widths[i] }; document.body.style.cursor = 'col-resize'; });
+      handle.addEventListener('click', e => e.stopPropagation());
+      handle.addEventListener('keydown', e => { if (!['ArrowLeft','ArrowRight'].includes(e.key)) return; e.preventDefault(); e.stopPropagation(); widths[i] = Math.max(60,widths[i]+(e.key === 'ArrowRight' ? 10 : -10)); cols[i].style.width = `${widths[i]}px`; handle.setAttribute('aria-valuenow',String(widths[i])); sync(); persist(); });
+      th.append(handle); return handle;
+    });
+    const move = (e: PointerEvent) => { if (!active) return; widths[active.idx] = Math.max(60, active.width + e.clientX-active.x); cols[active.idx].style.width = `${widths[active.idx]}px`; handles[active.idx]?.setAttribute('aria-valuenow',String(widths[active.idx])); sync(); };
+    const up = () => { if (!active) return; active = null; document.body.style.cursor = ''; persist(); };
+    const visibility = (e: Event) => { hiddenColumns = (e as CustomEvent<string[]>).detail; sync(); };
+    const observer = new ResizeObserver(sync); observer.observe(table);
+    sync();
+    document.addEventListener('pointermove',move); document.addEventListener('pointerup',up); document.addEventListener('columns-changed',sync); document.addEventListener('column-visibility',visibility);
+    return () => { observer.disconnect(); handles.forEach(h => h?.remove()); document.removeEventListener('pointermove',move); document.removeEventListener('pointerup',up); document.removeEventListener('columns-changed',sync); document.removeEventListener('column-visibility',visibility); document.body.style.cursor = ''; };
+  }, [path, revision]);
+  function toggle(name: string) { const next = hidden.includes(name) ? hidden.filter(n => n !== name) : [...hidden,name]; setHidden(next); try { localStorage.setItem(`sheet-hidden:${path}`,JSON.stringify(next)); } catch { /* unavailable */ } document.dispatchEvent(new CustomEvent('column-visibility',{detail:next})); }
+  function reset() { try { for (const key of [`sheet-col-widths-v6:${path}`,`sheet-col-widths-v5:${path}`,`sheet-hidden:${path}`,...['call','calls','db'].map(g => `sheet-groups:${path}:${g}`)]) localStorage.removeItem(key); } catch { /* unavailable */ } document.dispatchEvent(new Event('reset-columns')); setRevision(n => n+1); }
+  return <details className="column-menu"><summary>Columns</summary><div className="column-options">{options.map(name => <label key={name}><input type="checkbox" checked={!hidden.includes(name)} onChange={() => toggle(name)} />{name}</label>)}<button type="button" className="btn-row" onClick={reset}>Reset columns</button></div></details>;
 }

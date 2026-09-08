@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useDashboardUI } from "./DashboardUI";
+import { requestJson } from "./requests";
 
-// "Infer" button shown on calls that landed unenriched (e.g. an OpenAI outage
+// "Analyse call" button shown on calls that landed unenriched (e.g. an OpenAI outage
 // during processing). Re-runs OpenAI inference for the single call, then refreshes
 // the grid so the freshly-filled availability / sqft / notes show up in place.
 export function EnrichButton({ id }: { id: string }) {
-  const router = useRouter();
+  const { refresh, notify } = useDashboardUI();
   const [state, setState] = useState<"idle" | "loading" | "error">("idle");
   const [err, setErr] = useState<string>("");
 
@@ -15,31 +16,27 @@ export function EnrichButton({ id }: { id: string }) {
     setState("loading");
     setErr("");
     try {
-      const res = await fetch(`/api/calls/${id}/enrich`, { method: "POST" });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        setErr(body?.error || `HTTP ${res.status}`);
-        setState("error");
-        return;
-      }
-      // Server data changed — re-render the row with the new inference fields.
-      router.refresh();
+      await requestJson(`/api/calls/${id}/enrich`, { method: "POST", signal: AbortSignal.timeout(120000) });
+      notify("AI analysis updated");
+      refresh();
       setState("idle");
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "request failed");
+      const message = e instanceof Error ? e.message : "Analysis failed. Try again.";
+      setErr(message);
+      notify(message);
       setState("error");
     }
   }
 
   return (
-    <button
+    <span><button
       type="button"
       className={`btn-infer${state === "error" ? " err" : ""}`}
       onClick={run}
       disabled={state === "loading"}
-      title={state === "error" ? `Inference failed: ${err} — click to retry` : "Run OpenAI inference on this call"}
+      title={state === "error" ? `Analysis failed: ${err} — click to retry` : "Analyse the call transcript with AI"}
     >
-      {state === "loading" ? "Inferring…" : state === "error" ? "Retry infer" : "Infer"}
-    </button>
+      {state === "loading" ? "Analysing…" : state === "error" ? "Retry analysis" : "Analyse call"}
+    </button>{state === "error" && <span role="status" className="save-status error">{err}</span>}</span>
   );
 }

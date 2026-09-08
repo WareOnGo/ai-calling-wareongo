@@ -50,6 +50,7 @@ export async function GET(req: NextRequest) {
 
   const sp = req.nextUrl.searchParams;
   const filters: CallFilters = {
+    ids: sp.has("ids") ? sp.get("ids")!.split(",").filter(id => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)).slice(0, 1000) : undefined,
     q: sp.get("q") ?? undefined,
     availability: sp.get("availability") ?? undefined,
     agent_id: sp.get("agent_id") ?? undefined,

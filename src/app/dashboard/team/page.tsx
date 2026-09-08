@@ -1,6 +1,7 @@
 import { requireAdmin } from "@/lib/auth";
 import { listUsers, getWorkload } from "@/lib/users";
 import { TeamEditor, type Person } from "./TeamEditor";
+import { Freshness } from "../DashboardUI";
 import { IconUsers } from "../icons";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +36,7 @@ export default async function Team() {
       <div className="page-title">
         <span className="pt-icon"><IconUsers size={18} /></span> Team
         <span className="title-sub">{people.filter((p) => p.active).length} with access</span>
+        <Freshness updatedAt={new Date().toISOString()} />
       </div>
       <TeamEditor people={people} activeAdmins={activeAdmins} myEmail={me.email} />
     </>

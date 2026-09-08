@@ -11,6 +11,7 @@ import { getUser, countActiveAdmins } from "@/lib/users";
 
 const COOKIE_NAME = "bp_session";
 const MAX_AGE = 60 * 60 * 24 * 30; // 30 days
+export const VIEW_COOKIE = "bp_view";
 
 // Secret for signing sessions. Falls back to other server secrets so the app is
 // never accidentally left signing with an empty key.
@@ -41,7 +42,7 @@ function verifyToken(token: string): string | null {
   return email;
 }
 
-export type CurrentUser = { email: string; name: string | null; isAdmin: boolean };
+export type CurrentUser = { email: string; name: string | null; isAdmin: boolean; canSwitchView?: boolean };
 
 // Derive the public origin from the request (works on localhost and behind
 // Vercel's proxy) so the OAuth redirect_uri always matches the host the user
@@ -71,6 +72,7 @@ function emailSet(envVar: string): Set<string> {
 
 export async function setSessionEmail(email: string): Promise<void> {
   const c = await cookies();
+  c.delete(VIEW_COOKIE);
   c.set(COOKIE_NAME, makeToken(email), {
     httpOnly: true,
     sameSite: "lax",
@@ -83,6 +85,7 @@ export async function setSessionEmail(email: string): Promise<void> {
 export async function clearSession(): Promise<void> {
   const c = await cookies();
   c.delete(COOKIE_NAME);
+  c.delete(VIEW_COOKIE);
 }
 
 export async function getSessionEmail(): Promise<string | null> {
@@ -137,7 +140,12 @@ export async function canSignIn(email: string): Promise<boolean> {
 export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   const email = await getSessionEmail();
   if (!email) return null;
-  return resolveAccess(email);
+  const user = await resolveAccess(email);
+  if (!user) return null;
+  const employeeView = (await cookies()).get(VIEW_COOKIE)?.value === `employee:${user.email}`;
+  // A view preference can only narrow access. The database role still decides
+  // who may switch back, including after an admin is demoted or removed.
+  return { ...user, canSwitchView: user.isAdmin, isAdmin: user.isAdmin && !employeeView };
 });
 
 export async function requireUser(): Promise<CurrentUser> {

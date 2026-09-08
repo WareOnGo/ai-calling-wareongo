@@ -1,3 +1,10 @@
+import { CALL_COLUMNS as BASE_COLUMNS, CALL_GROUPS as GROUPS } from "../sheet-columns";
+import { dateTime as fmtDate, rent, number } from "@/lib/display";
+import { SelectionProvider, SelectionSummary } from "../Selection";
+import { ExportButton } from "../ExportButton";
+import { FilterForm } from "../FilterForm";
+import { Freshness } from "../DashboardUI";
+import { RecordDetails } from "../RecordDetails";
 import Link from "next/link";
 import { getCalls, getFilterOptions, calledByOptions, type CallFilters, type CallRow, type RawMatch } from "@/lib/calls";
 import { requireUser } from "@/lib/auth";
@@ -11,7 +18,6 @@ import { ColumnResize } from "../ColumnResize";
 import { IconPhone, IconDownload } from "../icons";
 import { FiltersToggle } from "../FiltersToggle";
 import { AssignButton } from "../AssignButton";
-import { RowSelection } from "../RowSelection";
 import { CopyText } from "../CopyText";
 
 export const dynamic = "force-dynamic";
@@ -19,21 +25,13 @@ export const dynamic = "force-dynamic";
 // One grid for both roles: the role changes what's RENDERED (assignment column,
 // bulk-assign, assignee filter), the scope in lib/calls.ts changes what's FETCHED.
 // Forking the page per role would mean fixing every grid bug twice.
-const BASE_COLUMNS = [
-  "When", "Direction", "Number", "Owner", "Area", "Availability", "Sqft", "Rent",
-  "AI Call Details", "Notes", "Transcript", "Recording",
-  "DB", "DB Owner", "DB Type", "DB City", "DB State", "DB Sqft", "All Sources",
-  "Call Status", "Called By", "Added", "WH ID",
-];
+
 
 // Collapsible column groups: a green toggle column (always shown, holds a summary
 // value) that collapses/expands its detail columns.
 //  - "AI Call Details": summary = Status; collapses Notes / Transcript / Recording
 //  - "DB":              summary = Source; collapses the matched-listing detail columns
-const GROUPS = [
-  { key: "call", toggle: "AI Call Details", members: ["Notes", "Transcript", "Recording"] },
-  { key: "db", toggle: "DB", members: ["DB Owner", "DB Type", "DB City", "DB State", "DB Sqft", "All Sources"] },
-];
+
 function colClass(label: string): string | undefined {
   for (const g of GROUPS) {
     if (label === g.toggle) return `${g.key}-toggle grp-toggle`;
@@ -90,10 +88,7 @@ function cfClass(availability: string | null) {
   return "cf-yel"; // Unclear
 }
 
-function fmtDate(s: string | null) {
-  if (!s) return "—";
-  return new Date(s).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
-}
+
 
 type SP = Record<string, string | undefined>;
 
@@ -141,39 +136,32 @@ export default async function Dashboard({
   const numCols = COLUMNS.length + (user.isAdmin ? 1 : 0); // + selection column
   const startRow = (page - 1) * pageSize;
 
-  // Export link mirrors the currently-applied filters (not pagination) so the CSV
-  // contains the whole filtered set, however many pages it spans.
-  const exportParams = new URLSearchParams();
-  for (const k of ["q", "availability", "agent_id", "status", "source", "state", "contact", "call_type", "date_from", "date_to", "needs_review", "assignee"]) {
-    if (sp[k]) exportParams.set(k, sp[k] as string);
-  }
-  const exportHref = `/api/calls/export?${exportParams.toString()}`;
-
   // active filter count (everything except free-text search) for the Filters badge
-  const activeFilters = ["availability", "call_type", "source", "state", "contact", "agent_id", "status", "date_from", "date_to", "needs_review"]
+  const activeFilters = ["availability", "call_type", "source", "state", "contact", "agent_id", "status", "date_from", "date_to", "needs_review", "assignee"]
     .filter((k) => sp[k]).length;
 
   return (
-    <>
-      <div className="page-title"><span className="pt-icon"><IconPhone size={18} /></span> Call Analytics</div>
+    <SelectionProvider key={JSON.stringify(sp)} total={total}>
+      <div className="page-title"><span className="pt-icon"><IconPhone size={18} /></span> Call Analytics <Freshness updatedAt={new Date().toISOString()} /></div>
       {/* Filters — Google-style chips */}
-      <form className="filterbar" method="GET" action="/dashboard/calls">
+      <FilterForm key={JSON.stringify(sp)} applied={sp} action="/dashboard/calls">
         <div className="search">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
-          <input name="q" defaultValue={sp.q ?? ""} placeholder="Fuzzy search — number, owner, source, state, transcript…" />
+          <input name="q" defaultValue={sp.q ?? ""} aria-label="Search calls" placeholder="Search calls…" title="Search phone, owner, source, state or transcript" />
         </div>
 
         <FiltersToggle count={activeFilters} />
-
-        <span className="spacer" />
-        <a className="btn-export" href={exportHref}><IconDownload size={15} /> Export CSV</a>
-        {user.isAdmin && <AssignButton entity="call" total={total} assignees={assignees} />}
         <ApplyButton />
+
+        <ColumnResize />
+        <span className="spacer" />
+        <ExportButton entity="calls" />
+        {user.isAdmin && <AssignButton entity="call" total={total} assignees={assignees} />}
         <a className="btn-text" href="/dashboard/calls">Reset</a>
 
-        <div className="filters-panel">
+        <div className="filters-panel" id="filters-panel">
             <label className={`datefld${sp.date_from ? " active" : ""}`}>
               <span>From</span>
               <input type="date" name="date_from" defaultValue={sp.date_from ?? ""} />
@@ -183,45 +171,45 @@ export default async function Dashboard({
               <input type="date" name="date_to" defaultValue={sp.date_to ?? ""} />
             </label>
             <div className={`chip${sp.availability ? " active" : ""}`}>
-              <select name="availability" defaultValue={sp.availability ?? ""}>
+              <select aria-label="availability" name="availability" defaultValue={sp.availability ?? ""}>
                 <option value="">Availability</option>
                 {opts.availabilities.map((v) => <option key={v} value={v}>{v}</option>)}
               </select>
             </div>
             <div className={`chip${sp.call_type ? " active" : ""}`}>
-              <select name="call_type" defaultValue={sp.call_type ?? ""}>
+              <select aria-label="call type" name="call_type" defaultValue={sp.call_type ?? ""}>
                 <option value="">Direction</option>
                 <option value="inbound">Inbound</option>
                 <option value="outbound">Outbound</option>
               </select>
             </div>
             <div className={`chip${sp.source ? " active" : ""}`}>
-              <select name="source" defaultValue={sp.source ?? ""}>
+              <select aria-label="source" name="source" defaultValue={sp.source ?? ""}>
                 <option value="">DB Source</option>
                 {opts.sources.map((v) => <option key={v} value={v}>{v}</option>)}
               </select>
             </div>
             <div className={`chip${sp.state ? " active" : ""}`}>
-              <select name="state" defaultValue={sp.state ?? ""}>
+              <select aria-label="state" name="state" defaultValue={sp.state ?? ""}>
                 <option value="">DB State</option>
                 {opts.states.map((v) => <option key={v} value={v}>{v}</option>)}
               </select>
             </div>
             <div className={`chip${sp.contact ? " active" : ""}`}>
-              <select name="contact" defaultValue={sp.contact ?? ""}>
+              <select aria-label="contact" name="contact" defaultValue={sp.contact ?? ""}>
                 <option value="">Contact</option>
                 <option value="owner">Owner</option>
                 <option value="broker">Broker</option>
               </select>
             </div>
             <div className={`chip${sp.agent_id ? " active" : ""}`}>
-              <select name="agent_id" defaultValue={sp.agent_id ?? ""}>
+              <select aria-label="agent id" name="agent_id" defaultValue={sp.agent_id ?? ""}>
                 <option value="">Agent</option>
                 {opts.agents.map((v) => <option key={v} value={v}>{v.slice(0, 8)}…</option>)}
               </select>
             </div>
             <div className={`chip${sp.status ? " active" : ""}`}>
-              <select name="status" defaultValue={sp.status ?? ""}>
+              <select aria-label="status" name="status" defaultValue={sp.status ?? ""}>
                 <option value="">Status</option>
                 {opts.statuses.map((v) => <option key={v} value={v}>{v}</option>)}
               </select>
@@ -232,7 +220,7 @@ export default async function Dashboard({
             </label>
             {user.isAdmin && (
               <div className={`chip${sp.assignee ? " active" : ""}`}>
-                <select name="assignee" defaultValue={sp.assignee ?? ""}>
+                <select aria-label="assignee" name="assignee" defaultValue={sp.assignee ?? ""}>
                   <option value="">Assigned to</option>
                   <option value="none">Unassigned</option>
                   {assignees.map((a) => (
@@ -242,15 +230,17 @@ export default async function Dashboard({
               </div>
             )}
         </div>
-      </form>
+      </FilterForm>
 
+      {user.isAdmin && <SelectionSummary />}
+      <p className="grid-hint">Availability is the AI result. Call Status, Called By, Added and WH ID track the shared call record; assigned staff log their own verification in My Work.</p>
       <div className="gridwrap">
         <table className="sheet db-collapsed call-collapsed">
           <thead>
             <tr className="colheads">
               <th className="rowgutter"></th>
               {user.isAdmin && (
-                <th className="selcol"><input type="checkbox" className="selall" title="Select all on this page" /></th>
+                <th className="selcol"><input type="checkbox" className="selall" aria-label="Select all on this page" title="Select all on this page" /></th>
               )}
               {COLUMNS.map((c) => {
                 const g = GROUPS.find((g) => g.toggle === c);
@@ -265,7 +255,7 @@ export default async function Dashboard({
               <tr>
                 <td className="rownum"></td>
                 <td colSpan={numCols} className="muted" style={{ textAlign: "center", padding: 24 }}>
-                  No calls match these filters.
+                  {activeFilters || sp.q ? <>No calls match these filters. <Link href="/dashboard/calls">Clear filters</Link></> : user.isAdmin ? "No calls have arrived yet. Refresh to check for new results." : "No AI calls are assigned to you yet. Your admin can assign calls for follow-up."}
                 </td>
               </tr>
             )}
@@ -274,11 +264,10 @@ export default async function Dashboard({
                 <td className="rownum">{startRow + i + 1}</td>
                 {user.isAdmin && (
                   <td className="selcol">
-                    <input type="checkbox" className="rowsel" data-id={r.id} />
+                    <input type="checkbox" className="rowsel" aria-label={`Select ${r.owner_name || r.to_number || "call"}`} data-id={r.id} />
                   </td>
                 )}
-                <td>{fmtDate(r.call_created_at)}</td>
-                <td>{r.call_type === "inbound" ? "Inbound" : "Outbound"}</td>
+                <td className="identity-owner">{hl(r.owner_name, terms)} <RecordDetails id={r.id} entity="call" /></td>
                 <td>
                   <CopyText
                     value={r.call_type === "inbound" ? r.from_number : r.to_number}
@@ -286,15 +275,24 @@ export default async function Dashboard({
                     label="phone number"
                   />
                 </td>
-                <td>{hl(r.owner_name, terms)}</td>
-                <td>{hl(r.db_area, terms)}</td>
                 <td className={cfClass(r.availability)}>
                   {r.availability ?? ""}
                   {r.needs_review && <span className="review-tag">review</span>}
                   {!r.inferred && r.can_enrich && <EnrichButton id={r.id} />}
                 </td>
-                <td>{r.built_up_area_sqft || ""}</td>
-                <td>{r.expected_rent || ""}</td>
+                <EditableCells
+                  id={r.id}
+                  callStatus={r.call_status}
+                  calledBy={r.called_by}
+                  addedToDb={r.added_to_db}
+                  whId={r.wh_id}
+                  calledByOptions={cbOpts}
+                />
+                <td>{fmtDate(r.call_created_at)}</td>
+                <td>{r.call_type === "inbound" ? "Inbound" : "Outbound"}</td>
+                <td>{hl(r.db_area, terms)}</td>
+                <td>{number(r.built_up_area_sqft)}</td>
+                <td>{rent(r.expected_rent)}</td>
                 <td className="call-toggle">{r.status}</td>
                 <td className="call-col clip" title={r.notes ?? ""}>{hl(r.notes, terms)}</td>
                 <td className="call-col clip" title={r.transcript ?? ""}>{hl(r.transcript, terms)}</td>
@@ -310,16 +308,8 @@ export default async function Dashboard({
                 <td className="db-col">{hl(r.raw_warehouse_type, terms)}</td>
                 <td className="db-col">{hl(r.raw_city, terms)}</td>
                 <td className="db-col">{hl(r.raw_state, terms)}</td>
-                <td className="db-col">{r.raw_area_sqft ?? ""}</td>
+                <td className="db-col">{number(r.raw_area_sqft)}</td>
                 <td className="db-col clip" title={r.raw_sources ?? ""}>{hl(r.raw_sources, terms)}</td>
-                <EditableCells
-                  id={r.id}
-                  callStatus={r.call_status}
-                  calledBy={r.called_by}
-                  addedToDb={r.added_to_db}
-                  whId={r.wh_id}
-                  calledByOptions={cbOpts}
-                />
                 {user.isAdmin && (
                   <td className="clip" title={r.assignment_note ?? ""}>
                     {r.assigned_to ?? <span className="muted">—</span>}
@@ -337,8 +327,8 @@ export default async function Dashboard({
           {total === 0 ? "No results" : `${(startRow + 1).toLocaleString()}–${Math.min(startRow + pageSize, total).toLocaleString()} of ${total.toLocaleString()}`}
         </span>
         <div className="pages">
-          <Link className={page <= 1 ? "disabled" : ""} href={qs(sp, { page: "1" })} aria-label="First">«</Link>
-          <Link className={page <= 1 ? "disabled" : ""} href={qs(sp, { page: String(page - 1) })} aria-label="Prev">‹</Link>
+          {page <= 1 ? <button type="button" disabled aria-label="First">«</button> : <Link href={qs(sp, { page: "1" })} aria-label="First">«</Link>}
+          {page <= 1 ? <button type="button" disabled aria-label="Prev">‹</button> : <Link href={qs(sp, { page: String(page - 1) })} aria-label="Prev">‹</Link>}
           {pageList(page, pages).map((t, i) =>
             t === "…"
               ? <span key={`e${i}`} className="ellipsis">…</span>
@@ -346,14 +336,13 @@ export default async function Dashboard({
                 ? <span key={t} className="cur">{t}</span>
                 : <Link key={t} href={qs(sp, { page: String(t) })}>{t}</Link>,
           )}
-          <Link className={page >= pages ? "disabled" : ""} href={qs(sp, { page: String(page + 1) })} aria-label="Next">›</Link>
-          <Link className={page >= pages ? "disabled" : ""} href={qs(sp, { page: String(pages) })} aria-label="Last">»</Link>
+          {page >= pages ? <button type="button" disabled aria-label="Next">›</button> : <Link href={qs(sp, { page: String(page + 1) })} aria-label="Next">›</Link>}
+          {page >= pages ? <button type="button" disabled aria-label="Last">»</button> : <Link href={qs(sp, { page: String(pages) })} aria-label="Last">»</Link>}
         </div>
       </div>
 
       <GridInteractivity />
-      <ColumnResize />
-      {user.isAdmin && <RowSelection />}
-    </>
+
+    </SelectionProvider>
   );
 }

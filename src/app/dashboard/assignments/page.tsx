@@ -1,10 +1,14 @@
+import { ASSIGNMENT_COLUMNS as COLUMNS } from "../sheet-columns";
+import { dateTime as fmt } from "@/lib/display";
+import { Freshness } from "../DashboardUI";
+import { RecordDetails } from "../RecordDetails";
 import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
 import { listAssignments, assignmentTotals, HISTORY_PAGE_SIZE, type AssignmentHistoryRow } from "@/lib/assignments";
-import { listAssignees } from "@/lib/users";
-import { OUTCOMES } from "@/lib/scope";
-import { ApplyButton } from "../ApplyButton";
-import { FiltersToggle } from "../FiltersToggle";
+import { listUsers } from "@/lib/users";
+import { AssignmentColumns, AssignmentHeaders, AssignmentStats } from "./AssignmentStructure";
+import { AssignmentFilters } from "./AssignmentFilters";
+import { AssignmentNotes } from "./AssignmentNotes";
 import { UnassignButton } from "../UnassignButton";
 import { CopyText } from "../CopyText";
 import { GridInteractivity } from "../GridInteractivity";
@@ -12,19 +16,7 @@ import { IconClipboard } from "../icons";
 
 export const dynamic = "force-dynamic";
 
-// Admin answer to "who did I give this to, and what happened?" — one page covering
-// both channels and all three states. Deliberately NOT the same shape as the two
-// spreadsheet grids: this is a log, read top-down, newest first.
-
-const COLUMNS = [
-  "Assigned", "Type", "Who", "Phone", "City", "Assignee",
-  "Status", "Result", "In DB", "WH ID", "Remarks", "Brief", "",
-];
-
-function fmt(s: string | null) {
-  if (!s) return "—";
-  return new Date(s).toLocaleString("en-IN", { dateStyle: "medium" });
-}
+// Keep the assignee and their follow-up notes first; history stays newest first.
 
 // "2h ago" beats "4 Sept 2026, 12:24 am" in a log you scan top-down — and every row
 // carried the same long stamp. The exact time stays in the title attribute.
@@ -76,8 +68,8 @@ export default async function Assignments({
 
   const [{ rows, total, page, pages }, totals, assignees] = await Promise.all([
     listAssignments(filters),
-    assignmentTotals(),
-    listAssignees(),
+    assignmentTotals(sp.assignee),
+    listUsers(),
   ]);
 
   const startRow = (page - 1) * HISTORY_PAGE_SIZE;
@@ -86,87 +78,16 @@ export default async function Assignments({
   return (
     <>
       <div className="page-title">
-        <span className="pt-icon"><IconClipboard size={18} /></span> Assignments
+        <span className="pt-icon"><IconClipboard size={18} /></span> Assignments <Freshness updatedAt={new Date().toISOString()} />
       </div>
 
-      {/* Headline counts span the whole table, not the filtered page — they are the
-          "where does the work stand" answer, independent of what's being browsed. */}
-      <div className="stat-row">
-        <Link className="stat" href="/dashboard/assignments?state=open">
-          <span className="stat-n">{totals.open.toLocaleString()}</span>
-          <span className="stat-l">open</span>
-        </Link>
-        <Link className="stat" href="/dashboard/assignments?state=done">
-          <span className="stat-n">{totals.done.toLocaleString()}</span>
-          <span className="stat-l">done</span>
-        </Link>
-        <Link className="stat" href="/dashboard/assignments?state=dropped">
-          <span className="stat-n">{totals.dropped.toLocaleString()}</span>
-          <span className="stat-l">unassigned</span>
-        </Link>
-        <div className="stat stat-quiet">
-          <span className="stat-n">{totals.people.toLocaleString()}</span>
-          <span className="stat-l">people with open work</span>
-        </div>
-      </div>
-
-      <form className="filterbar" method="GET" action="/dashboard/assignments">
-        <div className="search">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
-          <input name="q" defaultValue={sp.q ?? ""} placeholder="Search owner, phone, city, assignee, remarks…" />
-        </div>
-        <FiltersToggle count={activeFilters} />
-        <span className="spacer" />
-        <ApplyButton />
-        <a className="btn-text" href="/dashboard/assignments">Reset</a>
-
-        <div className="filters-panel">
-          <div className={`chip${sp.assignee ? " active" : ""}`}>
-            <select name="assignee" defaultValue={sp.assignee ?? ""}>
-              <option value="">Anyone</option>
-              {assignees.map((a) => <option key={a.email} value={a.email}>{a.name || a.email}</option>)}
-            </select>
-          </div>
-          <div className={`chip${sp.state ? " active" : ""}`}>
-            <select name="state" defaultValue={sp.state ?? ""}>
-              <option value="">Any status</option>
-              <option value="open">Open</option>
-              <option value="done">Done</option>
-              <option value="dropped">Unassigned</option>
-            </select>
-          </div>
-          <div className={`chip${sp.type ? " active" : ""}`}>
-            <select name="type" defaultValue={sp.type ?? ""}>
-              <option value="">Both channels</option>
-              <option value="record">Manual (listing)</option>
-              <option value="call">AI call follow-up</option>
-            </select>
-          </div>
-          <div className={`chip${sp.outcome ? " active" : ""}`}>
-            <select name="outcome" defaultValue={sp.outcome ?? ""}>
-              <option value="">Any result</option>
-              <option value="none">No result yet</option>
-              {OUTCOMES.map((o) => <option key={o} value={o}>{o}</option>)}
-            </select>
-          </div>
-        </div>
-      </form>
+      <AssignmentStats totals={totals} assignee={sp.assignee} person={assignees.find(person => person.email === sp.assignee)?.name || undefined} state={sp.state} />
+      <AssignmentFilters applied={sp} assignees={assignees} />
+      <div className="assignment-summary"><span>{total.toLocaleString()} {total === 1 ? "assignment" : "assignments"}{activeFilters || sp.q ? " matching filters" : ""}</span><span>Newest first</span></div>
 
       <div className="gridwrap">
-        <table className="sheet log-sheet">
-          <thead>
-            <tr className="colheads">
-              <th className="rowgutter"></th>
-              {COLUMNS.map((c, i) => (
-                <th key={c || `blank${i}`}
-                    className={c === "" ? "acts" : undefined}>
-                  {c}
-                </th>
-              ))}
-            </tr>
-          </thead>
+        <table className="sheet log-sheet assignment-sheet">
+          <AssignmentColumns /><AssignmentHeaders />
           <tbody>
             {rows.length === 0 && (
               <tr>
@@ -175,34 +96,28 @@ export default async function Assignments({
                   {total === 0 && activeFilters === 0 && !sp.q
                     ? "Nothing assigned yet. Use Assign on Raw Dataset or Call Analytics."
                     : "No assignments match these filters."}
+                  <div className="empty-actions">{total === 0 && activeFilters === 0 && !sp.q ? <><Link href="/dashboard/raw">Open Raw Dataset</Link><Link href="/dashboard/calls">Open Call Analytics</Link></> : <Link href="/dashboard/assignments">Clear filters</Link>}</div>
                 </td>
               </tr>
             )}
             {rows.map((r, i) => (
               <tr key={r.id} className={r.state === "dropped" ? "row-muted" : undefined}>
                 <td className="rownum">{startRow + i + 1}</td>
-                <td title={new Date(r.assigned_at).toLocaleString("en-IN")} className="nowrap">
-                  {ago(r.assigned_at)}
+                <td className="assignment-person" title={r.assignee}>
+                  <Link className="assignee-name" href={qs(sp, { assignee: r.assignee, page: undefined })} title={`Show assignments for ${r.assignee_name || r.assignee}`}>{r.assignee_name || r.assignee}</Link>
+                  {r.assignee_name && <span className="assignee-email">{r.assignee}</span>}
                 </td>
-                <td>
-                  <span className={`pill pill-${r.entity_type}`}>
-                    {r.entity_type === "record" ? "manual" : "AI call"}
-                  </span>
-                </td>
-                <td>{r.subject ?? <span className="muted">—</span>}</td>
-                <td><CopyText value={r.phone} label="phone number" /></td>
-                <td>{r.city ?? <span className="muted">—</span>}</td>
-                <td title={`assigned by ${r.assigned_by}`}>{r.assignee_name || r.assignee}</td>
+                <td className="assignment-note-cell"><AssignmentNotes text={r.remarks} /></td>
                 <td><span className={`pill pill-${r.state}`}>{r.state === "dropped" ? "unassigned" : r.state}</span></td>
                 <td>{resultCell(r)}</td>
-                <td>
-                  {r.added_to_db
-                    ? <span className="pill pill-available">yes</span>
-                    : <span className="muted">no</span>}
-                </td>
+                <td className="assignment-subject">{r.subject ?? <span className="muted">—</span>} <RecordDetails id={r.entity_id} entity={r.entity_type} /></td>
+                <td><CopyText value={r.phone} label="phone number" /></td>
+                <td>{r.city ?? <span className="muted">—</span>}</td>
+                <td><span className={`pill pill-${r.entity_type}`}>{r.entity_type === "record" ? "manual" : "AI call"}</span></td>
+                <td title={`${fmt(r.assigned_at)} · Assigned by ${r.assigned_by}`} className="assignment-date nowrap">{ago(r.assigned_at)}</td>
+                <td>{r.added_to_db ? <span className="pill pill-available">yes</span> : <span className="muted">no</span>}</td>
                 <td>{r.wh_id ?? <span className="muted">—</span>}</td>
-                <td className="clip" title={r.remarks ?? ""}>{r.remarks ?? <span className="muted">—</span>}</td>
-                <td className="clip" title={r.note ?? ""}>{r.note ?? <span className="muted">—</span>}</td>
+                <td className="assignment-brief">{r.note || <span className="muted">—</span>}</td>
                 <td className="actions">
                   {r.state === "open" && <UnassignButton id={r.id} who={r.assignee_name || r.assignee} />}
                 </td>
@@ -218,16 +133,16 @@ export default async function Assignments({
             : `${(startRow + 1).toLocaleString()}–${Math.min(startRow + HISTORY_PAGE_SIZE, total).toLocaleString()} of ${total.toLocaleString()}`}
         </span>
         <div className="pages">
-          <Link className={page <= 1 ? "disabled" : ""} href={qs(sp, { page: "1" })} aria-label="First">«</Link>
-          <Link className={page <= 1 ? "disabled" : ""} href={qs(sp, { page: String(page - 1) })} aria-label="Prev">‹</Link>
+          {page <= 1 ? <button type="button" disabled aria-label="First">«</button> : <Link href={qs(sp, { page: "1" })} aria-label="First">«</Link>}
+          {page <= 1 ? <button type="button" disabled aria-label="Prev">‹</button> : <Link href={qs(sp, { page: String(page - 1) })} aria-label="Prev">‹</Link>}
           <span className="cur">{page}</span>
-          <Link className={page >= pages ? "disabled" : ""} href={qs(sp, { page: String(page + 1) })} aria-label="Next">›</Link>
-          <Link className={page >= pages ? "disabled" : ""} href={qs(sp, { page: String(pages) })} aria-label="Last">»</Link>
+          {page >= pages ? <button type="button" disabled aria-label="Next">›</button> : <Link href={qs(sp, { page: String(page + 1) })} aria-label="Next">›</Link>}
+          {page >= pages ? <button type="button" disabled aria-label="Last">»</button> : <Link href={qs(sp, { page: String(pages) })} aria-label="Last">»</Link>}
           <span className="muted">{page}/{pages}</span>
         </div>
       </div>
 
-      <GridInteractivity />
+      <GridInteractivity key={JSON.stringify(sp)} />
     </>
   );
 }

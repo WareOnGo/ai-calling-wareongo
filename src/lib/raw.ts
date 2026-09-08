@@ -182,15 +182,16 @@ function buildFilter(viewer: Viewer, f: RawFilters): { whereSql: string; params:
 
 export async function getRawRecords(viewer: Viewer, f: RawFilters) {
   const { whereSql, params, terms } = buildFilter(viewer, f);
-  const page = Math.max(1, f.page ?? 1);
+  const requestedPage = Number.isFinite(f.page) ? Math.max(1, Math.floor(f.page!)) : 1;
   const pageSize = f.pageSize ?? RAW_PAGE_SIZE;
-  const offset = (page - 1) * pageSize;
 
   const countRes = await query<{ n: string }>(
     `select count(*)::text n from raw_records r ${whereSql}`,
     params,
   );
   const total = Number(countRes.rows[0].n);
+  const page = Math.min(requestedPage, Math.max(1, Math.ceil(total / pageSize)));
+  const offset = (page - 1) * pageSize;
 
   const rowsRes = await query<RawRow>(
     `select ${SELECT_LIST}
@@ -334,14 +335,14 @@ export async function getQueuedNumberSet(): Promise<Set<string>> {
   return new Set(res.rows.map((r) => normNum(r.contact_number)));
 }
 
-export async function getRawQueueRows(viewer: Viewer, f: RawFilters): Promise<{ rows: QueueSel[]; capped: boolean }> {
+export async function getRawQueueRows(viewer: Viewer, f: RawFilters): Promise<{ rows: QueueSel[]; capped: boolean; total: number; skippedNoPhone: number }> {
   const { whereSql, params } = buildFilter(viewer, f);
   // Must have a phone to call. Already-called records are NOT excluded here — they
   // are flagged via `cat` so the client can warn and let the user purge them.
   const phoneExists = `exists (select 1 from raw_phones rp where rp.master_id = r.id)`;
   const where = whereSql ? `${whereSql} and ${phoneExists}` : `where ${phoneExists}`;
 
-  const [res, queued] = await Promise.all([
+  const [res, queued, counts] = await Promise.all([
     query<QueueRowSql>(
       `${QUEUE_SELECT} ${where}
          order by r.area_sqft desc nulls last, r.id
@@ -349,10 +350,11 @@ export async function getRawQueueRows(viewer: Viewer, f: RawFilters): Promise<{ 
       params,
     ),
     getQueuedNumberSet(),
+    query<{ total: string; missing: string }>(`select count(*)::text total, count(*) filter (where not ${phoneExists})::text missing from raw_records r ${whereSql}`, params),
   ]);
   const rows = res.rows.map((r) => toQueueSel(r, queued));
   const capped = rows.length > QUEUE_CAP;
-  return { rows: capped ? rows.slice(0, QUEUE_CAP) : rows, capped };
+  return { rows: capped ? rows.slice(0, QUEUE_CAP) : rows, capped, total: Number(counts.rows[0].total), skippedNoPhone: Number(counts.rows[0].missing) };
 }
 
 // Re-fetch specific records by id — the dispatch path uses this so the numbers sent

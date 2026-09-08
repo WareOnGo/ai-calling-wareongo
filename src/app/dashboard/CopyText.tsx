@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useDashboardUI } from "./DashboardUI";
 import { IconCopy, IconCheck } from "./icons";
 
 // Text plus an always-visible copy button — used for phone numbers, which people
@@ -23,6 +24,7 @@ export function CopyText({
    */
   display?: React.ReactNode;
 }) {
+  const { notify } = useDashboardUI();
   const [copied, setCopied] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -42,13 +44,16 @@ export function CopyText({
         ta.style.opacity = "0";
         document.body.appendChild(ta);
         ta.select();
-        document.execCommand("copy");
+        const ok = document.execCommand("copy");
         ta.remove();
+        if (!ok) throw new Error("Clipboard unavailable");
       }
       setCopied(true);
+      notify(`${label ?? "Value"} copied`);
       window.setTimeout(() => setCopied(false), 1200);
     } catch {
       setFailed(true);
+      notify("Couldn’t copy. Select the text and copy it manually.");
       window.setTimeout(() => setFailed(false), 1600);
     }
   }

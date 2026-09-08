@@ -1,3 +1,10 @@
+import { RAW_COLUMNS as COLUMNS, RAW_GROUPS as GROUPS } from "../sheet-columns";
+import { dateTime as fmtDate } from "@/lib/display";
+import { SelectionProvider, SelectionSummary } from "../Selection";
+import { ExportButton } from "../ExportButton";
+import { FilterForm } from "../FilterForm";
+import { Freshness } from "../DashboardUI";
+import { RecordDetails } from "../RecordDetails";
 import Link from "next/link";
 import { getRawRecords, getRawFilterOptions, getQueuedNumberSet, type RawFilters, type RawRow } from "@/lib/raw";
 import { requireAdmin } from "@/lib/auth";
@@ -10,7 +17,7 @@ import { GroupToggle } from "../GroupToggle";
 import { IconDataset } from "../icons";
 import { FiltersToggle } from "../FiltersToggle";
 import { QueueForCalling } from "../QueueForCalling";
-import { RawExportButton } from "../RawExportButton";
+import { BatchActivity } from "../BatchActivity";
 import { CopyText } from "../CopyText";
 import { deriveCat, normNum } from "@/lib/queue";
 
@@ -19,18 +26,11 @@ export const dynamic = "force-dynamic";
 // Admin-only page: this is the full scraped corpus with owner PII, and it's the
 // launch point for Bolna dispatch. Employees see their assigned slice at
 // /dashboard/my instead.
-const COLUMNS = [
-  "Source", "Record ID", "Owner", "Phone", "Sqft",
-  "Calls", "Last Status", "Last Result", "Last Called", "Transcript", "Audio", "Notes",
-  "Contact", "City", "State", "Address", "Assigned To",
-];
+
 
 // Collapsible "Calls" group: green toggle shows the call count; collapses the
 // call-history detail columns. Same pattern as the analytics view.
-const GROUPS = [
-  { key: "calls", toggle: "Calls",
-    members: ["Last Status", "Last Result", "Last Called", "Transcript", "Audio", "Notes"] },
-];
+
 function colClass(label: string): string | undefined {
   for (const g of GROUPS) {
     if (label === g.toggle) return `${g.key}-toggle grp-toggle`;
@@ -39,10 +39,7 @@ function colClass(label: string): string | undefined {
   return undefined;
 }
 
-function fmtDate(s: string | null) {
-  if (!s) return "";
-  return new Date(s).toLocaleString("en-IN", { dateStyle: "medium" });
-}
+
 
 // Full call history for the hover tooltip on the Calls cell (one call per line).
 function callsTooltip(history: RawRow["calls_history"]): string {
@@ -104,72 +101,74 @@ export default async function RawDataset({
 
   const numCols = COLUMNS.length + 1; // + select col (group toggles count as one col each)
   const startRow = (page - 1) * pageSize;
-  const activeFilters = ["source", "state", "contact", "called", "last_result", "min_area", "max_area", "has_phone", "assignee"]
+  const activeFilters = ["source", "state", "city", "contact", "called", "last_result", "min_area", "max_area", "has_phone", "assignee"]
     .filter((k) => sp[k]).length;
 
   return (
-    <>
-      <div className="page-title"><span className="pt-icon"><IconDataset size={18} /></span> Raw Dataset</div>
-      <form className="filterbar" method="GET" action="/dashboard/raw">
+    <SelectionProvider key={JSON.stringify(sp)} total={total}>
+      <div className="page-title"><span className="pt-icon"><IconDataset size={18} /></span> Raw Dataset <BatchActivity /> <Freshness updatedAt={new Date().toISOString()} /></div>
+      <FilterForm key={JSON.stringify(sp)} applied={sp} action="/dashboard/raw">
         <div className="search">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
-          <input name="q" defaultValue={sp.q ?? ""} placeholder="Fuzzy search — owner, phone, city, source, address…" />
+          <input name="q" defaultValue={sp.q ?? ""} aria-label="Search records" placeholder="Search records…" title="Search owner, phone, city, source or address" />
         </div>
 
         <FiltersToggle count={activeFilters} />
-
-        <span className="spacer" />
-        <RawExportButton total={total} />
-        <AssignButton entity="record" total={total} assignees={assignees} />
-        <QueueForCalling total={total} pageRows={rows.length} />
         <ApplyButton />
+
+        <ColumnResize />
+        <span className="spacer" />
+        <ExportButton entity="raw" />
+        <AssignButton entity="record" total={total} assignees={assignees} />
+        <QueueForCalling />
         <a className="btn-text" href="/dashboard/raw">Reset</a>
 
-        <div className="filters-panel">
+        <div className="filters-panel" id="filters-panel">
             <div className={`chip${sp.source ? " active" : ""}`}>
-              <select name="source" defaultValue={sp.source ?? ""}>
+              <select aria-label="source" name="source" defaultValue={sp.source ?? ""}>
                 <option value="">Source</option>
                 {opts.sources.map((v) => <option key={v} value={v}>{v}</option>)}
               </select>
             </div>
             <div className={`chip${sp.state ? " active" : ""}`}>
-              <select name="state" defaultValue={sp.state ?? ""}>
+              <select aria-label="state" name="state" defaultValue={sp.state ?? ""}>
                 <option value="">State</option>
                 {opts.states.map((v) => <option key={v} value={v}>{v}</option>)}
               </select>
             </div>
+            <label className="chip"><span className="sr-only">City</span><input name="city" aria-label="City" placeholder="City" defaultValue={sp.city ?? ""} /></label>
             <div className={`chip${sp.contact ? " active" : ""}`}>
-              <select name="contact" defaultValue={sp.contact ?? ""}>
+              <select aria-label="contact" name="contact" defaultValue={sp.contact ?? ""}>
                 <option value="">Contact</option>
                 <option value="owner">Owner</option>
                 <option value="broker">Probable broker</option>
               </select>
             </div>
             <div className={`chip${sp.called ? " active" : ""}`}>
-              <select name="called" defaultValue={sp.called ?? ""}>
+              <select aria-label="called" name="called" defaultValue={sp.called ?? ""}>
                 <option value="">Called?</option>
                 <option value="no">Not called</option>
                 <option value="yes">Already called</option>
               </select>
             </div>
             <div className={`chip${sp.last_result ? " active" : ""}`}>
-              <select name="last_result" defaultValue={sp.last_result ?? ""}>
+              <select aria-label="last result" name="last_result" defaultValue={sp.last_result ?? ""}>
                 <option value="">Last result</option>
                 <option value="Available">Available</option>
                 <option value="Unavailable">Unavailable</option>
                 <option value="Unclear">Unclear</option>
               </select>
             </div>
-            <input className="num-filter" type="number" name="min_area" defaultValue={sp.min_area ?? ""} placeholder="min sqft" />
-            <input className="num-filter" type="number" name="max_area" defaultValue={sp.max_area ?? ""} placeholder="max sqft" />
+            <input className="num-filter" type="number" aria-label="Minimum square feet" min="0" name="min_area" defaultValue={sp.min_area ?? ""} placeholder="min sqft" />
+            <input className="num-filter" type="number" aria-label="Maximum square feet" min="0" name="max_area" defaultValue={sp.max_area ?? ""} placeholder="max sqft" />
             <label className={`toggle${sp.has_phone === "1" ? " active" : ""}`}>
               <input type="checkbox" name="has_phone" value="1" defaultChecked={sp.has_phone === "1"} />
               Has phone
             </label>
             <div className={`chip${sp.assignee ? " active" : ""}`}>
-              <select name="assignee" defaultValue={sp.assignee ?? ""}>
+              <select aria-label="assignee" name="assignee" defaultValue={sp.assignee ?? ""}>
                 <option value="">Assigned to</option>
                 <option value="none">Unassigned</option>
                 {assignees.map((a) => (
@@ -178,14 +177,15 @@ export default async function RawDataset({
               </select>
             </div>
         </div>
-      </form>
+      </FilterForm>
 
+      <SelectionSummary />
       <div className="gridwrap">
         <table className="sheet calls-collapsed">
           <thead>
             <tr className="colheads">
               <th className="rowgutter"></th>
-              <th className="selcol"><input type="checkbox" className="selall" title="Select all on this page" /></th>
+              <th className="selcol"><input type="checkbox" className="selall" aria-label="Select all on this page" title="Select all on this page" /></th>
               {COLUMNS.map((c) => {
                 const g = GROUPS.find((g) => g.toggle === c);
                 return g
@@ -199,7 +199,7 @@ export default async function RawDataset({
               <tr>
                 <td className="rownum"></td>
                 <td colSpan={numCols} className="muted" style={{ textAlign: "center", padding: 24 }}>
-                  No records match these filters.
+                  {activeFilters || sp.q ? <>No records match these filters. <Link href="/dashboard/raw">Clear filters</Link></> : "No records are available yet. Refresh after the dataset has been imported."}
                 </td>
               </tr>
             )}
@@ -210,6 +210,7 @@ export default async function RawDataset({
                   <input
                     type="checkbox"
                     className="rowsel"
+                    aria-label={`Select ${r.owner_name || "record"}`}
                     disabled={!r.phone}
                     title={r.phone ? undefined : "No phone number on this record"}
                     data-id={r.id}
@@ -221,11 +222,11 @@ export default async function RawDataset({
                     data-queued={r.phone && queuedSet.has(normNum(r.phone)) ? "1" : ""}
                   />
                 </td>
+                <td className="identity-owner">{hl(r.owner_name, terms)} <RecordDetails id={r.id} entity="record" /></td>
+                <td><CopyText value={r.phone} display={hl(r.phone, terms)} label="phone number" /></td>
+                <td>{r.area_sqft ? Number(r.area_sqft).toLocaleString("en-IN") : ""}</td>
                 <td>{hl(r.source, terms)}</td>
                 <td className="clip" title={r.source_record_id ?? ""}>{r.source_record_id ?? ""}</td>
-                <td>{hl(r.owner_name, terms)}</td>
-                <td><CopyText value={r.phone} display={hl(r.phone, terms)} label="phone number" /></td>
-                <td>{r.area_sqft ? Number(r.area_sqft).toLocaleString() : ""}</td>
                 {/* Calls group (collapsible, middle) */}
                 <td className="calls-toggle" title={r.call_count > 1 ? callsTooltip(r.calls_history) : undefined}>
                   {r.call_count > 0 ? r.call_count : "—"}
@@ -256,17 +257,16 @@ export default async function RawDataset({
           {total === 0 ? "No results" : `${(startRow + 1).toLocaleString()}–${Math.min(startRow + pageSize, total).toLocaleString()} of ${total.toLocaleString()}`}
         </span>
         <div className="pages">
-          <Link className={page <= 1 ? "disabled" : ""} href={qs(sp, { page: "1" })} aria-label="First">«</Link>
-          <Link className={page <= 1 ? "disabled" : ""} href={qs(sp, { page: String(page - 1) })} aria-label="Prev">‹</Link>
+          {page <= 1 ? <button type="button" disabled aria-label="First">«</button> : <Link href={qs(sp, { page: "1" })} aria-label="First">«</Link>}
+          {page <= 1 ? <button type="button" disabled aria-label="Prev">‹</button> : <Link href={qs(sp, { page: String(page - 1) })} aria-label="Prev">‹</Link>}
           <span className="cur">{page}</span>
-          <Link className={page >= pages ? "disabled" : ""} href={qs(sp, { page: String(page + 1) })} aria-label="Next">›</Link>
-          <Link className={page >= pages ? "disabled" : ""} href={qs(sp, { page: String(pages) })} aria-label="Last">»</Link>
+          {page >= pages ? <button type="button" disabled aria-label="Next">›</button> : <Link href={qs(sp, { page: String(page + 1) })} aria-label="Next">›</Link>}
+          {page >= pages ? <button type="button" disabled aria-label="Last">»</button> : <Link href={qs(sp, { page: String(pages) })} aria-label="Last">»</Link>}
           <span className="muted">{page}/{pages}</span>
         </div>
       </div>
 
       <GridInteractivity />
-      <ColumnResize />
-    </>
+    </SelectionProvider>
   );
 }

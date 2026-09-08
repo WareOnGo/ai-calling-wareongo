@@ -66,6 +66,7 @@ export type RawMatch = {
 };
 
 export type CallFilters = {
+  ids?: string[];
   q?: string;
   availability?: string;
   agent_id?: string;
@@ -123,6 +124,7 @@ function buildFilter(viewer: Viewer, f: CallFilters): { whereSql: string; params
   // Mandatory row-level scope (no-op for admins), before any user-supplied filter.
   const scope = assignmentScope(viewer, "call", "bolna_call_analysis.id", params);
   if (scope) where.push(scope);
+  if (f.ids) { params.push(f.ids); where.push(`id = any($${params.length}::uuid[])`); }
 
   // Multi-term fuzzy search: every whitespace-separated term must match (substring
   // OR trigram-similar) at least one search column. Fuzzy = typo tolerance on names.
@@ -195,15 +197,16 @@ export async function getCallIds(viewer: Viewer, f: CallFilters, cap: number): P
 
 export async function getCalls(viewer: Viewer, f: CallFilters) {
   const { whereSql, params, terms } = buildFilter(viewer, f);
-  const page = Math.max(1, f.page ?? 1);
+  const requestedPage = Number.isFinite(f.page) ? Math.max(1, Math.floor(f.page!)) : 1;
   const pageSize = f.pageSize ?? PAGE_SIZE;
-  const offset = (page - 1) * pageSize;
 
   const countRes = await query<{ n: string }>(
     `select count(*)::text n from bolna_call_analysis ${whereSql}`,
     params,
   );
   const total = Number(countRes.rows[0].n);
+  const page = Math.min(requestedPage, Math.max(1, Math.ceil(total / pageSize)));
+  const offset = (page - 1) * pageSize;
 
   const rowsRes = await query<CallRow>(
     `select ${SELECT_LIST}
