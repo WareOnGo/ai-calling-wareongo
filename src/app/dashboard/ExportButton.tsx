@@ -6,16 +6,20 @@ import { Dialog } from "./Dialog";
 import { IconDownload } from "./icons";
 
 export function ExportButton({ entity }: { entity: "calls" | "raw" }) {
-  const { ids, allMatching, count } = useSelection();
+  const { ids, allMatching, total } = useSelection();
   const { pending, notify } = useDashboardUI();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [scope, setScope] = useState<"selected" | "matching">("matching");
+  const count = scope === "selected" ? ids.length : total;
   async function download() {
     setBusy(true); setError("");
     try {
-      const params = new URLSearchParams(location.search); params.delete("page");
-      if (ids.length && !allMatching) { params.set("ids", ids.join(",")); }
+      const params = new URLSearchParams(location.search);
+      // Selection comes from this dialog, never stale IDs or paging in the URL.
+      for (const key of ["ids", "page", "records_page", "calls_page"]) params.delete(key);
+      if (scope === "selected") params.set("ids", ids.join(","));
       const res = await fetch(`/api/${entity}/export?${params}`, { signal: AbortSignal.timeout(120_000) });
       if (!res.ok) throw new Error(res.status === 401 ? "Your sign-in expired. Sign in again to export." : "Couldn't prepare the CSV. Please retry.");
       const blob = await res.blob();
@@ -28,10 +32,21 @@ export function ExportButton({ entity }: { entity: "calls" | "raw" }) {
     finally { setBusy(false); }
   }
   return <>
-    <button type="button" className="btn-export" disabled={!count || pending} onClick={() => { setError(""); setOpen(true); }}><IconDownload size={15} />Export CSV</button>
+    <button type="button" className="btn-export" disabled={!total || pending} onClick={() => { setError(""); setScope(ids.length && !allMatching ? "selected" : "matching"); setOpen(true); }}><IconDownload size={15} />Export CSV</button>
     {open && <Dialog title="Export CSV" onClose={() => setOpen(false)} busy={busy}>
-      <div className="modal-body"><p>Download <strong>{count.toLocaleString()}</strong> {ids.length && !allMatching ? "selected rows" : "rows matching the current filters"}?</p>{error && <p className="assign-error" role="alert">{error}</p>}</div>
-      <div className="modal-foot"><span className="spacer" /><button type="button" className="btn-text" disabled={busy} onClick={() => setOpen(false)}>Cancel</button><button type="button" className="btn-primary" disabled={busy} onClick={download}>{busy ? "Preparing CSV…" : error ? "Retry download" : "Download CSV"}</button></div>
+      <div className="modal-body">
+        <fieldset className="plain-fieldset" disabled={busy}>
+          <legend className="sr-only">Rows to export</legend>
+          <div className="assign-scope">
+            <label className={scope === "selected" ? "active" : undefined}><input type="radio" name="export-scope" checked={scope === "selected"} disabled={!ids.length} onChange={() => setScope("selected")} />{ids.length.toLocaleString()} selected rows on this page</label>
+            <label className={scope === "matching" ? "active" : undefined}><input type="radio" name="export-scope" checked={scope === "matching"} onChange={() => setScope("matching")} />All {total.toLocaleString()} matching rows</label>
+          </div>
+        </fieldset>
+        <p>Download <strong>{count.toLocaleString()}</strong> {scope === "selected" ? "selected rows" : "rows matching the current filters"}?</p>
+        {scope === "matching" && <p className="muted">Includes every page of the current filtered results.</p>}
+        {error && <p className="assign-error" role="alert">{error}</p>}
+      </div>
+      <div className="modal-foot"><span className="spacer" /><button type="button" className="btn-text" disabled={busy} onClick={() => setOpen(false)}>Cancel</button><button type="button" className="btn-primary" disabled={busy || !count} onClick={download}>{busy ? "Preparing CSV…" : error ? "Retry download" : "Download CSV"}</button></div>
     </Dialog>}
   </>;
 }
