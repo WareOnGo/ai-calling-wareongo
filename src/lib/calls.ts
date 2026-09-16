@@ -220,13 +220,6 @@ export async function getCalls(viewer: Viewer, f: CallFilters) {
   return { rows: rowsRes.rows, total, page, pageSize, pages: Math.max(1, Math.ceil(total / pageSize)), terms };
 }
 
-export function calledByOptions(): string[] {
-  return (process.env.CALLED_BY_OPTIONS ?? "Raghav,Dhaval,Jayanth")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
 // Filter dropdowns change rarely but the source/state options materialize the
 // view — cache for 10 min to cut repeated heavy queries (egress + compute).
 export const getFilterOptions = unstable_cache(_getFilterOptions, ["call-filter-options"], { revalidate: 600 });

@@ -464,6 +464,11 @@ current UI/API no longer records attempt counters; `attempts` and
 `last_attempt_at` remain legacy schema columns. Human outcomes reuse the AI
 vocabulary to support comparison without overwriting the AI verdict.
 
+The Call Analytics **Called By** dropdown loads active accounts from
+`bolna_app_users` for both admins and employees, using each account's name or
+email when no name is set. Manage these options in Team; changes appear on the
+next page load. Saved caller names remain visible after a rename or deactivation.
+
 ### The database grants access
 
 Google OAuth verifies identity and email verification. `bolna_app_users` then
@@ -678,7 +683,6 @@ the template describes the deployed connections.
 | `ENRICH_BATCH_SIZE` | `24` | Calls per bulk enrichment request. |
 | `ENRICH_CONCURRENCY` | `4` | Concurrent tasks within bulk enrichment and district requests. |
 | `DISTRICT_BATCH_SIZE` | `24` | Calls per district request. |
-| `CALLED_BY_OPTIONS` | Built-in names when absent | Comma-separated workflow dropdown values; an explicit empty value yields no options. |
 
 Use positive integer batch sizes/concurrency. Route handlers parse these values
 directly without a configuration-validation layer.

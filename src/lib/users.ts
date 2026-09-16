@@ -25,7 +25,7 @@ export async function listUsers(): Promise<AppUser[]> {
   return res.rows;
 }
 
-/** Assignable people — the dropdown in the Assign modal. */
+/** Active team members — shared by assignment and Called By dropdowns. */
 export async function listAssignees(): Promise<AppUser[]> {
   const res = await query<AppUser>(
     `select email, name, role, active from bolna_app_users

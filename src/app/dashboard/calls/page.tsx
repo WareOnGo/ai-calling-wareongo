@@ -6,7 +6,7 @@ import { FilterForm } from "../FilterForm";
 import { Freshness } from "../DashboardUI";
 import { RecordDetails } from "../RecordDetails";
 import Link from "next/link";
-import { getCalls, getFilterOptions, calledByOptions, type CallFilters, type CallRow, type RawMatch } from "@/lib/calls";
+import { getCalls, getFilterOptions, type CallFilters, type CallRow, type RawMatch } from "@/lib/calls";
 import { requireUser } from "@/lib/auth";
 import { listAssignees } from "@/lib/users";
 import { GridInteractivity } from "../GridInteractivity";
@@ -127,9 +127,9 @@ export default async function Dashboard({
   const [{ rows, total, page, pages, pageSize, terms }, opts, assignees] = await Promise.all([
     getCalls(user, filters),
     getFilterOptions(),
-    user.isAdmin ? listAssignees() : Promise.resolve([]),
+    listAssignees(),
   ]);
-  const cbOpts = calledByOptions();
+  const cbOpts = [...new Set(assignees.map(a => a.name?.trim() || a.email))];
 
   // Admins get an owner column; employees are only ever looking at their own rows.
   const COLUMNS = user.isAdmin ? [...BASE_COLUMNS, "Assigned To"] : BASE_COLUMNS;
