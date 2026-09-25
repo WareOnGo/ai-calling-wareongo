@@ -79,28 +79,20 @@ export async function getSessionEmail(): Promise<string | null> {
  * row exists*. The moment a real admin row is created, ADMIN_EMAILS stops having any
  * effect — so it can't quietly persist as a second, invisible access path.
  *
- * Fails CLOSED on a database error. The previous version degraded to the env
- * allowlist to survive a DB blip, but that is no longer a coherent fallback (env is
- * not the access list any more), and every page behind this guard needs Postgres to
- * render anyway — so a DB outage means "signed out", not "signed in with guessed
- * permissions".
+ * Database errors propagate so the OAuth callback can distinguish an unavailable
+ * access lookup from an actual denial. Neither case grants a session.
  */
 async function resolveAccess(email: string): Promise<CurrentUser | null> {
   const e = email.toLowerCase();
-  try {
-    const row = await getUser(e);
-    if (row) {
-      if (!row.active) return null;
-      return { email: e, name: row.name, isAdmin: row.role === "admin" };
-    }
-    if (!emailSet("ADMIN_EMAILS").has(e)) return null;
-    if ((await countActiveAdmins()) > 0) return null;   // bootstrap already used
-    console.warn(`[auth] bootstrap admin ${e} admitted via ADMIN_EMAILS — no admin row exists yet`);
-    return { email: e, name: null, isAdmin: true };
-  } catch (err) {
-    console.error("[auth] access lookup failed; denying:", err);
-    return null;
+  const row = await getUser(e);
+  if (row) {
+    if (!row.active) return null;
+    return { email: e, name: row.name, isAdmin: row.role === "admin" };
   }
+  if (!emailSet("ADMIN_EMAILS").has(e)) return null;
+  if ((await countActiveAdmins()) > 0) return null;   // bootstrap already used
+  console.warn(`[auth] bootstrap admin ${e} admitted via ADMIN_EMAILS — no admin row exists yet`);
+  return { email: e, name: null, isAdmin: true };
 }
 
 /** Can this Google account sign in at all? Used by the OAuth callback. */
@@ -112,7 +104,13 @@ export async function canSignIn(email: string): Promise<boolean> {
 export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   const email = await getSessionEmail();
   if (!email) return null;
-  const user = await resolveAccess(email);
+  let user: CurrentUser | null;
+  try {
+    user = await resolveAccess(email);
+  } catch (err) {
+    console.error("[auth] access lookup failed; denying:", err);
+    return null;
+  }
   if (!user) return null;
   const employeeView = (await cookies()).get(VIEW_COOKIE)?.value === `employee:${user.email}`;
   // A view preference can only narrow access. The database role still decides

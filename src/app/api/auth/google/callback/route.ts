@@ -58,10 +58,15 @@ export async function GET(req: Request) {
   if (!userInfo.email || !userInfo.email_verified) {
     return NextResponse.redirect(`${origin}/?error=email_not_verified`);
   }
-  if (!(await canSignIn(userInfo.email))) {
-    return NextResponse.redirect(
-      `${origin}/?error=not_allowed&email=${encodeURIComponent(userInfo.email)}`,
-    );
+  try {
+    if (!(await canSignIn(userInfo.email))) {
+      return NextResponse.redirect(
+        `${origin}/?error=not_allowed&email=${encodeURIComponent(userInfo.email)}`,
+      );
+    }
+  } catch (error) {
+    console.error("[auth] sign-in access lookup unavailable:", error);
+    return NextResponse.redirect(`${origin}/?error=access_unavailable`);
   }
 
   await setSessionEmail(userInfo.email);

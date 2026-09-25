@@ -710,7 +710,7 @@ in environment configuration, not committed files.
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Required for OAuth | Google identity flow. |
 | `SESSION_SECRET` | Required | Dedicated session HMAC key; there are no fallback secrets. |
 | `DATABASE_SSL` | Verified TLS by default | `disable` is for isolated local Postgres; `insecure` is an explicit certificate-verification escape hatch. |
-| `DATABASE_SSL_CA` | Optional | PEM certificate authority for verified private database certificates. |
+| `DATABASE_SSL_CA` | Optional for the app | PEM certificate authority override. The app includes Supabase's public root CA for Supabase database hosts; the migration CLI requires an explicit CA for private certificates. |
 | `ADMIN_EMAILS` | Optional comma-separated list | First-admin bootstrap, subject to the rules above. |
 | `ENFORCE_BOLNA_IP` | `false` | Exact string `true` enables a source-IP check. |
 | `BOLNA_WEBHOOK_IP` | `13.203.39.153` in code | Expected first `x-forwarded-for` value when enabled; confirm for the deployment. |

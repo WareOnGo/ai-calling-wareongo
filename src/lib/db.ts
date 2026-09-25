@@ -1,4 +1,5 @@
 import { Pool, type PoolClient, type QueryResultRow } from "pg";
+import { databaseTls } from "./database-tls";
 
 // Reuse a single pool across hot serverless invocations.
 const globalForPg = globalThis as unknown as { __pgPool?: Pool };
@@ -19,11 +20,7 @@ export function getPool(): Pool {
       max: 6,
       idleTimeoutMillis: 10_000,
       connectionTimeoutMillis: 10_000,
-      // Verify TLS unless the operator explicitly selects a local/insecure mode.
-      ssl: process.env.DATABASE_SSL === "disable" ? false : {
-        rejectUnauthorized: process.env.DATABASE_SSL !== "insecure",
-        ...(process.env.DATABASE_SSL_CA ? { ca: process.env.DATABASE_SSL_CA.replace(/\\n/g, "\n") } : {}),
-      },
+      ssl: databaseTls(u.hostname),
       statement_timeout: 15_000,
       idle_in_transaction_session_timeout: 20_000,
     });

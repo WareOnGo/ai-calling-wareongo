@@ -80,8 +80,10 @@ by processing and enrichment even when district inference is not scheduled.
 Before adopting a legacy installation, rehearse the **entire pending sequence**
 against its schema and run integration tests there. Passing tests on a fresh
 baseline alone does not prove compatibility with an existing installation.
-For Supabase's private CA, set `DATABASE_SSL_CA` to the downloaded certificate;
-do not disable certificate verification to get the deployment running.
+For the migration CLI, set `DATABASE_SSL_CA` to Supabase's downloaded certificate.
+The application bundles Supabase's public root CA for Supabase database hosts;
+`DATABASE_SSL_CA` overrides it when an operator supplies a custom trust anchor.
+Certificate and hostname verification remain enabled by default.
 
 ## Recovery
 

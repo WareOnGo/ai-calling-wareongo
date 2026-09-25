@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
 
 const ERRORS: Record<string, string> = {
   not_allowed: "That Google account isn't on the access list.",
+  access_unavailable: "Sign-in is temporarily unavailable. Please try again shortly.",
   email_not_verified: "Your Google email isn't verified.",
   oauth_not_configured: "Sign-in isn't configured on the server.",
   invalid_state: "Sign-in expired — please try again.",
