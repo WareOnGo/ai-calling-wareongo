@@ -1,7 +1,7 @@
-const DEFAULTS: Record<string, number> = { Owner: 215, Number: 174, Phone: 174, Availability: 195, "Call Status": 130, "Called By": 130, Added: 72, "WH ID": 125, When: 185, Direction: 95, Area: 110, Sqft: 90, Rent: 155, "AI Call Details": 145, DB: 100, "Assigned To": 205, Notes: 260, Transcript: 320, Recording: 100, Address: 270, "Record ID": 110, Source: 100, Calls: 85 };
+const DEFAULTS: Record<string, number> = { Owner: 215, Number: 174, Phone: 174, Availability: 195, "Call Status": 130, "Called By": 130, Added: 72, "WH ID": 125, When: 185, Direction: 95, Agent: 110, Area: 110, Sqft: 90, "Built-up sqft": 115, "Carpet sqft": 110, Rent: 155, "AI Call Details": 145, DB: 100, "Assigned To": 205, Notes: 260, Transcript: 320, Recording: 100, Address: 270, "Record ID": 110, Source: 100, Calls: 85 };
 
 export const CALL_COLUMNS = [
-  "Owner", "Number", "Availability", "Call Status", "Called By", "Added", "WH ID", "When", "Direction", "Area", "Sqft", "Rent",
+  "Owner", "Number", "Availability", "Call Status", "Called By", "Added", "WH ID", "When", "Direction", "Agent", "Area", "Built-up sqft", "Carpet sqft", "Rent",
   "AI Call Details", "Notes", "Transcript", "Recording", "DB", "DB Owner", "DB Type", "DB City", "DB State", "DB Sqft", "All Sources",
 ];
 export const RAW_COLUMNS = [
@@ -39,6 +39,10 @@ export function readColumnPreferences(path: string, labels: string[], defaults: 
       if (Array.isArray(legacy) && legacy.length === names.length) names.forEach((name,i) => { if (Number.isFinite(legacy[i]) && legacy[i] > 0) saved[name] = legacy[i]; });
     }
   } catch { /* storage may be unavailable */ }
+  if (path.endsWith("/calls")) {
+    if (saved.Sqft && !saved["Built-up sqft"]) saved["Built-up sqft"] = saved.Sqft;
+    hiddenColumns = hiddenColumns.map(name => name === "Sqft" ? "Built-up sqft" : name);
+  }
   const locked = new Set(['Row','Select','Owner','Number','Phone']);
   hiddenColumns = hiddenColumns.filter(name => !locked.has(name));
   return { widths: labels.map(name => Number.isFinite(saved[name]) && saved[name] >= 40 ? saved[name] : name === 'Row' ? 32 : name === 'Select' ? 34 : defaults[name] || 125), hiddenColumns };

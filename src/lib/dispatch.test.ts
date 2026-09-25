@@ -133,3 +133,42 @@ describe("batchFileName", () => {
     expect(batchFileName([sel({ area: "" })], AT)).toBe("batch-2026-07-03.csv");
   });
 });
+
+describe("multi-agent planning", () => {
+  const both = { availableLanguages: ["hindi", "english"] as const };
+  it("automatically splits the three English regions from other and unknown states", () => {
+    const states = ["Tamil Nadu", " Kerala ", "KARNATAKA", "Delhi", ""];
+    const result = assembleBatch(states.map((state, index) => sel({ id: String(index), contact: `900000000${index}`, state })), [], both);
+    expect(result.groups.english.map(row => row.state)).toEqual(states.slice(0, 3));
+    expect(result.groups.hindi.map(row => row.state)).toEqual(states.slice(3));
+    expect(result.callable).toHaveLength(5);
+    expect(result.heldRegion).toBe(0);
+  });
+  it("supports English override and preserves the Hindi region guard", () => {
+    const rows = [sel(), sel({ id: "south", contact: "9000000002", state: "Karnataka" })];
+    expect(assembleBatch(rows, [], { ...both, mode: "english" }).groups.english).toHaveLength(2);
+    const hindi = assembleBatch(rows, [], { ...both, mode: "hindi" });
+    expect(hindi.groups.hindi).toHaveLength(1);
+    expect(hindi.heldRegion).toBe(1);
+  });
+  it("holds records when their agent is missing instead of falling back to the wrong language", () => {
+    const result = assembleBatch([sel({ state: "Tamil Nadu" })], [], { availableLanguages: ["hindi"] });
+    expect(result.heldRegion).toBe(1);
+    expect(result.groups.hindi).toEqual([]);
+    expect(result.groups.english).toEqual([]);
+  });
+  it("deduplicates globally before splitting and respects existing reservations", () => {
+    const result = assembleBatch([sel(), sel({ id: "duplicate", state: "Kerala" }),
+      sel({ id: "reserved", contact: "9000000002", state: "Kerala", queued: true })], [], both);
+    expect(result.callable).toHaveLength(1);
+    expect(result.groups.hindi).toHaveLength(1);
+    expect(result.groups.english).toHaveLength(0);
+    expect(result.alreadyQueued).toBe(1);
+  });
+  it("excludes invalid numbers and excluded outcomes for both agents", () => {
+    const result = assembleBatch([sel({ contact: "123" }), sel({ id: "excluded", contact: "9000000002", state: "Kerala", cat: "dead" })], ["dead"], both);
+    expect(result.callable).toEqual([]);
+    expect(result.skippedNoNumber).toBe(1);
+    expect(result.excludedByCat).toBe(1);
+  });
+});

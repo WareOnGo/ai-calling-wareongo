@@ -1,11 +1,15 @@
+import { ApiError } from "./api";
+import { getDispatchAgents } from "./agents";
 import { unstable_cache } from "next/cache";
 import { query } from "@/lib/db";
-import { MIN_COST_CENTS } from "@/lib/inference";
+import { MIN_COST_CENTS, ENABLE_ENRICHMENT } from "@/lib/inference";
 import { INFERENCE_VERSION } from "@/lib/openai";
-import { assignmentScope, type Viewer } from "@/lib/scope";
+import { assignmentScope, currentAssignmentLateral, type Viewer } from "@/lib/scope";
 
 export type CallRow = {
+  revision: number;
   id: string;
+  agent_id: string | null;
   call_created_at: string | null;
   call_type: string | null;
   from_number: string | null;
@@ -17,6 +21,7 @@ export type CallRow = {
   segment: string | null;
   confidence: string | null;
   built_up_area_sqft: string | null;
+  carpet_area_sqft: string | null;
   expected_rent: string | null;
   notes: string | null;
   transcript: string | null;
@@ -87,7 +92,7 @@ export type CallFilters = {
 const SEARCH_COLS = [
   "from_number", "to_number", "owner_name", "db_area", "city_area",
   "raw_owner_name", "raw_source", "raw_sources", "raw_city", "raw_state", "raw_warehouse_type",
-  "expected_rent", "built_up_area_sqft", "status", "notes", "transcript",
+  "expected_rent", "built_up_area_sqft", "carpet_area_sqft", "status", "notes", "transcript",
 ];
 
 export const PAGE_SIZE = 25;
@@ -97,19 +102,19 @@ export const PAGE_SIZE = 25;
 // enriched flag is surfaced as `inferred`. Constants are server-side numbers → safe
 // to inline; keep in sync with inference.ts NEEDS_INFERENCE_SQL.
 const CAN_ENRICH_SQL = `(
-  status in ('completed', 'call-disconnected')
+  ${ENABLE_ENRICHMENT} and status in ('completed', 'call-disconnected')
   and total_cost > ${MIN_COST_CENTS}
   and length(trim(coalesce(transcript, ''))) > 0
   and (inferred = false or inference_version < ${INFERENCE_VERSION})
 ) as can_enrich`;
 
-const SELECT_LIST = `id, call_created_at, call_type, from_number, to_number, owner_name, db_area,
-       status, availability, segment, confidence, built_up_area_sqft, expected_rent,
+const SELECT_LIST = `(select revision from bolna_call_logs c where c.id = bolna_call_analysis.id) as revision, id, agent_id, call_created_at, call_type, from_number, to_number, owner_name, db_area,
+       status, availability, segment, confidence, built_up_area_sqft, carpet_area_sqft, expected_rent,
        notes, transcript, recording_url, needs_review, inferred, ${CAN_ENRICH_SQL},
        call_status, called_by, added_to_db, wh_id,
-       assigned_to, assignment_id, assignment_state, assignment_outcome,
-       assignment_remarks, assignment_note,
-       assignment_added_to_db, assignment_wh_id,
+       asg.assignee as assigned_to, asg.assignment_id, asg.state as assignment_state, asg.outcome as assignment_outcome,
+       asg.remarks as assignment_remarks, asg.note as assignment_note,
+       asg.asg_added as assignment_added_to_db, asg.asg_wh as assignment_wh_id,
        raw_match_count, raw_source, raw_owner_name, raw_warehouse_type,
        raw_city, raw_state, raw_area_sqft, raw_contact_type, raw_sources, raw_matches`;
 
@@ -156,11 +161,11 @@ function buildFilter(viewer: Viewer, f: CallFilters): { whereSql: string; params
   // Admin-only in practice: an employee already sees only their own rows, so this
   // narrows nothing for them.
   // "none" = no OPEN owner; a named assignee matches their open or completed work.
-  if (f.assignee === "none") {
+  if (viewer.isAdmin && f.assignee === "none") {
     where.push(`not exists (select 1 from bolna_assignments a
                   where a.entity_type = 'call' and a.entity_id = bolna_call_analysis.id
                     and a.state = 'open')`);
-  } else if (f.assignee) {
+  } else if (viewer.isAdmin && f.assignee) {
     params.push(f.assignee.toLowerCase());
     where.push(`exists (select 1 from bolna_assignments a
                  where a.entity_type = 'call' and a.entity_id = bolna_call_analysis.id
@@ -171,12 +176,14 @@ function buildFilter(viewer: Viewer, f: CallFilters): { whereSql: string; params
   return { whereSql, params, terms };
 }
 
-// All rows matching the filters, ignoring pagination — used by the CSV export.
-export async function getCallsForExport(viewer: Viewer, f: CallFilters): Promise<CallRow[]> {
-  const { whereSql, params } = buildFilter(viewer, f);
+// Small explicit selections for detail/personal-work views. CSV uses callsExportQuery.
+export async function getCallDetailsByIds(viewer: Viewer, ids: string[]): Promise<CallRow[]> {
+  if (!ids.length) return [];
+  if (ids.length > 1000) throw new ApiError(400, "Too many detail IDs; use the export endpoint");
+  const { whereSql, params } = buildFilter(viewer, { ids });
   const res = await query<CallRow>(
-    `select ${SELECT_LIST} from bolna_call_analysis ${whereSql}
-       order by call_created_at desc nulls last`,
+    `select ${SELECT_LIST} from bolna_call_analysis ${currentAssignmentLateral("call", "bolna_call_analysis.id", viewer, params)} ${whereSql}
+       order by call_created_at desc nulls last, id`,
     params,
   );
   return res.rows;
@@ -188,7 +195,7 @@ export async function getCallIds(viewer: Viewer, f: CallFilters, cap: number): P
   const { whereSql, params } = buildFilter(viewer, f);
   const res = await query<{ id: string }>(
     `select id from bolna_call_analysis ${whereSql}
-       order by call_created_at desc nulls last limit ${cap + 1}`,
+       order by call_created_at desc nulls last, id limit ${cap + 1}`,
     params,
   );
   const ids = res.rows.map((r) => r.id);
@@ -198,7 +205,7 @@ export async function getCallIds(viewer: Viewer, f: CallFilters, cap: number): P
 export async function getCalls(viewer: Viewer, f: CallFilters) {
   const { whereSql, params, terms } = buildFilter(viewer, f);
   const requestedPage = Number.isFinite(f.page) ? Math.max(1, Math.floor(f.page!)) : 1;
-  const pageSize = f.pageSize ?? PAGE_SIZE;
+  const pageSize = Number.isFinite(f.pageSize) ? Math.max(1, Math.min(100, Math.floor(f.pageSize!))) : PAGE_SIZE;
 
   const countRes = await query<{ n: string }>(
     `select count(*)::text n from bolna_call_analysis ${whereSql}`,
@@ -210,9 +217,9 @@ export async function getCalls(viewer: Viewer, f: CallFilters) {
 
   const rowsRes = await query<CallRow>(
     `select ${SELECT_LIST}
-       from bolna_call_analysis
+       from bolna_call_analysis ${currentAssignmentLateral("call", "bolna_call_analysis.id", viewer, params)}
        ${whereSql}
-       order by call_created_at desc nulls last
+       order by call_created_at desc nulls last, id
        limit ${pageSize} offset ${offset}`,
     params,
   );
@@ -239,10 +246,18 @@ async function _getFilterOptions() {
     `select distinct raw_state from bolna_call_analysis where raw_state is not null and raw_state <> '' order by raw_state`,
   );
   return {
-    agents: agents.rows.map((r) => r.agent_id),
+    agents: [...new Set([...Object.values(getDispatchAgents()).map(agent => agent.id), ...agents.rows.map((r) => r.agent_id)])],
     statuses: statuses.rows.map((r) => r.status),
     sources: sources.rows.map((r) => r.raw_source),
     states: states.rows.map((r) => r.raw_state),
     availabilities: ["Available", "Unavailable", "Unclear", "dead number - do not call"],
   };
+}
+
+export function callsExportQuery(viewer: Viewer, f: CallFilters): import("./export").ExportQuery {
+  const { whereSql, params } = buildFilter(viewer, f);
+  const countParams = [...params];
+  const join = currentAssignmentLateral("call", "bolna_call_analysis.id", viewer, params);
+  return { sql: `select ${SELECT_LIST.replace(/raw_matches$/, "null::jsonb as raw_matches")} from bolna_call_analysis ${join} ${whereSql} order by call_created_at desc nulls last, id`,
+    countSql: `select count(*)::text n from bolna_call_analysis ${whereSql}`, params, countParams };
 }

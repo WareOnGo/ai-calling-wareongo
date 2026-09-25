@@ -50,13 +50,13 @@ describe("assignmentScope", () => {
 
 describe("currentAssignmentLateral", () => {
   it("prefers the open assignment over an older finished one", () => {
-    const sql = currentAssignmentLateral("record", "r.id");
+    const sql = currentAssignmentLateral("record", "r.id", admin, []);
     expect(sql).toContain("order by (a.state = 'open') desc, a.assigned_at desc");
     expect(sql).toContain("limit 1");
   });
 
   it("ignores dropped assignments, matching the visibility scope", () => {
-    expect(currentAssignmentLateral("call", "base.id")).toContain("a.state <> 'dropped'");
+    expect(currentAssignmentLateral("call", "base.id", emp, [])).toContain("a.state <> 'dropped'");
   });
 });
 

@@ -51,12 +51,15 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // Idempotent: a duplicate terminal fire for the same execution is a no-op.
+    // Duplicate and older attempts are ignored; a newer provider retry replaces the prior attempt.
     await query(
-      `insert into bolna_webhook_events (id, raw, status, next_attempt_at)
-       values ($1, $2, 'pending', now())
-       on conflict (id) do nothing`,
-      [e.id, body],
+      `insert into bolna_webhook_events (id, raw, status, next_attempt_at, retry_count)
+       values ($1, $2, 'pending', now(), $3)
+       on conflict (id) do update set raw = excluded.raw, retry_count = excluded.retry_count,
+         status = 'pending', attempts = 0, next_attempt_at = now(), processed_at = null,
+         lease_token = null, lease_until = null, last_error = null
+       where excluded.retry_count > bolna_webhook_events.retry_count`,
+      [e.id, body, e.retry_count ?? 0],
     );
   } catch (err) {
     console.error("[bolna-webhook] landing insert failed", err);

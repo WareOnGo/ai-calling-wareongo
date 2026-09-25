@@ -1,3 +1,4 @@
+import { rawFiltersSchema } from "@/lib/filters";
 import { RAW_COLUMNS as COLUMNS, RAW_GROUPS as GROUPS } from "../sheet-columns";
 import { dateTime as fmtDate } from "@/lib/display";
 import { SelectionProvider, SelectionSummary } from "../Selection";
@@ -17,6 +18,7 @@ import { GroupToggle } from "../GroupToggle";
 import { IconDataset } from "../icons";
 import { FiltersToggle } from "../FiltersToggle";
 import { QueueForCalling } from "../QueueForCalling";
+import { getConfiguredLanguages } from "@/lib/agents";
 import { BatchActivity } from "../BatchActivity";
 import { CopyText } from "../CopyText";
 import { deriveCat, normNum } from "@/lib/queue";
@@ -77,20 +79,10 @@ export default async function RawDataset({
   const sp: SP = {};
   for (const [k, v] of Object.entries(rawSp)) sp[k] = Array.isArray(v) ? v[0] : v;
 
-  const filters: RawFilters = {
-    q: sp.q,
-    source: sp.source,
-    state: sp.state,
-    city: sp.city,
-    contact: sp.contact,
-    called: sp.called,
-    last_result: sp.last_result,
-    min_area: sp.min_area ? Number(sp.min_area) : undefined,
-    max_area: sp.max_area ? Number(sp.max_area) : undefined,
-    has_phone: sp.has_phone === "1",
-    assignee: sp.assignee,
-    page: sp.page ? Number(sp.page) : 1,
-  };
+  const parsedFilters = rawFiltersSchema.safeParse(sp);
+  if (!parsedFilters.success) return <p role="alert">Invalid filters. {parsedFilters.error.issues.map(i => i.message).join("; ")} <Link href="/dashboard/raw">Clear filters</Link></p>;
+  const filters: RawFilters = { ...parsedFilters.data, page: sp.page ? Number(sp.page) : 1 };
+
 
   const [{ rows, total, page, pages, pageSize, terms }, opts, queuedSet, assignees] = await Promise.all([
     getRawRecords(user, filters),
@@ -122,7 +114,7 @@ export default async function RawDataset({
         <span className="spacer" />
         <ExportButton entity="raw" />
         <AssignButton entity="record" total={total} assignees={assignees} />
-        <QueueForCalling />
+        <QueueForCalling availableLanguages={getConfiguredLanguages()} />
         <a className="btn-text" href="/dashboard/raw">Reset</a>
 
         <div className="filters-panel" id="filters-panel">
@@ -190,7 +182,7 @@ export default async function RawDataset({
                 const g = GROUPS.find((g) => g.toggle === c);
                 return g
                   ? <GroupToggle key={c} group={g.key} label={c} />
-                  : <th key={c} className={colClass(c)}>{c}</th>;
+                  : <th key={c} data-column={c} className={colClass(c)}>{c}</th>;
               })}
             </tr>
           </thead>

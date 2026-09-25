@@ -19,9 +19,9 @@ export function ExportButton({ entity }: { entity: "calls" | "raw" }) {
       const params = new URLSearchParams(location.search);
       // Selection comes from this dialog, never stale IDs or paging in the URL.
       for (const key of ["ids", "page", "records_page", "calls_page"]) params.delete(key);
-      if (scope === "selected") params.set("ids", ids.join(","));
-      const res = await fetch(`/api/${entity}/export?${params}`, { signal: AbortSignal.timeout(120_000) });
-      if (!res.ok) throw new Error(res.status === 401 ? "Your sign-in expired. Sign in again to export." : "Couldn't prepare the CSV. Please retry.");
+      const res = await fetch(`/api/${entity}/export`, { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...(scope === "selected" ? { ids } : {}), filters: Object.fromEntries(params) }), signal: AbortSignal.timeout(300_000) });
+      if (!res.ok) { const data = await res.json().catch(() => ({})); throw new Error(res.status === 401 ? "Your sign-in expired. Sign in again to export." : data.error || "Couldn't prepare the CSV. Please retry."); }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a"); a.href = url;

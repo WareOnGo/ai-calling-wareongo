@@ -1,4 +1,5 @@
-import { query } from "@/lib/db";
+import { ApiError } from "./api";
+import { query, transaction } from "@/lib/db";
 
 // bolna_app_users is THE access list. A row here is what lets someone sign in, and
 // its role is what makes them an admin — there is no env allowlist any more.
@@ -60,17 +61,26 @@ export async function upsertUser(u: {
   role?: Role;
   active?: boolean;
 }): Promise<AppUser> {
-  const res = await query<AppUser>(
-    `insert into bolna_app_users (email, name, role, active)
-     values ($1, $2, coalesce($3, 'employee'), coalesce($4, true))
-     on conflict (email) do update set
-       name   = coalesce(excluded.name,   bolna_app_users.name),
-       role   = coalesce($3,              bolna_app_users.role),
-       active = coalesce($4,              bolna_app_users.active)
-     returning email, name, role, active`,
-    [u.email.toLowerCase(), u.name ?? null, u.role ?? null, u.active ?? null],
-  );
-  return res.rows[0];
+  return transaction(async client => {
+    // All role writes serialize, including two admins attempting to remove each other.
+    await client.query("select pg_advisory_xact_lock(81620401)");
+    if (u.role === "employee" || u.active === false) {
+      const check = await client.query(`select 1 from bolna_app_users where email = $1 and active and role = 'admin'
+        and (select count(*) from bolna_app_users where active and role = 'admin') <= 1`, [u.email.toLowerCase()]);
+      if (check.rowCount) throw new ApiError(409, "Promote another active admin first");
+    }
+    const res = await client.query<AppUser>(
+      `insert into bolna_app_users (email, name, role, active)
+       values ($1, $2, coalesce($3, 'employee'), coalesce($4, true))
+       on conflict (email) do update set
+         name   = case when $5 then excluded.name else bolna_app_users.name end,
+         role   = coalesce($3,              bolna_app_users.role),
+         active = coalesce($4,              bolna_app_users.active)
+       returning email, name, role, active`,
+      [u.email.toLowerCase(), u.name ?? null, u.role ?? null, u.active ?? null, u.name !== undefined],
+    );
+    return res.rows[0];
+  });
 }
 
 /** Open-work counts per assignee, for the admin team page. */

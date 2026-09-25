@@ -1,18 +1,25 @@
 "use client";
 import { useEffect, useState } from "react";
 import { readColumnPreferences } from "./sheet-columns";
+import { useSelection } from "./Selection";
+import { useDashboardUI } from "./DashboardUI";
 import { usePathname } from "next/navigation";
 
 export function ColumnResize() {
+  const { root } = useSelection();
+  const { pending } = useDashboardUI();
   const path = usePathname();
   const [revision, setRevision] = useState(0);
   const [options, setOptions] = useState<string[]>([]);
   const [hidden, setHidden] = useState<string[]>([]);
   useEffect(() => {
-    const table = document.querySelector<HTMLTableElement>("table.sheet");
+    if (pending) return;
+    const element = root.current;
+    if (!element) return;
+    const table = element.querySelector<HTMLTableElement>("table.sheet");
     const headers = table ? [...table.querySelectorAll<HTMLTableCellElement>("tr.colheads th")] : [];
     if (!table || !headers.length) return;
-    const labels = headers.map((th, i) => th.textContent?.trim() || (i === 0 ? "Row" : "Select"));
+    const labels = headers.map((th, i) => th.dataset.column || (i === 0 ? "Row" : "Select"));
     const key = `sheet-col-widths-v6:${path}`;
     const preferences = readColumnPreferences(path, labels);
     const widths = preferences.widths;
@@ -25,9 +32,9 @@ export function ColumnResize() {
     labels.forEach((name,i) => { const col = document.createElement('col'); col.className = headers[i].className; col.style.width = `${widths[i]}px`; colgroup.append(col); headers[i].dataset.column = name; });
     table.prepend(colgroup); table.classList.add('resizable');
     const cols = [...colgroup.children] as HTMLElement[];
-    const rows = [...table.rows];
     const pinEnd = labels.findIndex(name => name === 'Number' || name === 'Phone');
     const sync = () => {
+      const rows = [...table.rows];
       let left = 0;
       headers.forEach((th,i) => {
         for (const row of rows) { const cell = row.cells[i]; if (!cell || cell.colSpan > 1) continue; cell.classList.toggle('column-hidden', hiddenColumns.includes(labels[i])); if (i <= pinEnd) { cell.classList.add('frozen-cell'); cell.style.setProperty('--frozen-left', `${left}px`); } }
@@ -51,10 +58,10 @@ export function ColumnResize() {
     const visibility = (e: Event) => { hiddenColumns = (e as CustomEvent<string[]>).detail; sync(); };
     const observer = new ResizeObserver(sync); observer.observe(table);
     sync();
-    document.addEventListener('pointermove',move); document.addEventListener('pointerup',up); document.addEventListener('columns-changed',sync); document.addEventListener('column-visibility',visibility);
-    return () => { observer.disconnect(); handles.forEach(h => h?.remove()); document.removeEventListener('pointermove',move); document.removeEventListener('pointerup',up); document.removeEventListener('columns-changed',sync); document.removeEventListener('column-visibility',visibility); document.body.style.cursor = ''; };
-  }, [path, revision]);
-  function toggle(name: string) { const next = hidden.includes(name) ? hidden.filter(n => n !== name) : [...hidden,name]; setHidden(next); try { localStorage.setItem(`sheet-hidden:${path}`,JSON.stringify(next)); } catch { /* unavailable */ } document.dispatchEvent(new CustomEvent('column-visibility',{detail:next})); }
-  function reset() { try { for (const key of [`sheet-col-widths-v6:${path}`,`sheet-col-widths-v5:${path}`,`sheet-hidden:${path}`,...['call','calls','db'].map(g => `sheet-groups:${path}:${g}`)]) localStorage.removeItem(key); } catch { /* unavailable */ } document.dispatchEvent(new Event('reset-columns')); setRevision(n => n+1); }
+    document.addEventListener('pointermove',move); document.addEventListener('pointerup',up); element.addEventListener('columns-changed',sync); element.addEventListener('column-visibility',visibility);
+    return () => { observer.disconnect(); handles.forEach(h => h?.remove()); document.removeEventListener('pointermove',move); document.removeEventListener('pointerup',up); element.removeEventListener('columns-changed',sync); element.removeEventListener('column-visibility',visibility); document.body.style.cursor = ''; };
+  }, [path, revision, root, pending]);
+  function toggle(name: string) { const next = hidden.includes(name) ? hidden.filter(n => n !== name) : [...hidden,name]; setHidden(next); try { localStorage.setItem(`sheet-hidden:${path}`,JSON.stringify(next)); } catch { /* unavailable */ } root.current?.dispatchEvent(new CustomEvent('column-visibility',{detail:next})); }
+  function reset() { try { for (const key of [`sheet-col-widths-v6:${path}`,`sheet-col-widths-v5:${path}`,`sheet-hidden:${path}`,...['call','calls','db'].map(g => `sheet-groups:${path}:${g}`)]) localStorage.removeItem(key); } catch { /* unavailable */ } root.current?.dispatchEvent(new Event('reset-columns')); setRevision(n => n+1); }
   return <details className="column-menu"><summary>Columns</summary><div className="column-options">{options.map(name => <label key={name}><input type="checkbox" checked={!hidden.includes(name)} onChange={() => toggle(name)} />{name}</label>)}<button type="button" className="btn-row" onClick={reset}>Reset columns</button></div></details>;
 }

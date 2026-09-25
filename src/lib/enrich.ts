@@ -1,5 +1,5 @@
-import { getPool } from "@/lib/db";
-import { inferCall, type Inference } from "@/lib/openai";
+import type { PoolClient } from "pg";
+import { type Inference } from "@/lib/openai";
 import { inferenceFields } from "@/lib/inference";
 
 // Fields the enrich write returns to the caller so the client can reflect them
@@ -7,6 +7,7 @@ import { inferenceFields } from "@/lib/inference";
 export type EnrichedFields = {
   availability: string | null;
   built_up_area_sqft: string | null;
+  carpet_area_sqft: string | null;
   city_area: string | null;
   expected_rent: string | null;
   possession: string | null;
@@ -15,15 +16,17 @@ export type EnrichedFields = {
   needs_review: boolean;
 };
 
-// Write an inference result back onto a call row. Shared by the bulk /api/enrich
+// Called only inside a fenced job transaction. Write an inference result back onto a call row. Shared by the bulk /api/enrich
 // pass and the per-row "Infer" button so their update logic can't drift.
-export async function writeInference(id: string, inf: Inference): Promise<EnrichedFields> {
+export async function writeInference(client: PoolClient, id: string, inf: Inference): Promise<EnrichedFields> {
   const f = inferenceFields(inf);
-  await getPool().query(
+  await client.query(
     `update bolna_call_logs set
        llm_availability   = $2,
        built_up_area_sqft = $3,
+       carpet_area_sqft   = $13,
        city_area          = $4,
+       inferred_district  = case when city_area is distinct from $4 then null else inferred_district end,
        expected_rent      = $5,
        possession         = $6,
        confidence         = $7,
@@ -48,11 +51,13 @@ export async function writeInference(id: string, inf: Inference): Promise<Enrich
       f.inference_version,
       f.inference_model,
       f.needs_review,
+      f.carpet_area_sqft,
     ],
   );
   return {
     availability: f.llm_availability,
     built_up_area_sqft: f.built_up_area_sqft,
+    carpet_area_sqft: f.carpet_area_sqft,
     city_area: f.city_area,
     expected_rent: f.expected_rent,
     possession: f.possession,
@@ -60,21 +65,4 @@ export async function writeInference(id: string, inf: Inference): Promise<Enrich
     notes: f.notes,
     needs_review: f.needs_review,
   };
-}
-
-export type EnrichResult =
-  | { ok: true; fields: EnrichedFields }
-  | { ok: false; reason: "not_found" };
-
-// Enrich a single call by id: fetch its transcript, run OpenAI, persist. Throws
-// on OpenAI/DB failure so the caller can surface the error to the user.
-export async function enrichCallById(id: string): Promise<EnrichResult> {
-  const { rows } = await getPool().query<{ transcript: string | null }>(
-    `select transcript from bolna_call_logs where id = $1`,
-    [id],
-  );
-  if (rows.length === 0) return { ok: false, reason: "not_found" };
-  const inf = await inferCall(rows[0].transcript);
-  const fields = await writeInference(id, inf);
-  return { ok: true, fields };
 }

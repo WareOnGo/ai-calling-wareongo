@@ -56,17 +56,19 @@ flowchart TD
     Work --> Analysis
     Dashboard --> Dispatch[Dispatch API]
     Listings --> Dispatch
-    Dispatch --> Batches[(Batch audit and items)]
+    Dispatch --> Batches[(Batch audit, items and phone reservations)]
+    Scheduler --> Reconcile[Batch reconciliation]
+    Reconcile --> Batches
+    Reconcile --> Bolna
     Dispatch --> Bolna[Bolna create and schedule APIs]
     Bolna --> Capture[Webhook capture API]
     Capture --> Events[(bolna_webhook_events)]
     Scheduler[External scheduler] --> Process[Process API]
     Events --> Process
-    Process --> OpenAI[OpenAI inference]
     Process --> Logs[(bolna_call_logs)]
     Scheduler --> Enrich[Bulk enrichment API]
     Logs --> Enrich
-    Enrich --> OpenAI
+    Enrich --> OpenAI[OpenAI inference]
     Enrich --> Logs
     Logs --> Analysis
     Listings --> Analysis
@@ -78,9 +80,9 @@ flowchart TD
 | Runtime | Node.js route handlers; Vercel-oriented configuration | Database connections, crypto, and external API calls stay on the server. |
 | Runtime database access | Parameterized SQL through `pg` | Keep explicit control over queue locking, joins, upserts, and filtered exports. |
 | Database | Supabase Postgres | Store listings, call history, workflow, and the processing queue together. |
-| Schema tooling | Prisma 7 plus supplemental SQL | Model tables and supported indexes; retain SQL for objects outside that model. Prisma Client is not used at runtime. |
+| Schema tooling | Versioned SQL and a transactional migration runner | Rebuild app-owned objects independently of private datasets and co-tenant applications. Prisma is optional introspection tooling. |
 | Calling | Bolna batch API and execution webhooks | Separate outbound scheduling from asynchronous call results. |
-| Inference | OpenAI SDK with a strict JSON response schema | Extract consistent fields from noisy Hindi/Hinglish transcripts. |
+| Inference | OpenAI SDK with a strict JSON response schema | Extract consistent fields from Hindi/Hinglish and Indian English transcripts. |
 | Validation | Zod and Vitest | Validate external payloads and test consequential rules without live services. |
 
 The operating model is an internal tool with bounded batches. Using Postgres as
@@ -104,9 +106,17 @@ bolna-processing/
 │   ├── bolna.ts                # Execution validation and normalization
 │   ├── openai.ts               # Prompts, response schemas, inference version
 │   ├── inference.ts            # Eligibility and result-to-column mapping
-│   ├── enrich.ts               # Shared inference persistence
+│   ├── process-events.ts       # Leased webhook processing and atomic acknowledgement
+│   ├── call-jobs.ts            # Leased inference/district jobs and stale-result fencing
+│   ├── enrich.ts               # Inference persistence inside a fenced transaction
+│   ├── api.ts / filters.ts     # Typed request boundaries and common filter parsing
+│   ├── export.ts / csv.ts      # Snapshot CSV streaming and spreadsheet escaping
+│   ├── dispatch-service.ts     # Idempotency, reservations and durable provider checkpoints
+│   ├── batch-reconciliation.ts # Provider status checks and audited resolution
 │   ├── queue.ts                # Phone deduplication, categories, CSV generation
-│   ├── dispatch.ts             # Batch assembly and live Bolna transport
+│   ├── dispatch-plan.ts        # Shared preview and server routing/validation
+│   ├── agents.ts               # Configured Hindi and English agents
+│   ├── dispatch.ts             # Live Bolna transport for one language batch
 │   ├── routing.ts              # Region rules and schedule calculation
 │   ├── auth.ts / users.ts      # Sessions, access lookup, accounts
 │   ├── scope.ts                # Assignment visibility predicates
@@ -114,6 +124,8 @@ bolna-processing/
 │   ├── calls.ts / raw.ts       # Scoped grid, export, and selection readers
 │   ├── personal-work.ts        # Employee work lists and totals
 │   └── autosave.ts             # Serialized client save state machine
+├── database/                   # App-only baseline, forward migrations and runner
+├── tests/integration/          # PostgreSQL regression tests; providers are mocked
 ├── aws/                        # Historical scheduler integration notes
 ├── prisma.config.ts            # Schema tooling connection configuration
 ├── .env.example                # Starting configuration; see corrections below
@@ -123,8 +135,8 @@ bolna-processing/
 The following directories are intentionally gitignored and may exist only in an
 internal checkout: `prisma/`, `sql/`, `scripts/`, `rawdata/`, `cleandata/`,
 `exports/`, and `.claude/skills/`. They contain private schema, pipeline, or source
-material. A normal clone includes the application but **cannot provision a full
-database or run the private maintenance scripts by itself**.
+material. A normal clone can provision the app schema using `database/`. Private
+source-import and historical maintenance scripts still require the internal checkout.
 
 The browser evaluation project is a separate package at `../bolna-eval/` in this
 workspace. It is not an application dependency.
@@ -156,7 +168,10 @@ foreign keys.
 | `raw_records` | One source listing | UUID plus unique `(source, source_record_id)`; searchable columns and JSON metadata. |
 | `raw_phone_numbers` | One canonical number | Unique `phone_last10`; numeric surrogate `phone_id`; formatted phone. |
 | `raw_phones` | One listing-to-number association | Unique `(master_id, phone_id)`; `is_primary`. |
-| `call_batches` | One dispatch attempt | Creator, scheduled time, state, filter snapshot, exclusion counts, Bolna batch ID. |
+| `bolna_dispatch_requests` | One confirmed selection | Intent key/hash, routing mode and aggregate counts across language batches. |
+| `call_batches` | One agent batch | Parent dispatch, resolved agent ID/language, lifecycle, counts, durable Bolna ID, error and resolution audit. |
+| `bolna_dispatch_reservations` | One active reservation per normalized phone | Unique phone key prevents concurrent batches from claiming the same number. |
+| `bolna_call_jobs` | One job per call and analysis kind | Input hash, inference version, expiring lease token, attempts, backoff and completion. |
 | `call_batch_items` | One number selected for a batch | Batch FK; listing ID and contact data captured at dispatch time. |
 | `bolna_app_users` | One account | Email primary key; name, admin/employee role, active flag. |
 | `bolna_assignments` | One assignment episode | Polymorphic entity ID, assignee, brief, state, result, remarks, warehouse reference. |
@@ -243,65 +258,40 @@ Non-terminal events receive HTTP 200 and are ignored. Invalid JSON receives 400,
 invalid payloads 422, and failed authentication 401. A database insert failure
 returns 500 so the sender can retry. Capture makes no OpenAI or Bolna API calls.
 
-The insert uses `ON CONFLICT (id) DO NOTHING`. **The first captured terminal
-payload wins.** A later delivery with the same execution ID does not refresh the
-stored payload, even if its facts changed. Historical backfill uses the same
-policy.
+Duplicate terminal deliveries for the same execution and retry count are ignored.
+A strictly greater `retry_count` replaces the captured payload and resets its
+processing state. Older, out-of-order attempts cannot replace a newer retry.
+Corrections within the same retry count still require explicit operator replay;
+the provider payload does not supply a universally reliable revision ordering.
 
 ### Postgres acts as the job queue
 
-```mermaid
-stateDiagram-v2
-    [*] --> pending: Terminal execution captured
-    pending --> processing: Due row claimed
-    failed --> processing: Due and attempts below limit
-    processing --> processed: Call persisted
-    processing --> failed: Caught processing failure
-    processed --> [*]
-```
+`claimEvent()` atomically selects one due row with `FOR UPDATE SKIP LOCKED`,
+increments attempts, and writes a random lease token with a 90-second expiry.
+Workers claim just before processing, within a request deadline; they do not
+claim a whole batch and then wait on external services. Expired processing rows
+become eligible again. The default request ceiling is 20 events, capped at 100.
 
-A worker claims due `pending`/`failed` rows inside a transaction using
-`FOR UPDATE SKIP LOCKED`, marks them `processing`, commits, and processes its
-batch sequentially. Releasing the transaction before inference avoids holding
-row locks during external calls. Overlapping process runs can claim different
-events.
+Normalization, canonical-phone linkage, the call upsert, and event acknowledgement
+run in one transaction. That transaction locks and verifies the current lease
+before writing. A superseded worker cannot acknowledge or overwrite a reclaimed
+job. Missing/invalid customer numbers do not create a shared empty phone identity.
 
-On a caught processing failure, the row becomes `failed`, `attempts` increments,
-and the next attempt is delayed by:
+Caught failures use `min(2 ^ attempts, 60)` minutes of backoff. Claims, including
+crashed runs, count toward `max_attempts` (default 8). Exhausted rows remain visible
+for operator inspection. If recording the failure also fails, the existing lease
+still expires and the worker proceeds to other work.
 
-```text
-min(2 ^ attempts, 60) minutes
-```
+### Keep ingestion independent of inference
 
-The first retry waits two minutes. Rows stop being eligible when `attempts`
-reaches their stored `max_attempts`, whose schema default is 8. Error text is
-retained, truncated to 1,000 characters. A partial due-time index supports the
-worker's selection query.
+Processing makes no OpenAI requests. It refreshes provider-owned call facts,
+including cost, duration and recording URL, while preserving human workflow fields.
+Changed transcript/status/cost invalidates old inference; changed location inputs
+invalidate inferred district data. Retries are handled by the separate analysis
+jobs, so model outages cannot delay saving call facts.
 
-### Idempotency protects stored results
-
-Call logs use the execution UUID as their primary key. On conflict, the worker
-updates status, transcript, context, raw payload, phone linkage, and processing
-time. Inference fields change only if that run produced inference. The worker
-ORs the `enriched` flag and preserves the greatest inference version.
-
-It does not update every original call fact on conflict: cost, duration,
-recording URL, and several other fields are currently insert-only in this upsert.
-Human workflow fields are excluded entirely.
-
-The log write and queue acknowledgement are separate queries. Replaying after a
-successful log write is safe for row identity, but can repeat an OpenAI request.
-This is duplicate-resistant storage, not exactly-once external execution.
-
-### Failure boundaries
-
-An OpenAI exception is caught separately: the worker still stores the call,
-leaves new inference absent, and marks the event processed. A later enrichment
-pass can recover analysis. Database or normalization failures use event retries.
-
-An interrupted function is different from a caught exception. There is no lease
-timestamp or stale-claim recovery: events can remain `processing` after a timeout
-or crash. They need operator reconciliation before being requeued.
+The database transaction guarantees an atomic log write and acknowledgement.
+External inference remains retryable work, not an exactly-once side effect.
 
 ## Inference and classification
 
@@ -311,14 +301,17 @@ Source: [prompts and schemas](src/lib/openai.ts),
 
 ### Business meaning of the verdict
 
-Inference version **2** asks whether the owner has warehouse or commercial space
+Inference version **3** asks whether the owner has warehouse or commercial space
 available. An alternative property offered during the call counts as available;
 so does confirmed availability followed by a callback request. A greeting alone
 does not count as confirmation.
 
 The result contains `availability` (`Available`, `Unavailable`, `Unclear`),
-`built_up_area_sqft`, `city_area`, `expected_rent`, `possession`, `confidence`, and
-short explanatory `notes`. Area and rent remain strings; rent preserves its unit.
+`built_up_area_sqft`, `carpet_area_sqft`, `city_area`, `expected_rent`, `possession`,
+`confidence`, and short explanatory `notes`. Carpet and built-up measurements are
+stored and displayed separately; the question/answer context determines which
+field to fill. Ambiguous measurements are left empty. Area and rent remain
+strings; rent preserves its unit.
 Unknown details use empty strings. Low confidence sets `needs_review`.
 
 Strict JSON-schema output constrains response shape, not factual correctness.
@@ -334,18 +327,25 @@ Automatic property inference requires all three conditions:
    `0.04`, using the application's interpretation of Bolna cost units as cents.
 3. The transcript contains non-whitespace text.
 
-Bulk enrichment additionally selects only unenriched calls or calls with an
-older `inference_version`. It orders by cost descending and uses bounded
-concurrency. Bump `INFERENCE_VERSION` when changing the prompt or result schema
-so historical rows become eligible again.
+Bulk enrichment selects only unenriched or older-version calls and claims each
+through `bolna_call_jobs`. The claim includes an input fingerprint, model/prompt
+version, random lease token, attempts, and 120-second expiry. Calls are selected
+under locks; concurrent manual and scheduled requests cannot claim the same
+current input. Analysis failures back off exponentially and stop after eight
+claims. Changing the input or inference version creates fresh eligible work.
 
-`ENABLE_ENRICHMENT=false` disables only inline inference in `/api/process`.
-`/api/enrich`, `/api/district`, and per-call inference remain callable. The
-per-call endpoint checks ownership but does not enforce automatic eligibility
-or version gates; it is a manual re-inference path. The dashboard's `can_enrich`
-SQL mirrors the automatic gate and must stay aligned with it.
+OpenAI requests have a 35-second timeout and no hidden SDK retries. Before writing,
+the job transaction verifies its lease, current input fingerprint, and that a
+newer inference version has not already been stored. District jobs use the same
+mechanism with transcript, locality, and source area in their fingerprint.
 
-### Classification belongs in a view
+`ENABLE_ENRICHMENT=false` disables property, district, and per-call inference.
+Manual inference obeys the same eligibility checks. Admins may explicitly submit
+`{ "force": true }` to rerun current analysis or retry an exhausted job, while
+retaining the connection/cost/transcript gate and excluding an active same-input
+lease. Bump `INFERENCE_VERSION` when changing the prompt or result schema.
+
+### Classification has one database policy
 
 `bolna_call_analysis` applies deterministic rules over stored facts:
 
@@ -361,15 +361,15 @@ Updating the view reclassifies history without paying for inference again. The
 model's original verdict remains in `llm_availability` for human comparison.
 
 The optional district endpoint selects calls whose source recipient `area` is
-SQL null and whose `inferred_district` is null, provided transcript/locality signal
+empty or SQL null and whose `inferred_district` is null, provided transcript/locality signal
 exists. An undetermined result is stored as `''` to avoid reselection. This is a
-separate, unversioned pass; its stored district is not currently projected by
+separate versioned job kind; its stored district is not currently projected by
 `bolna_call_analysis` into the main call reader.
 
 ## Dispatch and scheduling
 
 Source: [queue utilities](src/lib/queue.ts),
-[batch assembly and transport](src/lib/dispatch.ts),
+[batch planning](src/lib/dispatch-plan.ts), [transport](src/lib/dispatch.ts),
 [routing](src/lib/routing.ts), and
 [dispatch handler](src/app/api/raw/dispatch/route.ts).
 
@@ -386,8 +386,8 @@ second dispatch filter.
 The pure `assembleBatch()` helper narrows candidates in this order:
 
 ```text
-deduplicate number → optional category exclusions → region holdback
-                   → already queued exclusion → non-empty phone
+deduplicate number → optional category exclusions → language routing
+                   → already queued exclusion → valid normalized phone
 ```
 
 Its accounting reports the candidate count after deduplication and rows removed
@@ -395,47 +395,83 @@ at each stage. Already-called categories are `dead`, `unclear`, `available`, and
 `unavailable`; an empty category means never called. Excluding a past outcome is
 an operator choice, rather than a blanket prohibition on calling again.
 
-The UI removes excluded categories before sending IDs. The route calls
-`assembleBatch(rows)` without category arguments, so its persisted exclusion
-counts describe only the submitted subset. It still enforces deduplication,
-region holdback, queued-number checks, and phone presence server-side.
+The UI sends the selected IDs, category exclusions and routing mode. Preview and
+server dispatch share the same planner; the server rechecks current data and
+reservations before making any provider request.
 
 ### Routing and provider contract
 
-The routing rule holds back Tamil Nadu, Kerala, and Karnataka from the configured
-Hindi agent. Comparison ignores case and surrounding spaces. Unknown or empty
-states pass this rule; the app does not infer a recipient's language. There is
-no English-agent route yet.
+The default **Automatic — by state** mode routes Tamil Nadu, Kerala and Karnataka
+to English, and other or unspecified states to Hindi. Comparison ignores case
+and surrounding spaces. **Hindi only** retains the three-state holdback;
+**English only** routes all callable records to English. State is a routing rule,
+not an inferred language preference. If the required agent is unconfigured,
+those contacts remain held; there is no fallback to the other language.
+
+A mixed selection creates two independent provider batches with one common
+schedule. The preview, confirmation, results and Recent batches show each agent.
+Both agents send execution webhooks to the same authenticated endpoint. Call
+history and exports retain the provider agent ID and show its language label.
+The dashboard does not change either agent's voice, transcription or greeting.
 
 The transport implements two requests: create a batch by uploading a multipart
-CSV, then schedule its returned ID. Its provider assumptions are encoded in
+CSV, durably record its returned ID, then schedule that ID. Its provider assumptions are encoded in
 [routing.ts](src/lib/routing.ts) and [dispatch.ts](src/lib/dispatch.ts):
 
 - CSV columns are `name,property_type,contact_number,area`. Property type is
   `warehouse`; `area` is the listing city, not square footage.
 - CSV output uses a UTF-8 BOM, CRLF line endings, and quoting for commas, quotes,
   and newlines.
-- The filename uses the most frequent cities and the scheduled date in IST.
-- The earliest scheduling slot is a ten-minute UTC boundary with at least two
-  minutes of headroom, formatted with a numeric `+00:00` offset.
+- The filename uses the most frequent cities, scheduled date in IST, language,
+  and local batch UUID for reconciliation.
+- The scheduling slot is a ten-minute UTC boundary with four minutes of initial
+  headroom: two for the provider's minimum plus two for the upload/request budget.
+  It is formatted with a numeric `+00:00` offset.
 - The create request asks Bolna for three retries at 30, 60, and 120 minutes.
   Optional `BOLNA_FROM_NUMBER` supplies a caller-number override.
 
 ### Persist the attempt before contacting Bolna
 
-The route writes a `sending` batch and bulk-inserts items with `unnest`, then
-contacts Bolna. On success it stores the provider batch ID and marks `scheduled`.
-On a caught provider error it marks `failed` and returns HTTP 502 with the local
-batch ID. Error text is returned, but is not stored on the batch row.
+Each request includes a UUID `intentKey`, selected IDs, exclusions, `routingMode`
+(`auto`, `hindi`, or `english`), and explicit confirmation. The current UI always
+sends its selected mode, initially `auto`. Older clients that omit the mode retain
+Hindi-only routing so a stale preview cannot authorize additional English calls.
+The server fingerprints
+the normalized selection and mode. Reusing that key returns the existing result;
+changing the selection or mode under the same key returns
+409. The key is retained on the modal's request, and reservations survive browser
+reloads independently of client state.
 
-Numbers in `sending` or `scheduled` batches are excluded from later selections;
-`failed` batches do not block. Recent batch activity joins received call logs
-through the provider batch ID.
+A short Postgres transaction serializes reservation checks, inserts the parent
+request, child batches and items, and reserves all normalized phones using a
+shared unique key. It also checks legacy active batch items. The transaction ends
+before contacting Bolna. Concurrent requests cannot send overlapping numbers,
+including across different agents, even if both previews were loaded first.
+Resolved agent IDs are frozen on each child. Replaying an accepted intent after
+a configuration change still returns its existing batches.
 
-These checks reduce repeat dispatches but are not a transactional reservation.
-Concurrent requests can select the same number, and a lost response can leave
-local state different from Bolna's state. The UI treats unsuccessful confirmation
-as uncertain and directs the operator to Recent batches before trying again.
+The lifecycle is `creating` → `scheduling` → `scheduled` → `completed`. The provider
+ID is persisted before the scheduling call. Both provider requests have explicit
+timeouts. Any ambiguous create/schedule response leaves the batch `uncertain`,
+with its error and reservations retained. Create and schedule are never blindly
+retried. There is no transaction spanning Postgres and Bolna and no claim of
+exactly-once remote execution. Each child advances independently: one can be
+scheduled while the other remains uncertain. The response contains a `batches`
+array and aggregate `state` (`partial` when only some children are confirmed).
+Replaying the parent never resends either child. Resolve each affected batch in
+Recent batches; only that child's reservations are released.
+
+`/api/batches/reconcile` polls known provider IDs. Completion requires an executed
+batch, coverage of every reserved contact, terminal executions and exhaustion of
+retryable failures. Unknown retry metadata remains reserved. Recent batches lets
+an admin check provider status or record a verified completion/cancellation note,
+including who released the numbers. That action does not cancel calls remotely.
+Stale in-flight states and legacy failures require reconciliation; a timeout alone
+never frees a phone.
+
+Provider contracts: [batch status](https://www.bolna.ai/docs/api-reference/batches/get_batch),
+[batch executions](https://www.bolna.ai/docs/api-reference/batches/executions), and
+[automatic retries](https://www.bolna.ai/docs/outbound/auto-retry).
 
 ## Assignments and access control
 
@@ -493,11 +529,11 @@ require neither a redeploy nor a new session cookie.
 
 ### Session and authorization boundaries
 
-`bp_session` contains `<email>.<base64url HMAC-SHA256(email)>`, verified with a
-constant-time signature check. It is HTTP-only, `SameSite=Lax`, Secure in
-production, and given a 30-day browser lifetime. The signature contains no
-timestamp; the token has no independent server-side expiry. Rotating the signing
-secret invalidates sessions.
+`bp_session` contains a signed, versioned payload with email, issue time and expiry.
+The server checks HMAC-SHA256 in constant time and rejects expired, future-issued,
+malformed or legacy tokens. Cookies remain HTTP-only, `SameSite=Lax`, Secure in
+production and valid for 30 days. `SESSION_SECRET` is mandatory and independent
+of worker/OAuth secrets. Rotating it invalidates all sessions.
 
 OAuth uses a short-lived state cookie. Callback URLs derive from forwarded
 protocol/host headers and the request host. `GOOGLE_REDIRECT_URI` is not read.
@@ -508,15 +544,27 @@ There is no authentication middleware. Pages explicitly call `requireUser()` or
 must add its own guard. React `cache()` deduplicates access resolution within a
 request rather than caching permissions across requests.
 
-Employee entity visibility uses an `EXISTS` predicate against assignments whose
-state is not `dropped`. Done work remains visible and editable. Scoped call and
-assignment updates include ownership in the SQL `WHERE`; inaccessible rows return
-404. Per-call inference uses a separate ownership check before its work.
+Employee entity visibility uses an `EXISTS` predicate against non-dropped
+assignments. Done work remains readable, but an employee can change shared call
+workflow fields only while holding the open assignment. Assignment projections
+are separately scoped to the viewer, so a previous owner sees their own history
+without receiving the next owner's notes through grids, details or exports.
 
-Application predicates enforce employee isolation, not per-user Postgres RLS.
-Reuse scoped entity readers; history and personal-work readers must receive the
-employee's assignee filter explicitly. A direct pooled query does not inherit
-the browser user's permissions.
+Assignment history readers require a viewer. Assignment updates enforce ownership
+and the expected `revision` within the SQL update; employee `dropped` transitions
+are forbidden. Reopening work already owned by someone else returns a conflict.
+Bulk reassignment verifies active assignees, entity existence and raw phone
+eligibility, locks entities in deterministic order, and drops/inserts atomically.
+
+Every call/assignment PATCH must include its current numeric `revision`; successful
+writes return the incremented version. Stale or inaccessible edits return 409
+without revealing another user's row. Boolean and text values, IDs, dates and
+numeric filters are validated before SQL. Removing the last active admin is
+checked under a transaction lock shared by all account writes.
+
+Authorization remains application-enforced rather than per-user Postgres RLS.
+Keep new entity readers within these scoped modules; a raw pooled query does not
+inherit the browser user's permissions.
 
 Administrators can switch to Employee view through `bp_view`, narrowing their
 effective role and data access. Switching back is allowed only while the current
@@ -560,11 +608,18 @@ Calls default to 25 rows per page, raw listings and assignment history to 50,
 and personal work to 25 per channel. Filter-option queries have a ten-minute
 cache, so current records can precede new dropdown values.
 
-Filtered raw exports cap at 100,000 rows. Filter-based calling selection and bulk
-assignment cap at 20,000 and report truncation. Filtered call exports have no row
-cap; the call export endpoint limits explicit ID selections to 1,000. Both CSV
-endpoints build responses in memory. Shared readers preserve scope and ordering,
-but these ceilings mean exports are not universally unlimited grid copies.
+Both CSV endpoints support POSTed selections and filters, with GET compatibility.
+They count and stream a consistent database snapshot using a cursor and batches
+of 250 rows. The shared 100,000-row ceiling returns 413 before streaming rather
+than silently truncating data. Responses include `x-export-row-count`. Explicit
+IDs are validated and no longer truncated to 1,000 or placed in long browser URLs.
+Spreadsheet-bound cells neutralize formula prefixes; provider upload CSV remains
+literal so Bolna receives valid phone values. Filter-based assignment/calling
+selection still caps at 20,000 and reports that ceiling.
+
+Raw summaries fetch the latest transcript directly and retain only 20 small recent
+history entries. They count all calls without aggregating every transcript into
+arrays. Stable ID tie-breakers make pagination and deduplication deterministic.
 
 ### Server rendering with focused client components
 
@@ -630,18 +685,17 @@ curl --fail-with-body http://localhost:3000/api/health
 ```
 
 Health checks database access and the event relation, not the complete dashboard
-schema. The database also needs `bolna_call_analysis`, user/assignment tables,
+schema and reports expired/exhausted job counts. The database also needs `bolna_call_analysis`, user/assignment tables,
 and required extensions. First sign-in does not auto-create a user row: a
 bootstrap admin should create their own active admin row in Team.
 
-For a fresh database, obtain the private schema artifacts first and follow
+For a fresh database, use the tracked app-only baseline and follow
 [Database management](#database-management). The app does not apply migrations
 at startup or during `next build`.
 
 ## Configuration
 
-Use [.env.example](.env.example) as a starting point. It is incomplete and includes
-legacy settings; source behavior below takes precedence. Keep real credentials
+Use [.env.example](.env.example) as a starting point. Keep real credentials
 in environment configuration, not committed files.
 
 ### Connections and authentication
@@ -654,105 +708,78 @@ in environment configuration, not committed files.
 | `BOLNA_WEBHOOK_SECRET` | Required for capture | Query `token` or `x-webhook-secret` header. |
 | `PROCESS_SECRET` | Required for worker endpoints | Bearer header or query `token` on process/enrich/district. |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Required for OAuth | Google identity flow. |
-| `SESSION_SECRET` | Set explicitly | HMAC key; code falls back to `PROCESS_SECRET`, then `GOOGLE_CLIENT_SECRET`. |
+| `SESSION_SECRET` | Required | Dedicated session HMAC key; there are no fallback secrets. |
+| `DATABASE_SSL` | Verified TLS by default | `disable` is for isolated local Postgres; `insecure` is an explicit certificate-verification escape hatch. |
+| `DATABASE_SSL_CA` | Optional | PEM certificate authority for verified private database certificates. |
 | `ADMIN_EMAILS` | Optional comma-separated list | First-admin bootstrap, subject to the rules above. |
 | `ENFORCE_BOLNA_IP` | `false` | Exact string `true` enables a source-IP check. |
 | `BOLNA_WEBHOOK_IP` | `13.203.39.153` in code | Expected first `x-forwarded-for` value when enabled; confirm for the deployment. |
 
 [db.ts](src/lib/db.ts) reuses one pool per warm Node process, with at most six
-connections and ten-second idle/connect timeouts. It strips `sslmode`,
-`pgbouncer`, and `connection_limit` URL parameters and sets
-`ssl: { rejectUnauthorized: false }`. TLS is used, but certificate-chain
-verification is disabled. A local test database must support TLS too.
-
-Runtime and schema tooling use separate URLs. The Prisma config describes
-transaction pooling for the app and a session-pooler connection for DDL; the
-template instead shows a session-pooler runtime URL. The app does not enforce a
-specific pooler port. Configure each URL for its purpose rather than assuming
-the template describes the deployed connections.
+connections and ten-second idle/connect timeouts. It strips conflicting URL
+parameters, verifies TLS by default, and supports a custom CA. Statements time out
+after 15 seconds; idle transactions after 20 seconds. CSV streaming holds one
+connection per active export and uses a read-only repeatable-read transaction.
+The migration runner prefers `DIRECT_URL`; runtime reads use `DATABASE_URL`.
+Use a session-capable connection for migration operations.
 
 ### Inference and worker tuning
 
 | Variable | Code default | Actual use |
 |---|---|---|
 | `OPENAI_API_KEY` | None | Required when inference reaches OpenAI. |
-| `OPENAI_MODEL` | `gpt-4o` | Shared property/district model. The template sets `gpt-4o-mini`, overriding this fallback. |
-| `ENABLE_ENRICHMENT` | Enabled unless exactly `false` | Inline inference in `/api/process` only. |
+| `OPENAI_MODEL` | `gpt-4o` | Shared property/district model; template matches the code default. |
+| `ENABLE_ENRICHMENT` | Enabled unless exactly `false` | Global switch for all property and district inference. |
 | `INFERENCE_MIN_COST_CENTS` | `0.04` | Strict lower cost threshold for automatic property inference. |
-| `PROCESS_BATCH_SIZE` | `5` | Sequential events per process request. |
+| `PROCESS_BATCH_SIZE` | `20` | Sequential claims per request, bounded by a deadline; maximum 100. |
 | `ENRICH_BATCH_SIZE` | `24` | Calls per bulk enrichment request. |
 | `ENRICH_CONCURRENCY` | `4` | Concurrent tasks within bulk enrichment and district requests. |
 | `DISTRICT_BATCH_SIZE` | `24` | Calls per district request. |
 
-Use positive integer batch sizes/concurrency. Route handlers parse these values
-directly without a configuration-validation layer.
+Invalid tuning values fall back to defaults. Worker batches cap at 100 and
+analysis concurrency at four to bound resource use.
 
 ### Dispatch and private scripts
 
 | Variable | Use |
 |---|---|
 | `BOLNA_API_KEY` | Batch transport and historical execution reads. |
-| `BOLNA_AGENT_ID` | Agent for live dispatch. |
+| `BOLNA_AGENT_ID` | Existing Hindi agent for live dispatch. |
+| `BOLNA_HINDI_AGENT_ID` | Optional explicit Hindi agent; overrides `BOLNA_AGENT_ID`. |
+| `BOLNA_ENGLISH_AGENT_ID` | English agent used for southern-state auto routing or English-only batches. |
 | `BOLNA_FROM_NUMBER` | Optional caller-number override. |
 | `BACKFILL_AGENT_IDS` | Comma-separated agents for the private backfill script. |
 | `BACKFILL_FROM`, `BACKFILL_TO` | UTC ISO date bounds; end defaults to the current time. |
 | `DRAIN_URL`, `PROCESS_URL` | Drain-script URL fallback when no positional URL is given. The npm drain/enrich scripts supply localhost URLs explicitly. |
 
-`MAX_ATTEMPTS` in the template is **not read by the current worker**. Retry limits
-come from each event's `max_attempts` column. `GOOGLE_REDIRECT_URI` and
-`ALLOWED_EMAILS` are also unused.
+Retry limits come from each event's `max_attempts` column (default eight).
+`GOOGLE_REDIRECT_URI`, `ALLOWED_EMAILS`, and `MAX_ATTEMPTS` are not runtime settings.
 
 ## Database management
 
-This section requires the private `prisma/` directory. Schema tooling lives in
-[prisma.config.ts](prisma.config.ts); runtime queries use `pg`.
-
-For a schema change, edit the model and inspect the proposed database diff:
+The tracked [database guide](database/README.md) describes fresh setup, adoption,
+checksums, rollout order and recovery. For a fresh, empty app schema:
 
 ```bash
-npm run db:diff
+node --env-file=.env.local database/migrate.mjs --init
 ```
 
-After reviewing it against the intended database, the existing update workflow is:
+For an existing installation:
 
 ```bash
-npm run db:push
-npm run db:post-push
+node --env-file=.env.local database/migrate.mjs
 ```
 
-`prisma/schema.prisma` describes tables and supported indexes.
-`prisma/post-push.sql` supplies `pg_trgm`, `pgcrypto`, role/entity/state/outcome
-CHECK constraints, and the current `bolna_call_analysis` view. The post-push step
-is required: table synchronization alone does not make the dashboard schema
-complete. Its current SQL drops/recreates the named checks and view; inspect any
-execution failures.
+The runner locks and applies missing SQL migrations transactionally and records
+checksums. It never initializes over existing app tables or touches co-tenant
+application tables. Pause old workers/dispatch traffic and let requests finish
+before the first reliability rollout; old binaries do not honor leases or
+revisions. Apply migrations before deploying the new app. Legacy cookies require
+sign-in again, and automatic analysis now needs the separate enrichment schedule.
 
-Important maintenance decisions:
-
-- **Introspection overwrites the model.** `npm run db:pull` refreshes from the
-  selected database and can remove models not yet applied. Preserve pending
-  schema work before pulling.
-- **Generated columns need SQL care.** Prisma introspection represents
-  `phone_last10` as a generated default expression. Preserve its generated-column
-  definition in replay SQL; a naive generated diff may not reproduce it.
-- **Partial indexes are intentional.** The schema enables `partialIndexes` for
-  due-event and assignment-exclusivity indexes, among others.
-- **Connection handling differs.** Prisma requires `DIRECT_URL` and rewrites
-  `sslmode=require` to `prefer` for the existing pooler compatibility workaround.
-  This is separate from the runtime pool's explicit TLS configuration.
-- **The database is shared.** Review unrelated models and every proposed drop.
-  Do not initialize an already populated shared database with the baseline.
-
-`prisma/migrations/` retains baseline and later SQL for rebuilding an empty test
-database. The browser harness replays those files, then applies `post-push.sql`.
-Keep replay SQL and schema models aligned when changing columns. Fresh setup
-should use this reviewed SQL path to preserve generated columns and supplemental
-objects rather than assuming `db:push` alone is a complete bootstrap.
-
-`sql/` is historical. `npm run db:init` requires private scripts and replays legacy
-numbered SQL; it is not the current complete setup path. There is no `db:migrate`
-npm script. `db:status` inspects Prisma's migration ledger, which does not record
-changes applied through `db:push`.
+Private Prisma files remain optional introspection artifacts. Their old push and
+post-push scripts are not authoritative for this schema and must not be used to
+undo the tracked migrations. Dataset loaders/backfill are separate private tools.
 
 ## HTTP interface
 
@@ -768,10 +795,12 @@ non-admin requests; ordinary session guards return 401.
 | GET, POST | `/api/district` | Process secret | Fill missing inferred districts. |
 | GET | `/api/health` | None | Database connectivity and pending/failed event count. |
 | GET | `/api/raw/queue` | Admin | Resolve filtered calling candidates and counts. |
-| POST | `/api/raw/dispatch` | Admin; `confirm: true` | Create and schedule a live batch. |
-| GET | `/api/batches` | Admin | Latest 20 batches and received-result counts. |
-| GET | `/api/raw/export` | Scoped session | Selected or filtered listing CSV. |
-| GET | `/api/calls/export` | Scoped session | Selected/filtered call CSV. |
+| POST | `/api/raw/dispatch` | Admin; `intentKey` and `confirm: true` | Create and schedule per-language batches. UI sends `routingMode`; omission retains legacy Hindi-only behavior. |
+| GET | `/api/batches` | Admin | Latest 20 batches, errors and received-result counts. |
+| POST | `/api/batches/[id]` | Admin | Check provider status or record a verified resolution. |
+| GET, POST | `/api/batches/reconcile` | Process secret | Reconcile five active provider batches per run. |
+| GET, POST | `/api/raw/export` | Scoped session | Selected or filtered listing CSV. |
+| GET, POST | `/api/calls/export` | Scoped session | Selected/filtered call CSV. |
 | PATCH | `/api/calls/[id]` | Scoped session | Edit `call_status`, `called_by`, `added_to_db`, `wh_id`. |
 | POST | `/api/calls/[id]/enrich` | Scoped session | Manually infer one call. |
 | GET | `/api/details/[entity]/[id]` | Scoped session | Entity detail and up to 50 history rows; entity is `call` or `record`. |
@@ -801,7 +830,7 @@ The application uses `npm run build` and `npm run start`; for Vercel, set variab
 in the project environment configuration.
 
 Provision the schema separately, register the deployed Google callback, and
-configure Bolna's execution webhook to send to:
+configure both Bolna agents' execution webhooks to send to:
 
 ```text
 https://<app-host>/api/bolna-webhook?token=<BOLNA_WEBHOOK_SECRET>
@@ -839,9 +868,11 @@ Any scheduler capable of authenticated HTTP POST can drive the endpoints. An AWS
 scheduled Lambda can issue that request. Historical options in
 `aws/eventbridge-scheduler.md` need provider-specific validation before use.
 
-Unlike `/api/process`, bulk enrichment and district selection have **no row
-claim/lock mechanism**. Use one runner per bulk endpoint; overlapping runs may
-send the same transcript to OpenAI and incur duplicate work.
+Schedule `/api/batches/reconcile` every five minutes alongside process and enrich.
+Run district inference if missing source areas need filling. Overlapping worker
+runs are safe through leases and fencing; no cross-request single-runner rule is
+required. Scheduling configuration is external and must be installed explicitly.
+The source checkout does not establish that any production cron exists.
 
 ### Trigger one processing batch
 
@@ -881,13 +912,13 @@ npm run enrich
 
 The helper stops on `claimed = 0`, meaning **nothing eligible now**, not that all
 events completed. Delayed failures, exhausted retries, and abandoned `processing`
-rows can remain. Persistent bulk enrichment failures can be repeatedly selected
-because that endpoint has no per-row backoff.
+rows can remain. Expired claims recover on the next run; delayed and exhausted
+jobs require inspecting their lease, attempt and error fields.
 
 After changing inference, update the prompt/schema, persistence mapping, database
 schema/view, and readers as needed, then increment `INFERENCE_VERSION`. Run one
 enrichment loop or let the configured schedule select stale eligible rows.
-`ENABLE_ENRICHMENT=false` alone does not stop scheduled bulk inference.
+`ENABLE_ENRICHMENT=false` stops every analysis endpoint.
 
 ### Inspect queue state and failures
 
@@ -909,14 +940,11 @@ where status = 'processing'
 order by received_at;
 ```
 
-Fix the cause of failed events and inspect whether retries remain. For abandoned
-claims, confirm no worker is still handling the selected IDs before changing
-state and due time. `received_at` is capture time, not claim-start time, so it
-cannot by itself establish that a worker is stale.
-
-`/api/health` counts all `pending` and `failed` rows, including delayed and
-exhausted failures, and excludes `processing`. `ok: true` therefore does not
-establish queue progress or working inference credentials.
+Fix the cause before resetting any exhausted retry budget. Expired leases recover
+automatically; `received_at` alone does not identify a stale worker. Job failures
+and fingerprints are retained in `bolna_call_jobs`. Health reports pending,
+processing, expired and exhausted event counts plus exhausted/expired analysis
+jobs; it does not verify provider credentials or complete schema parity.
 
 If Supabase cron is configured, inspect jobs and invocation history:
 
@@ -936,10 +964,13 @@ responses and application logs as well as SQL invocation results.
 
 ### Reconcile an uncertain dispatch
 
-Review Recent batches, application logs, and the provider batch before creating
-another attempt. A batch may have been created or scheduled even if the client
-saw a timeout or the final database update failed. There is no automated
-cross-system reconciliation or cancellation flow in this application.
+Use Recent batches to check provider status. A recorded provider ID is never
+recreated merely because a previous response was lost. Missing IDs can be located
+using the local UUID embedded in the upload filename. If automatic verification
+cannot prove completion (for example missing retry metadata), verify no remote
+calls/retries remain and save an explicit resolution note. The app retains the
+actor, outcome and note and releases that batch's reservations. Cancellation must
+be performed in Bolna before recording it locally.
 
 ### Private dataset maintenance
 
@@ -966,46 +997,49 @@ npm test
 Additional local checks for application changes:
 
 ```bash
-npx tsc --noEmit
+npm run check
 npm run build
 ```
 
-The separate `../bolna-eval/` package exercises a real browser and disposable
-TLS-enabled Postgres. It reproduces signed sessions to test authenticated
-behavior without Google OAuth and replays the private schema plus post-push SQL.
-Coverage includes roles, scoped reads/writes/exports, assignments, schema parity,
-and visual/accessibility behavior.
+Run real PostgreSQL regression tests against an explicitly configured disposable
+local database after applying the tracked migrations:
 
-Run that harness from its own directory using its README and package scripts.
-Database setup replaces its test container and tests reseed fixtures; keep it
-pointed at disposable infrastructure. Run one suite against its shared database
-and port, and do not run `next build` in the app checkout while its dev server
-uses the same `.next` directory.
+```bash
+TEST_DATABASE_URL=postgres://postgres:test@127.0.0.1:5432/postgres npm run test:integration
+```
 
-Unit and browser tests do not establish that live Bolna credentials, production
-cron, or current OpenAI responses work. Verify those integrations in the intended
-environment separately.
+This suite resets app fixture tables and mocks all OpenAI/Bolna requests. It tests
+competing owners/dispatches, transaction rollback, stale claims/results, retry
+ordering/backoff, scoped exports, revision conflicts, geography routing, partial
+batch success, cross-agent reservations and separate carpet/built-up values. CI rebuilds the schema,
+checks replay idempotence, runs unit/integration tests and builds the application.
+
+The separate `../bolna-eval/` browser package is optional legacy tooling. Its old
+schema replay, cookie minting and direct PATCH fixtures must be updated for the
+tracked migrations, expiring token payloads and required revisions before running
+the whole legacy suite. Do not run a build while a dev server shares `.next`.
+Tests with mocked providers do not validate live credentials or cron installation.
 
 ## Current limitations
 
-These are implementation boundaries, not claims about production incidents:
+Remaining operational and domain boundaries:
 
 | Area | Current limit and consequence |
 |---|---|
-| Reproducible setup | Schema, migrations, and maintenance directories are private. An ordinary clone needs an existing database or those artifacts. |
-| Worker recovery | No lease or automatic stale-claim recovery. A terminated worker can strand its claimed batch in `processing`. |
-| Corrected execution data | First terminal webhook wins; duplicates do not refresh facts. The call upsert leaves several facts insert-only. |
-| Bulk inference | No cross-request claim locks, failure backoff, or global inference-off switch. Overlap can duplicate requests. |
-| Dispatch consistency | No request idempotency key, atomic number reservation, or transaction spanning local writes and Bolna. Ambiguous sends need reconciliation. |
-| Batch completion | The app writes `sending`, `scheduled`, and `failed` but does not automatically retire completed scheduled batches. Their numbers stay excluded while that state persists. |
-| Assignment integrity | Polymorphic entities have no entity FK. Explicit-ID assignment checks UUID shape but not entity existence or phone eligibility; reassignment drop/insert is not one transaction. |
-| Assignment transitions | PATCH accepts `dropped` from an assignee as well as an admin, although the dedicated unassign DELETE route is admin-only. |
-| Session expiry | Cookie lifetime uses browser expiry; the signed token itself has no expiry timestamp. |
-| Concurrent editing | Autosave serializes one editor's requests, but there is no cross-client optimistic concurrency control. |
-| Export scale | CSV generation is in memory; filtered call exports are uncapped and raw exports truncate at their ceiling. |
-| Entity matching | Last-ten-digit matching and representative listings do not establish property identity. Owner rollups and cross-source listing deduplication are not implemented. |
-| Language expansion | One configured agent and a three-state holdback; no multi-agent language routing. |
+| Provider uncertainty | No distributed transaction or provider idempotency guarantee. Unknown creates remain reserved until verified by an admin. |
+| Provider retry metadata | Missing/unknown status or retry exhaustion data prevents automatic release; Recent batches provides audited resolution. |
+| Same-attempt corrections | Identical execution/retry IDs are deduplicated; arbitrary corrected payloads need an explicit replay policy. |
+| Assignment entity FKs | Polymorphic targets are validated and locked by the service; direct SQL deletions can still orphan history. |
+| CSV throughput | Streams hold a pool connection; long/stalled downloads or host deadlines can abort. Limit is 100,000 rows per export. |
+| Dataset maintenance | Private source cleaners/loaders remain outside the application and need their own validation. |
+| Entity matching | Last-ten-digit matching and representative listings do not establish property identity. |
+| Language routing | Auto uses the listing state, with other/unknown states defaulting to Hindi. It does not infer the recipient's language preference. |
 
 When extending the system, preserve its boundaries: capture before slow work,
 scoped SQL at each access path, human-owned fields outside machine upserts, and
 explicit operator confirmation before live dispatch.
+
+Autosave drafts include their expected revision. A conflict keeps the draft for
+review; copy any desired text, discard the stale draft, refresh, then apply the
+intended change to the current row. Table selection and keyboard/column controls
+are scoped to their own grid, and refreshed rows receive current column geometry.

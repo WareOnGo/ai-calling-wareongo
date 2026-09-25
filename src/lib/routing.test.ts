@@ -44,9 +44,15 @@ describe("computeScheduleAt", () => {
     expect(computeScheduleAt(now)).toBe("2026-01-01T12:10:00.000+00:00");
   });
 
-  it("always returns a time at least 2 minutes in the future", () => {
+  it("keeps the provider's two-minute minimum after the full dispatch request budget", () => {
     const now = new Date(Date.UTC(2026, 3, 15, 9, 47, 30));
     const at = new Date(computeScheduleAt(now)).getTime();
-    expect(at - now.getTime()).toBeGreaterThanOrEqual(120_000);
+    expect(at - now.getTime() - 120_000).toBeGreaterThanOrEqual(120_000);
+  });
+
+  it("does not choose a slot that expires while the provider batch is being uploaded", () => {
+    const now = new Date(Date.UTC(2026, 0, 1, 12, 7, 59));
+    expect(computeScheduleAt(now)).toBe("2026-01-01T12:20:00.000+00:00");
+    expect(computeScheduleAt(new Date(Date.UTC(2026, 0, 1, 12, 6)))).toBe("2026-01-01T12:10:00.000+00:00");
   });
 });

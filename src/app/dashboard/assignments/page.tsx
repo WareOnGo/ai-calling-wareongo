@@ -1,3 +1,4 @@
+import { SelectionProvider } from "../Selection";
 import { ASSIGNMENT_COLUMNS as COLUMNS } from "../sheet-columns";
 import { dateTime as fmt } from "@/lib/display";
 import { Freshness } from "../DashboardUI";
@@ -55,7 +56,7 @@ function qs(base: SP, override: SP) {
 export default async function Assignments({
   searchParams,
 }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireAdmin();
+  const user = await requireAdmin();
   const rawSp = await searchParams;
   const sp: SP = {};
   for (const [k, v] of Object.entries(rawSp)) sp[k] = Array.isArray(v) ? v[0] : v;
@@ -67,8 +68,8 @@ export default async function Assignments({
   };
 
   const [{ rows, total, page, pages }, totals, assignees] = await Promise.all([
-    listAssignments(filters),
-    assignmentTotals(sp.assignee),
+    listAssignments(user, filters),
+    assignmentTotals(user, sp.assignee),
     listUsers(),
   ]);
 
@@ -76,7 +77,7 @@ export default async function Assignments({
   const activeFilters = ["assignee", "state", "type", "outcome"].filter((k) => sp[k]).length;
 
   return (
-    <>
+    <SelectionProvider total={total}>
       <div className="page-title">
         <span className="pt-icon"><IconClipboard size={18} /></span> Assignments <Freshness updatedAt={new Date().toISOString()} />
       </div>
@@ -143,6 +144,6 @@ export default async function Assignments({
       </div>
 
       <GridInteractivity key={JSON.stringify(sp)} />
-    </>
+    </SelectionProvider>
   );
 }

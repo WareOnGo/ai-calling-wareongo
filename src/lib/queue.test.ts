@@ -37,10 +37,10 @@ describe("deriveCat", () => {
     expect(deriveCat(3, "unclear")).toBe("unclear");
   });
 
-  it("classifies a called record with no availability as 'dead'", () => {
-    expect(deriveCat(1, null)).toBe("dead");
-    expect(deriveCat("5", "")).toBe("dead");
-    expect(deriveCat(1, "garbage-status")).toBe("dead");
+  it("keeps a missing verdict unclear until connection status is known", () => {
+    expect(deriveCat(1, null)).toBe("unclear");
+    expect(deriveCat("5", "")).toBe("unclear");
+    expect(deriveCat(1, "garbage-status")).toBe("unclear");
   });
 });
 

@@ -1,13 +1,17 @@
 "use client";
 import { useEffect } from "react";
+import { useSelection } from "./Selection";
 import { useDashboardUI } from "./DashboardUI";
 
 export function GridInteractivity() {
-  const { notify } = useDashboardUI();
+  const { root } = useSelection();
+  const { notify, pending } = useDashboardUI();
   useEffect(() => {
+    const element = root.current;
+    if (!element || pending) return;
     let selected: HTMLTableCellElement | null = null;
     const visible = (cell: HTMLTableCellElement) => !cell.classList.contains('rownum') && cell.getClientRects().length > 0;
-    const tables = [...document.querySelectorAll<HTMLTableElement>('table.sheet')];
+    const tables = [...element.querySelectorAll<HTMLTableElement>('table.sheet')];
     tables.forEach(table => { const cell = [...table.querySelectorAll<HTMLTableCellElement>('tbody td')].find(visible); if (cell) cell.tabIndex = 0; });
     function select(cell: HTMLTableCellElement) {
       if (selected) { selected.classList.remove('selected'); selected.tabIndex = -1; }
@@ -33,8 +37,8 @@ export function GridInteractivity() {
       if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { const rows=[...row.closest('tbody')!.rows]; const nextRow=rows[rows.indexOf(row)+(e.key === 'ArrowDown'?1:-1)]; next=nextRow?.cells[selected.cellIndex]; }
       if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) {e.preventDefault();if(next&&visible(next))select(next);}
     };
-    document.addEventListener('click',click); document.addEventListener('focusin',focus); document.addEventListener('keydown',key);
-    return () => { document.removeEventListener('click',click);document.removeEventListener('focusin',focus);document.removeEventListener('keydown',key); };
-  }, [notify]);
+    element.addEventListener('click',click); element.addEventListener('focusin',focus); element.addEventListener('keydown',key);
+    return () => { if (selected) { selected.classList.remove('selected'); selected.tabIndex = -1; } element.removeEventListener('click',click);element.removeEventListener('focusin',focus);element.removeEventListener('keydown',key); };
+  }, [notify, pending, root]);
   return null;
 }

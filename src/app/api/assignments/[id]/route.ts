@@ -1,61 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { getCurrentUser, getCurrentAdmin } from "@/lib/auth";
-import { updateAssignment, dropAssignment, type AssignmentPatch } from "@/lib/assignments";
-import { isOutcome, isAssignmentState } from "@/lib/scope";
+import { updateAssignment, dropAssignment } from "@/lib/assignments";
+import { jsonBody, apiError, bigintId, nullableText, revision } from "@/lib/api";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+const patchSchema = z.object({
+  outcome: z.union([z.enum(["Available", "Unavailable", "Unclear", ""]), z.null()]).transform(v => v || null).optional(),
+  remarks: nullableText.optional(), state: z.enum(["open", "done", "dropped"]).optional(),
+  added_to_db: z.boolean().optional(), wh_id: nullableText.optional(), revision,
+}).strict().refine(v => Object.keys(v).length > 1, "No editable fields provided");
 
-// Record what the employee found: outcome, notes, whether it reached the warehouse
-// DB and under which id, and whether they're finished. The assignee edits their own; an admin can
-// edit any. Ownership is enforced inside the UPDATE (see lib/assignments.ts), so a
-// non-owner simply gets 404.
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-
-  const id = Number((await params).id);
-  if (!Number.isInteger(id)) return NextResponse.json({ error: "bad id" }, { status: 400 });
-
-  const body = await req.json().catch(() => ({}));
-  const patch: AssignmentPatch = {};
-
-  if ("outcome" in body) {
-    const v = body.outcome;
-    if (v !== null && v !== "" && !isOutcome(v)) {
-      return NextResponse.json({ error: "outcome must be Available | Unavailable | Unclear" }, { status: 400 });
-    }
-    patch.outcome = v === "" ? null : (v as AssignmentPatch["outcome"]);
-  }
-  if ("remarks" in body) {
-    patch.remarks = body.remarks == null || body.remarks === "" ? null : String(body.remarks);
-  }
-  if ("state" in body) {
-    if (!isAssignmentState(body.state)) {
-      return NextResponse.json({ error: "state must be open | done | dropped" }, { status: 400 });
-    }
-    patch.state = body.state;
-  }
-  if ("added_to_db" in body) patch.addedToDb = Boolean(body.added_to_db);
-  if ("wh_id" in body) {
-    patch.whId = body.wh_id == null || body.wh_id === "" ? null : String(body.wh_id);
-  }
-
-  const row = await updateAssignment(id, user, patch);
-  if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
-  return NextResponse.json({ ok: true, ...row });
+  try {
+    const id = bigintId.parse((await params).id);
+    const body = await jsonBody(req, patchSchema);
+    const { added_to_db, wh_id, ...rest } = body;
+    const row = await updateAssignment(id, user, { ...rest,
+      ...(added_to_db !== undefined ? { addedToDb: added_to_db } : {}),
+      ...(wh_id !== undefined ? { whId: wh_id } : {}),
+    });
+    return NextResponse.json({ ok: true, ...row });
+  } catch (error) { return apiError(error); }
 }
 
-// Unassign — admin only. Closes the assignment without recording an outcome; the
-// row stays as history and the entity becomes assignable again.
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const admin = await getCurrentAdmin();
-  if (!admin) return NextResponse.json({ error: "forbidden" }, { status: 403 });
-
-  const id = Number((await params).id);
-  if (!Number.isInteger(id)) return NextResponse.json({ error: "bad id" }, { status: 400 });
-
-  const ok = await dropAssignment(id);
-  if (!ok) return NextResponse.json({ error: "not found" }, { status: 404 });
-  return NextResponse.json({ ok: true });
+  if (!await getCurrentAdmin()) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  try {
+    const ok = await dropAssignment(bigintId.parse((await params).id));
+    return NextResponse.json(ok ? { ok: true } : { error: "not found" }, { status: ok ? 200 : 404 });
+  } catch (error) { return apiError(error); }
 }

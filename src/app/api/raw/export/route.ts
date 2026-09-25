@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { getRawRecordsForExport, getRawRecordsByIds, type RawFilters, type RawExportRow } from "@/lib/raw";
+import { rawExportQuery, type RawExportRow } from "@/lib/raw";
+import { toRawFilters } from "@/lib/filters";
+import { apiError } from "@/lib/api";
+import { exportInput, csvResponse } from "@/lib/export";
+
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,53 +43,14 @@ const COLUMNS: { label: string; get: (r: RawExportRow) => unknown }[] = [
   { label: "Metadata (JSON)", get: (r) => (r.metadata ? JSON.stringify(r.metadata) : "") },
 ];
 
-function csvCell(v: unknown): string {
-  if (v == null) return "";
-  const s = String(v);
-  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
+export const maxDuration = 300;
 export async function GET(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-
-  const sp = req.nextUrl.searchParams;
-
-  // Explicit selection (checkbox picks) wins; otherwise export the whole filtered set.
-  const idsParam = sp.get("ids");
-  const ids = idsParam ? idsParam.split(",").filter(Boolean) : null;
-
-  let rows: RawExportRow[];
-  if (ids && ids.length > 0) {
-    rows = await getRawRecordsByIds(user, ids);
-  } else {
-    const filters: RawFilters = {
-      q: sp.get("q") ?? undefined,
-      source: sp.get("source") ?? undefined,
-      state: sp.get("state") ?? undefined,
-      city: sp.get("city") ?? undefined,
-      contact: sp.get("contact") ?? undefined,
-      called: sp.get("called") ?? undefined,
-      last_result: sp.get("last_result") ?? undefined,
-      min_area: sp.get("min_area") ? Number(sp.get("min_area")) : undefined,
-      max_area: sp.get("max_area") ? Number(sp.get("max_area")) : undefined,
-      has_phone: sp.get("has_phone") === "1",
-      assignee: sp.get("assignee") ?? undefined,
-    };
-    rows = await getRawRecordsForExport(user, filters);
-  }
-
-  const lines = [
-    COLUMNS.map((c) => csvCell(c.label)).join(","),
-    ...rows.map((r) => COLUMNS.map((c) => csvCell(c.get(r))).join(",")),
-  ];
-  const csv = "﻿" + lines.join("\r\n"); // BOM so Excel reads UTF-8
-
-  const stamp = new Date().toISOString().slice(0, 10);
-  return new NextResponse(csv, {
-    headers: {
-      "content-type": "text/csv; charset=utf-8",
-      "content-disposition": `attachment; filename="raw-dataset-${stamp}.csv"`,
-    },
-  });
+  try {
+    const { ids, filters } = await exportInput(req);
+    const spec = rawExportQuery(user, ids ? {} : toRawFilters(filters), ids);
+    return await csvResponse(spec, COLUMNS, `raw-dataset-${new Date().toISOString().slice(0, 10)}.csv`);
+  } catch (error) { return apiError(error); }
 }
+export const POST = GET;

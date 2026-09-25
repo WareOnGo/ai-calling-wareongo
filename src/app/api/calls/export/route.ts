@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { getCallsForExport, type CallFilters, type CallRow } from "@/lib/calls";
+import { callsExportQuery, type CallRow } from "@/lib/calls";
+import { agentLabel } from "@/lib/agents";
+import { toCallFilters } from "@/lib/filters";
+import { apiError } from "@/lib/api";
+import { exportInput, csvResponse } from "@/lib/export";
+
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,13 +13,16 @@ export const dynamic = "force-dynamic";
 // CSV columns: label + how to pull the value from a row. Mirrors the dashboard grid
 // (representative matched listing + match count); pagination-independent.
 const COLUMNS: { label: string; get: (r: CallRow) => unknown }[] = [
+  { label: "Agent", get: (r) => agentLabel(r.agent_id) },
+  { label: "Agent ID", get: (r) => r.agent_id },
   { label: "When", get: (r) => r.call_created_at },
   { label: "Direction", get: (r) => (r.call_type === "inbound" ? "Inbound" : "Outbound") },
   { label: "Number", get: (r) => (r.call_type === "inbound" ? r.from_number : r.to_number) },
   { label: "Owner", get: (r) => r.owner_name },
   { label: "Area", get: (r) => r.db_area },
   { label: "Availability", get: (r) => r.availability },
-  { label: "Sqft", get: (r) => r.built_up_area_sqft },
+  { label: "Built-up sqft", get: (r) => r.built_up_area_sqft },
+  { label: "Carpet sqft", get: (r) => r.carpet_area_sqft },
   { label: "Rent", get: (r) => r.expected_rent },
   { label: "Status", get: (r) => r.status },
   { label: "Notes", get: (r) => r.notes },
@@ -38,48 +46,14 @@ const COLUMNS: { label: string; get: (r: CallRow) => unknown }[] = [
   { label: "WH ID", get: (r) => r.wh_id },
 ];
 
-function csvCell(v: unknown): string {
-  if (v == null) return "";
-  const s = String(v);
-  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
+export const maxDuration = 300;
 export async function GET(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-
-  const sp = req.nextUrl.searchParams;
-  const filters: CallFilters = {
-    ids: sp.has("ids") ? sp.get("ids")!.split(",").filter(id => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)).slice(0, 1000) : undefined,
-    q: sp.get("q") ?? undefined,
-    availability: sp.get("availability") ?? undefined,
-    agent_id: sp.get("agent_id") ?? undefined,
-    status: sp.get("status") ?? undefined,
-    source: sp.get("source") ?? undefined,
-    state: sp.get("state") ?? undefined,
-    contact: sp.get("contact") ?? undefined,
-    call_type: sp.get("call_type") ?? undefined,
-    date_from: sp.get("date_from") ?? undefined,
-    date_to: sp.get("date_to") ?? undefined,
-    needs_review: sp.get("needs_review") === "1",
-    assignee: sp.get("assignee") ?? undefined,
-  };
-
-  // Scoped by the shared filter builder: an employee's export contains exactly the
-  // rows their grid shows.
-  const rows = await getCallsForExport(user, filters);
-
-  const lines = [
-    COLUMNS.map((c) => csvCell(c.label)).join(","),
-    ...rows.map((r) => COLUMNS.map((c) => csvCell(c.get(r))).join(",")),
-  ];
-  const csv = "﻿" + lines.join("\r\n"); // BOM so Excel reads UTF-8
-
-  const stamp = new Date().toISOString().slice(0, 10);
-  return new NextResponse(csv, {
-    headers: {
-      "content-type": "text/csv; charset=utf-8",
-      "content-disposition": `attachment; filename="bolna-calls-${stamp}.csv"`,
-    },
-  });
+  try {
+    const { ids, filters } = await exportInput(req);
+    const spec = callsExportQuery(user, ids ? { ids } : toCallFilters(filters));
+    return await csvResponse(spec, COLUMNS, `bolna-calls-${new Date().toISOString().slice(0, 10)}.csv`);
+  } catch (error) { return apiError(error); }
 }
+export const POST = GET;

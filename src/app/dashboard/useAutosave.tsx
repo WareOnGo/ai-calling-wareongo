@@ -5,11 +5,14 @@ import { Autosave, type Values } from "@/lib/autosave";
 import { useDashboardUI } from "./DashboardUI";
 import { requestJson } from "./requests";
 
-export function useAutosave<T extends Values>(id: string, url: string, initial: T, rollback: (keyof T)[] = []) {
+export function useAutosave<T extends Values>(id: string, url: string, initial: T, rollback: (keyof T)[] = [], initialRevision = 0) {
   const { reportSave, viewStorageKey } = useDashboardUI();
+  const version = useRef(initialRevision);
   const ref = useRef<Autosave<T> | null>(null);
   if (!ref.current) ref.current = new Autosave(initial, async patch => {
-    await requestJson(url, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(patch) });
+    if (version.current < 0) throw new Error("This recovered draft predates version checks. Copy your changes, discard this draft, then refresh.");
+    const result = await requestJson(url, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...patch, revision: version.current }) });
+    version.current = result.revision;
   }, rollback);
   const queue = ref.current;
   const snapshot = useSyncExternalStore(queue.subscribe, queue.getSnapshot, queue.getSnapshot);
@@ -18,20 +21,22 @@ export function useAutosave<T extends Values>(id: string, url: string, initial: 
     // Tab-scoped recovery also covers browser Back/Forward, which bypasses links.
     // Never send a recovered draft until the caller explicitly saves it.
     try {
-      const draft: unknown = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
+      const stored = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
+      const draft = stored?.values ?? stored;
       if (draft && typeof draft === 'object' && !Array.isArray(draft)) {
+        version.current = Number.isInteger(stored.revision) ? stored.revision : -1;
         for (const [key, value] of Object.entries(draft)) if (key in queue.getSnapshot().values && typeof value === typeof queue.getSnapshot().values[key]) queue.set(key, value as T[string]);
       }
     } catch { /* Storage is optional; in-place recovery still works. */ }
     const persist = () => {
-      try { if (queue.getSnapshot().dirty) sessionStorage.setItem(storageKey, JSON.stringify(queue.getDraft())); else sessionStorage.removeItem(storageKey); }
+      try { if (queue.getSnapshot().dirty) sessionStorage.setItem(storageKey, JSON.stringify({ values: queue.getDraft(), revision: version.current })); else sessionStorage.removeItem(storageKey); }
       catch { /* Storage can be disabled. */ }
     };
     persist();
     return queue.subscribe(persist);
   }, [queue, storageKey]);
   const initialKey = JSON.stringify(initial);
-  useEffect(() => { queue.reconcile(JSON.parse(initialKey)); }, [queue, initialKey]);
+  useEffect(() => { if (!queue.getSnapshot().dirty) version.current = initialRevision; queue.reconcile(JSON.parse(initialKey)); }, [queue, initialKey, initialRevision]);
   useEffect(() => {
     const report = () => { const current = queue.getSnapshot(); reportSave(id, { dirty: current.dirty, status: current.status, label: id, retry: queue.retry, discard: queue.discard }); };
     report();

@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { getCurrentAdmin } from "@/lib/auth";
 import { query } from "@/lib/db";
+import { agentLabel } from "@/lib/agents";
 
 export async function GET() {
   if (!await getCurrentAdmin()) return NextResponse.json({ error: "forbidden" }, { status: 403 });
   const result = await query(`with recent as materialized (
-      select id, created_at, created_by, scheduled_at, state, callable, held_region, bolna_batch_id
+      select id, created_at, created_by, scheduled_at, state, callable, held_region, bolna_batch_id, last_error, resolution_note,
+        agent_id, agent_language, dispatch_request_id
       from call_batches order by created_at desc limit 20
     ), received as (
       select c.batch_id, count(*)::int as n from bolna_call_logs c
@@ -14,5 +16,5 @@ export async function GET() {
     ) select r.*, coalesce(received.n, 0) as results_received
       from recent r left join received on received.batch_id = r.bolna_batch_id
       order by r.created_at desc`);
-  return NextResponse.json({ batches: result.rows, updatedAt: new Date().toISOString() });
+  return NextResponse.json({ batches: result.rows.map(row => ({ ...row, agent_label: agentLabel(row.agent_id, row.agent_language) })), updatedAt: new Date().toISOString() });
 }

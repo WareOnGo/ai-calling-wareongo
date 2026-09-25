@@ -4,10 +4,10 @@ import { OUTCOMES } from "@/lib/scope";
 import { IconCheck } from "./icons";
 import { useAutosave, SaveStatus } from "./useAutosave";
 
-type Props = { assignmentId: string; outcome: string | null; remarks: string | null; addedToDb: boolean; whId: string | null; state?: string; onStateChange?: (id: string, state: string) => void };
-export function OutcomeCells({ assignmentId, outcome, remarks, addedToDb, whId, state = "open", onStateChange }: Props) {
+type Props = { revision: number; assignmentId: string; outcome: string | null; remarks: string | null; addedToDb: boolean; whId: string | null; state?: string; onStateChange?: (id: string, state: string) => void };
+export function OutcomeCells({ revision, assignmentId, outcome, remarks, addedToDb, whId, state = "open", onStateChange }: Props) {
   const key = `assignment-${assignmentId}`;
-  const save = useAutosave(key, `/api/assignments/${assignmentId}`, { outcome: outcome ?? "", remarks: remarks ?? "", added_to_db: addedToDb, wh_id: whId ?? "", state }, ["outcome", "added_to_db", "state"]);
+  const save = useAutosave(key, `/api/assignments/${assignmentId}`, { outcome: outcome ?? "", remarks: remarks ?? "", added_to_db: addedToDb, wh_id: whId ?? "", state }, ["outcome", "added_to_db", "state"], revision);
   const done = save.values.state === "done";
   useEffect(() => { onStateChange?.(assignmentId, save.values.state); }, [assignmentId, save.values.state, onStateChange]);
   const cls = save.status === "saving" ? "saving" : save.status === "error" ? "err" : save.status === "saved" ? "ok" : "";

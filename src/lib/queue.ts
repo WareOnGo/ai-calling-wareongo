@@ -44,7 +44,7 @@ export function deriveCat(
   if (!Number(callCount)) return ""; // never called
   const a = (lastAvailability ?? "").toLowerCase();
   if (a === "available" || a === "unavailable" || a === "unclear") return a;
-  return "dead"; // called but no availability determined (didn't connect)
+  return a === "dead number - do not call" ? "dead" : "unclear";
 }
 
 // CSV cell with Excel-safe quoting.

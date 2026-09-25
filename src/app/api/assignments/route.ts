@@ -1,9 +1,12 @@
+import { z } from "zod";
+import { jsonBody, apiError, selectedIds } from "@/lib/api";
+import { toCallFilters, toRawFilters } from "@/lib/filters";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentAdmin } from "@/lib/auth";
-import { assignEntities, validIds, ASSIGN_CAP } from "@/lib/assignments";
+import { assignEntities, ASSIGN_CAP } from "@/lib/assignments";
 import { getUser } from "@/lib/users";
-import { getCallIds, type CallFilters } from "@/lib/calls";
-import { getRawRecordIds, type RawFilters } from "@/lib/raw";
+import { getCallIds } from "@/lib/calls";
+import { getRawRecordIds } from "@/lib/raw";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,7 +22,11 @@ export async function POST(req: NextRequest) {
   const admin = await getCurrentAdmin();
   if (!admin) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
-  const body = await req.json().catch(() => ({}));
+  try {
+  const body = await jsonBody(req, z.object({
+    entity_type: z.enum(["record", "call"]), assignee: z.string().trim().email(), note: z.string().trim().max(10000).nullable().optional(),
+    reassign: z.boolean().optional(), ids: selectedIds.optional(), filters: z.record(z.unknown()).optional(),
+  }).strict().refine(v => !!v.ids !== !!v.filters, "Provide either ids or filters"));
   const entity = body?.entity_type === "call" ? "call" : body?.entity_type === "record" ? "record" : null;
   if (!entity) {
     return NextResponse.json({ error: "entity_type must be 'record' or 'call'" }, { status: 400 });
@@ -42,7 +49,7 @@ export async function POST(req: NextRequest) {
   let capped = false;
   let skippedNoPhone = 0;
   if (Array.isArray(body?.ids) && body.ids.length > 0) {
-    ids = validIds(body.ids);
+    ids = body.ids;
     if (ids.length === 0) return NextResponse.json({ error: "no valid ids" }, { status: 400 });
   } else if (body?.filters && typeof body.filters === "object") {
     const f = body.filters as Record<string, unknown>;
@@ -67,31 +74,5 @@ export async function POST(req: NextRequest) {
   });
 
   return NextResponse.json({ ok: true, assignee, ...summary, skippedNoPhone, capped: capped || summary.capped });
-}
-
-// Filter parsing mirrors the two dashboard pages. Kept local (and explicit) so an
-// arbitrary client-supplied key can never reach a filter builder.
-const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
-const num = (v: unknown) => (v == null || v === "" ? undefined : Number(v));
-
-function toCallFilters(f: Record<string, unknown>): CallFilters {
-  return {
-    q: str(f.q), availability: str(f.availability), agent_id: str(f.agent_id),
-    status: str(f.status), source: str(f.source), state: str(f.state),
-    contact: str(f.contact), call_type: str(f.call_type),
-    date_from: str(f.date_from), date_to: str(f.date_to),
-    needs_review: f.needs_review === "1" || f.needs_review === true,
-    assignee: str(f.assignee),
-  };
-}
-
-function toRawFilters(f: Record<string, unknown>): RawFilters {
-  return {
-    q: str(f.q), source: str(f.source), state: str(f.state), city: str(f.city),
-    warehouse_type: str(f.warehouse_type), contact: str(f.contact),
-    called: str(f.called), last_result: str(f.last_result),
-    min_area: num(f.min_area), max_area: num(f.max_area),
-    has_phone: f.has_phone === "1" || f.has_phone === true,
-    assignee: str(f.assignee),
-  };
+  } catch (error) { return apiError(error); }
 }

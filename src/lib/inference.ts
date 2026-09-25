@@ -1,7 +1,8 @@
 import { type Inference, INFERENCE_VERSION, MODEL } from "./openai";
 
 // Cost gate: only infer calls whose total_cost (cents) exceeds this.
-export const MIN_COST_CENTS = Number(process.env.INFERENCE_MIN_COST_CENTS || "0.04");
+const configuredMinCost = Number(process.env.INFERENCE_MIN_COST_CENTS || "0.04");
+export const MIN_COST_CENTS = Number.isFinite(configuredMinCost) && configuredMinCost >= 0 ? configuredMinCost : 0.04;
 
 // Master switch for the LLM step (live path). When false, store call data only.
 export const ENABLE_ENRICHMENT = process.env.ENABLE_ENRICHMENT !== "false";
@@ -34,6 +35,7 @@ export function inferenceFields(inf: Inference | null) {
   return {
     llm_availability: inf?.availability ?? null,
     built_up_area_sqft: inf?.built_up_area_sqft ?? null,
+    carpet_area_sqft: inf?.carpet_area_sqft ?? null,
     city_area: inf?.city_area ?? null,
     expected_rent: inf?.expected_rent ?? null,
     possession: inf?.possession ?? null,

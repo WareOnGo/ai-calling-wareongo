@@ -1,45 +1,17 @@
 import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { createHmac, timingSafeEqual } from "crypto";
+import { makeToken, verifyToken, SESSION_MAX_AGE } from "./session";
 import { getUser, countActiveAdmins } from "@/lib/users";
 
-// Cookie-based session. The cookie value is the email plus an HMAC signature, so
-// it CANNOT be forged: a user can set their own cookie, but without SESSION_SECRET
-// they can't produce a valid signature for an allowlisted email. (httpOnly only
-// stops JS from reading it — it does not stop a user from setting one.)
-
 const COOKIE_NAME = "bp_session";
-const MAX_AGE = 60 * 60 * 24 * 30; // 30 days
+const MAX_AGE = SESSION_MAX_AGE;
 export const VIEW_COOKIE = "bp_view";
 
-// Secret for signing sessions. Falls back to other server secrets so the app is
-// never accidentally left signing with an empty key.
 function sessionSecret(): string {
-  const s = process.env.SESSION_SECRET || process.env.PROCESS_SECRET || process.env.GOOGLE_CLIENT_SECRET;
-  if (!s) throw new Error("SESSION_SECRET (or PROCESS_SECRET) is not set — cannot sign sessions");
-  return s;
-}
-
-function sign(email: string): string {
-  return createHmac("sha256", sessionSecret()).update(email.toLowerCase()).digest("base64url");
-}
-
-// "<email>.<sig>" — verified with a constant-time compare.
-function makeToken(email: string): string {
-  return `${email.toLowerCase()}.${sign(email)}`;
-}
-
-function verifyToken(token: string): string | null {
-  const dot = token.lastIndexOf(".");
-  if (dot < 1) return null;
-  const email = token.slice(0, dot);
-  const sig = token.slice(dot + 1);
-  const expected = sign(email);
-  const a = Buffer.from(sig);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
-  return email;
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) throw new Error("SESSION_SECRET is required");
+  return secret;
 }
 
 export type CurrentUser = { email: string; name: string | null; isAdmin: boolean; canSwitchView?: boolean };
@@ -73,7 +45,7 @@ function emailSet(envVar: string): Set<string> {
 export async function setSessionEmail(email: string): Promise<void> {
   const c = await cookies();
   c.delete(VIEW_COOKIE);
-  c.set(COOKIE_NAME, makeToken(email), {
+  c.set(COOKIE_NAME, makeToken(email, sessionSecret()), {
     httpOnly: true,
     sameSite: "lax",
     path: "/",
@@ -92,7 +64,7 @@ export async function getSessionEmail(): Promise<string | null> {
   const c = await cookies();
   const token = c.get(COOKIE_NAME)?.value;
   if (!token) return null;
-  return verifyToken(token); // null if the signature doesn't validate (forged/tampered)
+  return verifyToken(token, sessionSecret()); // null if the signature doesn't validate (forged/tampered)
 }
 
 /**

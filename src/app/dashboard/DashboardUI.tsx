@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState, useTransition } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, useTransition, useMemo } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Dialog } from "./Dialog";
 
@@ -52,6 +52,9 @@ export function DashboardUI({ children, header, userEmail, isAdmin }: { children
     if (canLeave('refresh')) startTransition(() => router.refresh());
   }, [router, canLeave]);
   const reportSave = useCallback((id: string, save: Save | null) => {
+    const previous = saves.current.get(id);
+    if (previous && save && previous.status === save.status && previous.dirty === save.dirty) return;
+    if (!previous && !save) return;
     if (save) saves.current.set(id, save); else saves.current.delete(id);
     setSaveList([...saves.current.entries()]);
   }, []);
@@ -81,7 +84,8 @@ export function DashboardUI({ children, header, userEmail, isAdmin }: { children
   const failed = saveList.filter(([, s]) => s.status === "error");
   const saving = saveList.some(([, s]) => s.status === "saving");
   const dirty = saveList.filter(([, s]) => s.dirty);
-  return <Context.Provider value={{ pending, navigate, refresh, notify, reportSave, hasDrafts, isAdmin, viewStorageKey: `dashboard-views:${userEmail}` }}>
+  const context = useMemo(() => ({ pending, navigate, refresh, notify, reportSave, hasDrafts, isAdmin, viewStorageKey: `dashboard-views:${userEmail}` }), [pending, navigate, refresh, notify, reportSave, hasDrafts, isAdmin, userEmail]);
+  return <Context.Provider value={context}>
     {header}
     {pending && <div className="navigation-progress" role="status"><span />Updating results…</div>}
     {(saveList.length > 0 || pathname === "/dashboard/calls" || pathname === "/dashboard/my") && <div className={`sheet-save-status${failed.length ? " has-error" : ""}`} role="status" aria-live="polite">

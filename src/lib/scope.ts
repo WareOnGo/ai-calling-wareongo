@@ -49,19 +49,20 @@ export function assignmentScope(
 }
 
 /**
- * The one assignment to show for an entity: the open one if there is one, else the
- * most recent finished one. Used by both grids' display lateral so "who owns this"
- * is answered identically everywhere.
+ * Select the open or latest completed assignment within the viewer's scope.
+ * Historical visibility must never project a subsequent assignee's private notes.
  */
-export function currentAssignmentLateral(entity: EntityType, idExpr: string): string {
+export function currentAssignmentLateral(entity: EntityType, idExpr: string, viewer: Viewer, params: unknown[]): string {
+  let owner = "";
+  if (!viewer.isAdmin) { params.push(viewer.email.toLowerCase()); owner = ` and a.assignee = $${params.length}`; }
   // `id` is aliased: exposing a bare `id` from the lateral makes an unqualified `id`
   // in the outer select list ambiguous against the driving table's own id.
   return `left join lateral (
     select a.id as assignment_id, a.assignee, a.state, a.outcome, a.remarks, a.note,
            a.added_to_db as asg_added, a.wh_id as asg_wh
       from bolna_assignments a
-     where a.entity_type = '${entity}' and a.entity_id = ${idExpr} and a.state <> 'dropped'
-     order by (a.state = 'open') desc, a.assigned_at desc
+     where a.entity_type = '${entity}' and a.entity_id = ${idExpr} and a.state <> 'dropped'${owner}
+     order by (a.state = 'open') desc, a.assigned_at desc, a.id desc
      limit 1
   ) asg on true`;
 }

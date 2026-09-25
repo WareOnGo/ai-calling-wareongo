@@ -39,6 +39,7 @@ export const executionSchema = z
     agent_id: z.string().nullish(),
     batch_id: z.string().nullish(),
     status: z.string(),
+  retry_count: z.number().int().nonnegative().max(2147483647).optional(),
     total_cost: z.number().nullish(),
     cost_breakdown: z.record(z.any()).nullish(),
     transcript: z.string().nullish(),

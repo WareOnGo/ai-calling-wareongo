@@ -1,4 +1,4 @@
-import { Pool, type QueryResultRow } from "pg";
+import { Pool, type PoolClient, type QueryResultRow } from "pg";
 
 // Reuse a single pool across hot serverless invocations.
 const globalForPg = globalThis as unknown as { __pgPool?: Pool };
@@ -8,8 +8,7 @@ export function getPool(): Pool {
     if (!process.env.DATABASE_URL) {
       throw new Error("DATABASE_URL is not set");
     }
-    // Strip ssl/pgbouncer query params so pg uses our explicit ssl config below
-    // (sslmode=require is otherwise treated as verify-full and rejects Supabase's cert).
+    // Avoid URL options overriding the explicit TLS policy below.
     const u = new URL(process.env.DATABASE_URL);
     for (const k of ["sslmode", "pgbouncer", "connection_limit"]) {
       u.searchParams.delete(k);
@@ -20,11 +19,30 @@ export function getPool(): Pool {
       max: 6,
       idleTimeoutMillis: 10_000,
       connectionTimeoutMillis: 10_000,
-      // Supabase pooler requires TLS.
-      ssl: { rejectUnauthorized: false },
+      // Verify TLS unless the operator explicitly selects a local/insecure mode.
+      ssl: process.env.DATABASE_SSL === "disable" ? false : {
+        rejectUnauthorized: process.env.DATABASE_SSL !== "insecure",
+        ...(process.env.DATABASE_SSL_CA ? { ca: process.env.DATABASE_SSL_CA.replace(/\\n/g, "\n") } : {}),
+      },
+      statement_timeout: 15_000,
+      idle_in_transaction_session_timeout: 20_000,
     });
   }
   return globalForPg.__pgPool;
+}
+
+/** Keep related writes on one connection and always release it, including rollback failures. */
+export async function transaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  const client = await getPool().connect();
+  try {
+    await client.query("begin");
+    const value = await fn(client);
+    await client.query("commit");
+    return value;
+  } catch (error) {
+    try { await client.query("rollback"); } catch { /* Preserve the original failure. */ }
+    throw error;
+  } finally { client.release(); }
 }
 
 export async function query<T extends QueryResultRow = QueryResultRow>(

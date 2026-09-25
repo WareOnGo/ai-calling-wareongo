@@ -7,7 +7,6 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
     "test": "vitest run",
     "test:watch": "vitest",
     "db:init": "node --env-file=.env.local scripts/db-init.mjs",
@@ -18,7 +17,11 @@
     "db:status": "prisma migrate status",
     "backfill": "node --env-file=.env.local scripts/backfill.mjs",
     "drain": "node --env-file=.env.local scripts/drain.mjs http://localhost:3000/api/process",
-    "enrich": "node --env-file=.env.local scripts/drain.mjs http://localhost:3000/api/enrich"
+    "enrich": "node --env-file=.env.local scripts/drain.mjs http://localhost:3000/api/enrich",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "typecheck": "tsc --noEmit --incremental false",
+    "db:migrate": "node database/migrate.mjs",
+    "check": "npm run typecheck && npm test"
   },
   "dependencies": {
     "next": "^15.1.0",

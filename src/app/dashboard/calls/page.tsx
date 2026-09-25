@@ -1,3 +1,4 @@
+import { callFiltersSchema } from "@/lib/filters";
 import { CALL_COLUMNS as BASE_COLUMNS, CALL_GROUPS as GROUPS } from "../sheet-columns";
 import { dateTime as fmtDate, rent, number } from "@/lib/display";
 import { SelectionProvider, SelectionSummary } from "../Selection";
@@ -7,6 +8,7 @@ import { Freshness } from "../DashboardUI";
 import { RecordDetails } from "../RecordDetails";
 import Link from "next/link";
 import { getCalls, getFilterOptions, type CallFilters, type CallRow, type RawMatch } from "@/lib/calls";
+import { agentLabel } from "@/lib/agents";
 import { requireUser } from "@/lib/auth";
 import { listAssignees } from "@/lib/users";
 import { GridInteractivity } from "../GridInteractivity";
@@ -108,21 +110,10 @@ export default async function Dashboard({
   const sp: SP = {};
   for (const [k, v] of Object.entries(raw)) sp[k] = Array.isArray(v) ? v[0] : v;
 
-  const filters: CallFilters = {
-    q: sp.q,
-    availability: sp.availability,
-    agent_id: sp.agent_id,
-    status: sp.status,
-    source: sp.source,
-    state: sp.state,
-    contact: sp.contact,
-    call_type: sp.call_type,
-    date_from: sp.date_from,
-    date_to: sp.date_to,
-    needs_review: sp.needs_review === "1",
-    assignee: user.isAdmin ? sp.assignee : undefined,
-    page: sp.page ? Number(sp.page) : 1,
-  };
+  const parsedFilters = callFiltersSchema.safeParse(sp);
+  if (!parsedFilters.success) return <p role="alert">Invalid filters. {parsedFilters.error.issues.map(i => i.message).join("; ")} <Link href="/dashboard/calls">Clear filters</Link></p>;
+  const filters: CallFilters = { ...parsedFilters.data, page: sp.page ? Number(sp.page) : 1 };
+
 
   const [{ rows, total, page, pages, pageSize, terms }, opts, assignees] = await Promise.all([
     getCalls(user, filters),
@@ -205,7 +196,7 @@ export default async function Dashboard({
             <div className={`chip${sp.agent_id ? " active" : ""}`}>
               <select aria-label="agent id" name="agent_id" defaultValue={sp.agent_id ?? ""}>
                 <option value="">Agent</option>
-                {opts.agents.map((v) => <option key={v} value={v}>{v.slice(0, 8)}…</option>)}
+                {opts.agents.map((v) => <option key={v} value={v}>{agentLabel(v)}</option>)}
               </select>
             </div>
             <div className={`chip${sp.status ? " active" : ""}`}>
@@ -246,7 +237,7 @@ export default async function Dashboard({
                 const g = GROUPS.find((g) => g.toggle === c);
                 return g
                   ? <GroupToggle key={c} group={g.key} label={c} />
-                  : <th key={c} className={colClass(c)}>{c}</th>;
+                  : <th key={c} data-column={c} className={colClass(c)}>{c}</th>;
               })}
             </tr>
           </thead>
@@ -280,7 +271,7 @@ export default async function Dashboard({
                   {r.needs_review && <span className="review-tag">review</span>}
                   {!r.inferred && r.can_enrich && <EnrichButton id={r.id} />}
                 </td>
-                <EditableCells
+                <EditableCells canEdit={user.isAdmin || r.assignment_state === "open"} revision={r.revision}
                   id={r.id}
                   callStatus={r.call_status}
                   calledBy={r.called_by}
@@ -290,8 +281,10 @@ export default async function Dashboard({
                 />
                 <td>{fmtDate(r.call_created_at)}</td>
                 <td>{r.call_type === "inbound" ? "Inbound" : "Outbound"}</td>
+                <td title={r.agent_id || undefined}>{agentLabel(r.agent_id)}</td>
                 <td>{hl(r.db_area, terms)}</td>
                 <td>{number(r.built_up_area_sqft)}</td>
+                <td>{number(r.carpet_area_sqft)}</td>
                 <td>{rent(r.expected_rent)}</td>
                 <td className="call-toggle">{r.status}</td>
                 <td className="call-col clip" title={r.notes ?? ""}>{hl(r.notes, terms)}</td>

@@ -1,6 +1,8 @@
+import { toRawFilters } from "@/lib/filters";
+import { apiError } from "@/lib/api";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentAdmin } from "@/lib/auth";
-import { getRawQueueRows, type RawFilters } from "@/lib/raw";
+import { getRawQueueRows } from "@/lib/raw";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,20 +16,7 @@ export async function GET(req: NextRequest) {
   const user = await getCurrentAdmin();
   if (!user) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
-  const sp = req.nextUrl.searchParams;
-  const filters: RawFilters = {
-    q: sp.get("q") ?? undefined,
-    source: sp.get("source") ?? undefined,
-    state: sp.get("state") ?? undefined,
-    city: sp.get("city") ?? undefined,
-    contact: sp.get("contact") ?? undefined,
-    called: sp.get("called") ?? undefined,
-    last_result: sp.get("last_result") ?? undefined,
-    min_area: sp.get("min_area") ? Number(sp.get("min_area")) : undefined,
-    max_area: sp.get("max_area") ? Number(sp.get("max_area")) : undefined,
-    has_phone: sp.get("has_phone") === "1",
-    assignee: sp.get("assignee") ?? undefined,
-  };
-
-  return NextResponse.json(await getRawQueueRows(user, filters));
+  try {
+    return NextResponse.json(await getRawQueueRows(user, toRawFilters(Object.fromEntries(req.nextUrl.searchParams))));
+  } catch (error) { return apiError(error); }
 }

@@ -1,3 +1,4 @@
+import { z } from "zod";
 import OpenAI from "openai";
 
 const globalForAI = globalThis as unknown as { __openai?: OpenAI };
@@ -7,7 +8,7 @@ function client(): OpenAI {
     if (!process.env.OPENAI_API_KEY) {
       throw new Error("OPENAI_API_KEY is not set");
     }
-    globalForAI.__openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    globalForAI.__openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 35_000, maxRetries: 0 });
   }
   return globalForAI.__openai;
 }
@@ -17,12 +18,14 @@ export const MODEL = process.env.OPENAI_MODEL || "gpt-4o";
 // Bump when the prompt/schema changes — lets us re-infer only stale rows
 // (select where inference_version < INFERENCE_VERSION).
 // v2: availability counts "owner has any available space" (alt-property / callback), not just the exact listing.
-export const INFERENCE_VERSION = 2;
+// v3: English transcripts and distinct carpet/built-up measurements.
+export const INFERENCE_VERSION = 3;
 
 // Property-verification inference fields (modeled on the GW call-log-inference skill).
 export type Inference = {
   availability: "Available" | "Unavailable" | "Unclear";
   built_up_area_sqft: string;
+  carpet_area_sqft: string;
   city_area: string;
   expected_rent: string;
   possession: string;
@@ -33,6 +36,7 @@ export type Inference = {
 export const EMPTY_INFERENCE: Inference = {
   availability: "Unclear",
   built_up_area_sqft: "",
+  carpet_area_sqft: "",
   city_area: "",
   expected_rent: "",
   possession: "",
@@ -40,14 +44,15 @@ export const EMPTY_INFERENCE: Inference = {
   notes: "",
 };
 
-const SYSTEM_PROMPT = `You analyze transcripts of outbound phone calls where an AI agent named Priya cold-calls warehouse / property owners in India (Hindi / Hinglish / Devanagari, often noisy ASR) to verify a property listing. Priya asks whether the property is available for rent, its built-up area, the locality, the expected rent, and the possession timeline.
+const SYSTEM_PROMPT = `You analyze transcripts of outbound phone calls where an AI agent named Priya cold-calls warehouse / property owners in India (Indian English / Hindi / Hinglish / Devanagari, often noisy ASR) to verify a property listing. Priya asks whether the property is available for rent, its carpet or built-up area, the locality, the expected rent, and the possession timeline.
 
 From the transcript, extract:
 - availability: judge whether the OWNER HAS WAREHOUSE / COMMERCIAL SPACE AVAILABLE to rent or lease (the goal is sourcing available warehouses, not only the one listing we asked about).
     - "Available" if the owner has space available — this INCLUDES: (a) the listed property is available; (b) the listed property is gone/rented but the owner offers a DIFFERENT available property (still Available — record that property's area/rent/location in the other fields and call out "different property" in notes); (c) the owner confirms they have it but asks to be called back later (Available; note the callback). A bare "हां" / "haan" / "yes" / "है" / "है मेरे पास" counts as Available ONLY when it is a direct answer to the availability question — NOT when it is just a reply to the opening greeting ("Kaise ho?") or a generic "boliye / tell me".
     - "Unavailable" ONLY if the owner has NO space available — already rented out / sold / not the owner / flatly declines / says nothing is available.
     - "Unclear" if it genuinely cannot be determined. IMPORTANT: if the owner only greeted ("hello" / "हां जी" / "boliye") and the call ended BEFORE they actually answered the availability question, it is "Unclear" — a greeting is NOT an availability confirmation. Also Unclear for off-topic, wrong number, or a call that dropped before the question was answered.
-- built_up_area_sqft: the built-up / carpet area as DIGITS in square feet. Convert spoken Indian numbers ("forty five hundred" -> 4500, "बीस हज़ार" -> 20000, "saade teen hazaar" -> 3500). "" if not stated.
+- built_up_area_sqft: only the BUILT-UP area as DIGITS in square feet. Never store carpet area in this field. Convert spoken Indian numbers ("forty five hundred" -> 4500, "बीस हज़ार" -> 20000, "saade teen hazaar" -> 3500). "" if not stated.
+- carpet_area_sqft: only the CARPET area as DIGITS in square feet; use the same Indian-number conversions. "" if not stated. Use the question and answer together to identify the area type. Keep both fields separate when both measurements are given. Never copy a value into both fields unless the owner explicitly says both are the same; leave the fields empty if the type is ambiguous.
 - city_area: locality / area / landmark mentioned. "" if none.
 - expected_rent: rent WITH its unit preserved ("1 lakh per month", "13 rs/sqft"). "" if not stated or the owner declined to quote.
 - possession: "Ready" if available now; "Time needed" if only after some time; "" if not stated.
@@ -81,7 +86,8 @@ export async function inferCall(transcript: string | null): Promise<Inference> {
           additionalProperties: false,
           properties: {
             availability: { type: "string", enum: ["Available", "Unavailable", "Unclear"] },
-            built_up_area_sqft: { type: "string", description: "Digits in sqft, or empty string." },
+            built_up_area_sqft: { type: "string", description: "Built-up area in sqft as digits, or empty string." },
+            carpet_area_sqft: { type: "string", description: "Carpet area in sqft as digits, or empty string." },
             city_area: { type: "string" },
             expected_rent: { type: "string", description: "Rent with unit preserved, or empty string." },
             possession: { type: "string", description: '"Ready", "Time needed", or empty string.' },
@@ -91,6 +97,7 @@ export async function inferCall(transcript: string | null): Promise<Inference> {
           required: [
             "availability",
             "built_up_area_sqft",
+            "carpet_area_sqft",
             "city_area",
             "expected_rent",
             "possession",
@@ -104,14 +111,16 @@ export async function inferCall(transcript: string | null): Promise<Inference> {
 
   const content = completion.choices[0]?.message?.content;
   if (!content) throw new Error("OpenAI returned empty content");
-  return JSON.parse(content) as Inference;
+  return z.object({ availability: z.enum(["Available", "Unavailable", "Unclear"]), built_up_area_sqft: z.string(), carpet_area_sqft: z.string(),
+    city_area: z.string(), expected_rent: z.string(), possession: z.string(), confidence: z.enum(["High", "Medium", "Low"]), notes: z.string(),
+  }).strict().parse(JSON.parse(content));
 }
 
 // ---- District inference (fill db_area when the source DB didn't provide one) ----
 
 export type DistrictResult = { district: string; confidence: "High" | "Medium" | "Low" };
 
-const DISTRICT_PROMPT = `You are given a property-verification call (Hindi / Hinglish / Devanagari, noisy ASR) and an optional noisy locality string. Identify the Indian DISTRICT (or the major city, if a district isn't clear) where the property is located, using any landmark, locality, area, railway station, or city mention.
+const DISTRICT_PROMPT = `You are given a property-verification call (Indian English / Hindi / Hinglish / Devanagari, noisy ASR) and an optional noisy locality string. Identify the Indian DISTRICT (or the major city, if a district isn't clear) where the property is located, using any landmark, locality, area, railway station, or city mention.
 
 Return the clean district/city name in Title Case with standard English spelling (e.g. "Patna", "Jamshedpur", "Samastipur", "New Delhi"). Do NOT return a bare landmark or colony — map it to its district/city. If it genuinely cannot be determined, return an empty string. Also return your confidence.`;
 
@@ -150,5 +159,5 @@ export async function inferDistrict(
   });
   const content = completion.choices[0]?.message?.content;
   if (!content) throw new Error("OpenAI returned empty content");
-  return JSON.parse(content) as DistrictResult;
+  return z.object({ district: z.string(), confidence: z.enum(["High", "Medium", "Low"]) }).strict().parse(JSON.parse(content));
 }

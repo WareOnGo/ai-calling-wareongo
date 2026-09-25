@@ -1,11 +1,11 @@
+import { ApiError } from "./api";
 import { unstable_cache } from "next/cache";
 import { query } from "@/lib/db";
 import { deriveCat, normNum, type QueueSel } from "@/lib/queue";
 import { assignmentScope, currentAssignmentLateral, type Viewer } from "@/lib/scope";
 
 // Read layer for the raw master warehouse dataset (raw_records). Mirrors lib/calls.ts.
-// Powers the "Raw Dataset" view/filter page; the selected set will later feed a
-// Bolna calling batch (preprocessing TBD).
+// Powers the raw listing view and server-validated batch selection.
 
 export type RawRow = {
   id: string;
@@ -78,7 +78,7 @@ const SELECT_LIST = `
   r.metadata->>'email' as email,
   r.address, r.city, r.state, r.contact_type,
   (select pp.phone from raw_phones rp join raw_phone_numbers pp on pp.phone_id = rp.phone_id
-     where rp.master_id = r.id order by rp.is_primary desc limit 1) as phone,
+     where rp.master_id = r.id and nullif(trim(pp.phone), '') is not null order by rp.is_primary desc, rp.phone_id limit 1) as phone,
   (select count(*) from raw_phones rp where rp.master_id = r.id)     as phone_count,
   coalesce(calls.call_count, 0)        as call_count,
   calls.last_called_at::text           as last_called_at,
@@ -100,24 +100,27 @@ const SELECT_LIST = `
 // Call history aggregated across all of a record's phone numbers.
 const CALLS_JOIN = `
   left join lateral (
-    select count(*) as call_count,
-           max(cl.call_created_at) as last_called_at,
-           (array_agg(cl.status          order by cl.call_created_at desc nulls last))[1] as last_status,
-           (array_agg(cl.llm_availability order by cl.call_created_at desc nulls last))[1] as last_availability,
-           (array_agg(cl.transcript order by cl.call_created_at desc nulls last))[1] as last_transcript,
-           (array_agg(cl.recording_url   order by cl.call_created_at desc nulls last))[1] as last_recording_url,
-           (array_agg(cl.notes           order by cl.call_created_at desc nulls last))[1] as last_notes,
-           jsonb_agg(jsonb_build_object(
-             'at', cl.call_created_at, 'status', cl.status, 'availability', cl.llm_availability
-           ) order by cl.call_created_at desc nulls last) as calls_history
-    from raw_phones rp
-    join bolna_call_logs cl on cl.phone_id = rp.phone_id
-    where rp.master_id = r.id
+    select totals.call_count, recent.last_called_at, recent.last_status, recent.last_availability,
+           recent.last_transcript, recent.last_recording_url, recent.last_notes, history.calls_history
+    from (select count(*) as call_count from raw_phones rp join bolna_call_logs cl on cl.phone_id = rp.phone_id where rp.master_id = r.id) totals
+    left join lateral (
+      select cl.call_created_at as last_called_at, cl.status as last_status,
+             bolna_availability(cl.status, cl.llm_availability) as last_availability,
+             cl.transcript as last_transcript, cl.recording_url as last_recording_url, cl.notes as last_notes
+      from raw_phones rp join bolna_call_logs cl on cl.phone_id = rp.phone_id
+      where rp.master_id = r.id order by cl.call_created_at desc nulls last, cl.id desc limit 1
+    ) recent on true
+    left join lateral (
+      select jsonb_agg(jsonb_build_object('at', at, 'status', status, 'availability', availability) order by at desc nulls last, id desc) as calls_history
+      from (select cl.id, cl.call_created_at as at, cl.status, bolna_availability(cl.status, cl.llm_availability) as availability
+        from raw_phones rp join bolna_call_logs cl on cl.phone_id = rp.phone_id
+        where rp.master_id = r.id order by cl.call_created_at desc nulls last, cl.id desc limit 20) recent_calls
+    ) history on true
   ) calls on true`;
 
 // The current assignment (human-calling channel). Same shape and precedence as the
 // one baked into bolna_call_analysis, so both grids answer "who owns this" alike.
-const ASSIGN_JOIN = currentAssignmentLateral("record", "r.id");
+
 
 // `viewer` is FIRST and required: the employee scope applied here is what keeps an
 // employee from reading the whole scraped corpus, and putting it in the shared
@@ -151,7 +154,7 @@ function buildFilter(viewer: Viewer, f: RawFilters): { whereSql: string; params:
   if (f.contact === "owner") { where.push(`r.contact_type is null`); }
   if (f.min_area != null) { params.push(f.min_area); where.push(`r.area_sqft >= $${params.length}`); }
   if (f.max_area != null) { params.push(f.max_area); where.push(`r.area_sqft <= $${params.length}`); }
-  if (f.has_phone) { where.push(`exists (select 1 from raw_phones rp where rp.master_id = r.id)`); }
+  if (f.has_phone) { where.push(`exists (select 1 from raw_phones rp join raw_phone_numbers p using (phone_id) where rp.master_id = r.id and nullif(trim(p.phone), '') is not null)`); }
   // already-called filter: does any of the record's numbers have a call_log?
   const calledExists = `exists (select 1 from raw_phones rp join bolna_call_logs cl on cl.phone_id = rp.phone_id where rp.master_id = r.id)`;
   if (f.called === "yes") { where.push(calledExists); }
@@ -159,17 +162,17 @@ function buildFilter(viewer: Viewer, f: RawFilters): { whereSql: string; params:
   // most-recent call's result (self-contained subquery → works in count + rows)
   if (f.last_result) {
     params.push(f.last_result);
-    where.push(`(select cl.llm_availability from raw_phones rp join bolna_call_logs cl
+    where.push(`(select bolna_availability(cl.status, cl.llm_availability) from raw_phones rp join bolna_call_logs cl
                  on cl.phone_id = rp.phone_id where rp.master_id = r.id
-                 order by cl.call_created_at desc nulls last limit 1) = $${params.length}`);
+                 order by cl.call_created_at desc nulls last, cl.id desc limit 1) = $${params.length}`);
   }
   // Admin-only in practice: an employee already sees only their own rows.
   // "none" means no OPEN owner (a finished record is available to hand out again),
   // while a named assignee matches their open or completed work.
-  if (f.assignee === "none") {
+  if (viewer.isAdmin && f.assignee === "none") {
     where.push(`not exists (select 1 from bolna_assignments a
                   where a.entity_type = 'record' and a.entity_id = r.id and a.state = 'open')`);
-  } else if (f.assignee) {
+  } else if (viewer.isAdmin && f.assignee) {
     params.push(f.assignee.toLowerCase());
     where.push(`exists (select 1 from bolna_assignments a
                  where a.entity_type = 'record' and a.entity_id = r.id
@@ -183,7 +186,7 @@ function buildFilter(viewer: Viewer, f: RawFilters): { whereSql: string; params:
 export async function getRawRecords(viewer: Viewer, f: RawFilters) {
   const { whereSql, params, terms } = buildFilter(viewer, f);
   const requestedPage = Number.isFinite(f.page) ? Math.max(1, Math.floor(f.page!)) : 1;
-  const pageSize = f.pageSize ?? RAW_PAGE_SIZE;
+  const pageSize = Number.isFinite(f.pageSize) ? Math.max(1, Math.min(100, Math.floor(f.pageSize!))) : RAW_PAGE_SIZE;
 
   const countRes = await query<{ n: string }>(
     `select count(*)::text n from raw_records r ${whereSql}`,
@@ -195,7 +198,7 @@ export async function getRawRecords(viewer: Viewer, f: RawFilters) {
 
   const rowsRes = await query<RawRow>(
     `select ${SELECT_LIST}
-       from raw_records r ${CALLS_JOIN} ${ASSIGN_JOIN} ${whereSql}
+       from raw_records r ${CALLS_JOIN} ${currentAssignmentLateral("record", "r.id", viewer, params)} ${whereSql}
        order by r.area_sqft desc nulls last, r.id
        limit ${pageSize} offset ${offset}`,
     params,
@@ -203,38 +206,21 @@ export async function getRawRecords(viewer: Viewer, f: RawFilters) {
   return { rows: rowsRes.rows, total, page, pageSize, pages: Math.max(1, Math.ceil(total / pageSize)), terms };
 }
 
-const EXPORT_CAP = 100000; // safety ceiling; whole dataset is ~59k rows
-
 // Export rows carry the full source metadata JSON on top of the grid columns. Kept
 // out of the grid's SELECT_LIST so per-page fetches don't haul the jsonb blob.
 export type RawExportRow = RawRow & { metadata: Record<string, unknown> | null };
 
-// Full filtered set (no pagination) for the raw-dataset CSV export. Same filters and
-// ordering as the grid so the CSV matches what the user is looking at.
-export async function getRawRecordsForExport(viewer: Viewer, f: RawFilters): Promise<RawExportRow[]> {
-  const { whereSql, params } = buildFilter(viewer, f);
-  const res = await query<RawExportRow>(
-    `select ${SELECT_LIST}, r.metadata as metadata
-       from raw_records r ${CALLS_JOIN} ${ASSIGN_JOIN} ${whereSql}
-       order by r.area_sqft desc nulls last, r.id
-       limit ${EXPORT_CAP}`,
-    params,
-  );
-  return res.rows;
-}
-
-// Export only the explicitly-selected records (checkbox selection in the grid).
-// Goes through buildFilter too, so an employee can't widen their export by posting
-// ids they don't own.
+// Small scoped detail/personal-work reads; CSV uses rawExportQuery.
 export async function getRawRecordsByIds(viewer: Viewer, ids: string[]): Promise<RawExportRow[]> {
   if (ids.length === 0) return [];
   const { whereSql, params } = buildFilter(viewer, {});
-  params.push(ids.slice(0, EXPORT_CAP));
+  if (ids.length > 1000) throw new ApiError(400, "Too many detail IDs; use the export endpoint");
+  params.push(ids);
   const idClause = `r.id = any($${params.length})`;
   const where = whereSql ? `${whereSql} and ${idClause}` : `where ${idClause}`;
   const res = await query<RawExportRow>(
     `select ${SELECT_LIST}, r.metadata as metadata
-       from raw_records r ${CALLS_JOIN} ${ASSIGN_JOIN} ${where}
+       from raw_records r ${CALLS_JOIN} ${currentAssignmentLateral("record", "r.id", viewer, params)} ${where}
        order by r.area_sqft desc nulls last, r.id`,
     params,
   );
@@ -255,7 +241,7 @@ export async function getRawRecordIds(
   // reason, and the dispatch path drops it as skippedNoNumber. Without this, an
   // "assign all matching" would hand out rows the employee cannot action. The count
   // is returned rather than hidden, same as every other drop in the dispatch flow.
-  const phoneExists = `exists (select 1 from raw_phones rp where rp.master_id = r.id)`;
+  const phoneExists = `exists (select 1 from raw_phones rp join raw_phone_numbers p using (phone_id) where rp.master_id = r.id and nullif(trim(p.phone), '') is not null)`;
   const where = (extra: string) =>
     whereSql ? (extra ? `${whereSql} and ${extra}` : whereSql) : (extra ? `where ${extra}` : "");
 
@@ -301,7 +287,7 @@ const QUEUE_SELECT = `
   select r.id,
          coalesce(r.owner_first_name, r.owner_name, '') as name,
          (select pp.phone from raw_phones rp join raw_phone_numbers pp on pp.phone_id = rp.phone_id
-            where rp.master_id = r.id order by rp.is_primary desc limit 1) as contact,
+            where rp.master_id = r.id and nullif(trim(pp.phone), '') is not null order by rp.is_primary desc, rp.phone_id limit 1) as contact,
          coalesce(r.city, '')  as area,
          coalesce(r.state, '') as state,
          coalesce(c.n, 0)::text as call_count,
@@ -309,7 +295,7 @@ const QUEUE_SELECT = `
     from raw_records r
     left join lateral (
       select count(*) n,
-             (array_agg(cl.llm_availability order by cl.call_created_at desc nulls last))[1] as last_avail
+             (array_agg(bolna_availability(cl.status, cl.llm_availability) order by cl.call_created_at desc nulls last))[1] as last_avail
       from raw_phones rp join bolna_call_logs cl on cl.phone_id = rp.phone_id
       where rp.master_id = r.id
     ) c on true`;
@@ -323,14 +309,13 @@ function toQueueSel(r: QueueRowSql, queued: Set<string>): QueueSel {
   };
 }
 
-// Normalized (last-10-digit) set of every number already in a LIVE batch — i.e. one
-// that's sending or scheduled. Failed batches don't block, so a failed dispatch can be
-// retried. Used to skip re-queueing numbers that are already out for calling.
+// Include both active/uncertain batches and durable phone reservations.
 export async function getQueuedNumberSet(): Promise<Set<string>> {
   const res = await query<{ contact_number: string }>(
     `select distinct i.contact_number
        from call_batch_items i join call_batches b on b.id = i.batch_id
-      where b.state in ('sending', 'scheduled')`,
+      where b.state in ('sending', 'creating', 'scheduling', 'scheduled', 'uncertain')
+      union select phone_last10 as contact_number from bolna_dispatch_reservations`,
   );
   return new Set(res.rows.map((r) => normNum(r.contact_number)));
 }
@@ -339,7 +324,7 @@ export async function getRawQueueRows(viewer: Viewer, f: RawFilters): Promise<{ 
   const { whereSql, params } = buildFilter(viewer, f);
   // Must have a phone to call. Already-called records are NOT excluded here — they
   // are flagged via `cat` so the client can warn and let the user purge them.
-  const phoneExists = `exists (select 1 from raw_phones rp where rp.master_id = r.id)`;
+  const phoneExists = `exists (select 1 from raw_phones rp join raw_phone_numbers p using (phone_id) where rp.master_id = r.id and nullif(trim(p.phone), '') is not null)`;
   const where = whereSql ? `${whereSql} and ${phoneExists}` : `where ${phoneExists}`;
 
   const [res, queued, counts] = await Promise.all([
@@ -366,7 +351,7 @@ export async function getRawQueueRowsByIds(viewer: Viewer, ids: string[]): Promi
   const idClause = `r.id = any($${params.length})`;
   const where = whereSql ? `${whereSql} and ${idClause}` : `where ${idClause}`;
   const [res, queued] = await Promise.all([
-    query<QueueRowSql>(`${QUEUE_SELECT} ${where}`, params),
+    query<QueueRowSql>(`${QUEUE_SELECT} ${where} order by r.area_sqft desc nulls last, r.id`, params),
     getQueuedNumberSet(),
   ]);
   return res.rows.map((r) => toQueueSel(r, queued));
@@ -390,4 +375,15 @@ async function _getRawFilterOptions() {
     states: states.rows.map((r) => r.state),
     warehouseTypes: types.rows.map((r) => r.warehouse_type),
   };
+}
+
+export function rawExportQuery(viewer: Viewer, f: RawFilters, ids?: string[]): import("./export").ExportQuery {
+  const built = buildFilter(viewer, ids ? {} : f);
+  const params = built.params;
+  let where = built.whereSql;
+  if (ids) { params.push(ids); where += `${where ? " and" : "where"} r.id = any($${params.length}::uuid[])`; }
+  const countParams = [...params];
+  const join = currentAssignmentLateral("record", "r.id", viewer, params);
+  return { sql: `select ${SELECT_LIST}, r.metadata from raw_records r ${CALLS_JOIN} ${join} ${where} order by r.area_sqft desc nulls last, r.id`,
+    countSql: `select count(*)::text n from raw_records r ${where}`, params, countParams };
 }
