@@ -1,6 +1,9 @@
-export function dateTime(value: string | null) {
+import {providerTimestamp} from './time';
+export function dateTime(value: string | Date | null) {
   if (!value) return "—";
-  return new Date(value).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" }) + " IST";
+  const date=value instanceof Date?value:new Date(providerTimestamp(value)??NaN);
+  if(!Number.isFinite(date.getTime()))return "—";
+  return date.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" }) + " IST";
 }
 export function rent(value: string | null) {
   if (!value) return "—";

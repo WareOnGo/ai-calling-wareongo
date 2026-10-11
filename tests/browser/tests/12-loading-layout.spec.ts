@@ -20,8 +20,11 @@ for (const width of [1366,390]) {
       try {
         await db.query('begin');await db.query(`lock table ${table} in access exclusive mode`);
         await page.goto(path,{waitUntil:'commit'});
-        await expect(page.locator(`[data-loading-view="${view}"]`)).toHaveCount(1);
-        await expect(page.locator(`[data-loading-view="${view}"]`)).toBeVisible();
+        // Streaming may briefly retain a hidden fallback beside its replacement.
+        // Assert the single skeleton the user sees, not hidden React containers.
+        const skeleton=page.locator(`[data-loading-view="${view}"]:visible`);
+        await expect(skeleton).toHaveCount(1);
+        await expect(skeleton).toBeVisible();
         await expect(page.getByRole('status').filter({hasText:/Loading/}).first()).toBeAttached();
         expect(await bodyOverflowsX(page)).toBe(false);
         const selector=view==='home'?'.hub-card':view==='team'?'.team-report h2':'.colheads th';

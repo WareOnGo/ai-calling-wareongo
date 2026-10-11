@@ -41,9 +41,9 @@ describe('handoff C: completion gates and event history',()=>{
     const before=await row();expect(before.wh_id).toBe('1001');
     expect((await patch({revision:2,state:'done',remarks:'Confirmed available'})).status).toBe(200);
     expect((await row()).completed_at).toEqual(before.completed_at);
-    expect((await patch({revision:3,wh_id:''})).status).toBe(200);
+    expect((await patch({revision:3,wh_id:''})).status).toBe(422);
     expect((await row()).completed_at).toEqual(before.completed_at);
-    expect((await patch({revision:4,state:'open',wh_id:''})).status).toBe(200);
+    expect((await patch({revision:3,state:'open',wh_id:''})).status).toBe(200);
   });
   it('combines already saved values with a state-only completion',async()=>{
     await recordManualAttempt(id,a,event('connected'));

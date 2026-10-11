@@ -10,12 +10,12 @@ const saved=async(row:any)=>expect(row.locator('.save-status')).toHaveText('Save
 const detailShot=(locator:any,name:string)=>locator.screenshot({path:join(process.cwd(),'shots',`${name}.png`),animations:'disabled'});
 
 test('legacy Done rows accept note and result edits without an invented call or replaced warehouse reference',async({employeePage:page,shot})=>{
- sql("alter table bolna_assignments disable trigger bolna_assignment_quality_guard; update bolna_assignments set wh_id='WH-123' where id=2; alter table bolna_assignments enable trigger bolna_assignment_quality_guard;");
+ sql("alter table bolna_assignments disable trigger bolna_assignment_quality_guard; update bolna_assignments set wh_id='123' where id=2; alter table bolna_assignments enable trigger bolna_assignment_quality_guard;");
  await page.goto('/dashboard/my');const row=work(page,'Meera');
  await expect(row.getByRole('button',{name:'Done',exact:true})).toHaveAttribute('aria-pressed','true');
  await row.getByLabel('Your notes').fill('Legacy onboarding reference checked with the operations team');await row.getByLabel('Your notes').blur();await saved(row);
  await row.getByLabel('Result of the call').selectOption('Unavailable');await saved(row);
- await page.reload();await expect(work(page,'Meera').getByLabel('Warehouse ID')).toHaveValue('WH-123');
+ await page.reload();await expect(work(page,'Meera').getByLabel('Warehouse ID')).toHaveValue('123');
  await expect(work(page,'Meera').getByLabel('Your notes')).toHaveValue('Legacy onboarding reference checked with the operations team');
  await expect(work(page,'Meera').getByLabel('Result of the call')).toHaveValue('Unavailable');
  await expect(work(page,'Meera').getByRole('button',{name:'Log manual call'})).toBeDisabled();
@@ -46,14 +46,14 @@ test('Keep existing result preserves a dropdown edit after an earlier call resul
  await dialog.getByRole('button',{name:'Record attempt'}).click();await expect(dialog).toHaveCount(0);await page.reload();await expect(work(page).getByLabel('Result of the call')).toHaveValue('Available');expect(refreshes).toBeGreaterThan(0);
 });
 
-test('provider-local dial timestamps show ordered intervals on desktop and mobile',async({adminPage:page,shot})=>{
+test('UTC provider timestamps show IST times and readable intervals on desktop and mobile',async({adminPage:page,shot})=>{
  for(const [id,time] of [['local-first','2026-10-10 23:59:30'],['local-second','2026-10-11 00:01:00']]){
   const body={id:call,status:'no-answer',initiated_at:time,updated_at:time,created_at:time,retry_count:null,telephony_data:{provider:'twilio',provider_call_id:id,call_type:'outbound',to_number:'+919811100001',duration:'0',retried:null}};
   sql(`select bolna_record_ai_evidence('${JSON.stringify(body)}'::jsonb,'retained')`);
  }
  await page.goto('/dashboard/raw?q=Raghav');await page.getByRole('button',{name:'Show AI attempts'}).click();const history=page.locator('.ai-timeline');
- await expect(history).toContainText('90 seconds since');await expect(history).toContainText('provider clock; timezone not supplied');await expect(history.locator('.detail-history').first()).toContainText('local-second');
- await shot(page,'review2-provider-intervals');await page.setViewportSize({width:1000,height:1000});await detailShot(history,'changelog-provider-history');await page.setViewportSize({width:390,height:844});expect(await bodyOverflowsX(page)).toBe(false);await history.getByText(/90 seconds since/).scrollIntoViewIfNeeded();await expect(history.getByText(/90 seconds since/)).toBeInViewport();await shot(page,'review2-provider-intervals-mobile');
+ await expect(history).toContainText('1 minute 30 seconds since');await expect(history).toContainText('5:31 am IST');await expect(history.locator('.detail-history').first()).toContainText('local-second');
+ await shot(page,'review2-provider-intervals');await page.setViewportSize({width:1000,height:1000});await detailShot(history,'changelog-provider-history');await page.setViewportSize({width:390,height:844});expect(await bodyOverflowsX(page)).toBe(false);await history.getByText(/1 minute 30 seconds since/).scrollIntoViewIfNeeded();await expect(history.getByText(/1 minute 30 seconds since/)).toBeInViewport();await shot(page,'review2-provider-intervals-mobile');
 });
 
 test('Queue CSV excludes human-owned contacts and checks ownership again at download',async({adminPage:page,shot})=>{
@@ -75,5 +75,5 @@ test('assignments show readable disposition and due date and Team opens on five 
  sql("update bolna_assignments set disposition='awaiting_confirmation',next_due_at='2026-10-12T03:00:00Z' where id=1");
  await page.goto('/dashboard/assignments');const row=page.locator('table.sheet tbody tr').filter({has:page.getByRole('button',{name:'Details for record'})}).filter({hasText:'Raghav'});await expect(row).toContainText('Will check and get back');await expect(row).toContainText('Due');await shot(page,'review2-assignment-followup');
  await page.goto('/dashboard/raw?q=Raghav');await expect(page.locator('table.sheet tbody').first()).toContainText('Will check and get back');await expect(page.locator('table.sheet tbody').first()).not.toContainText('awaiting_confirmation');
- await page.goto('/dashboard/team');await expect(page.getByLabel('Team metrics table').locator('th')).toHaveCount(6);await expect(page.getByRole('link',{name:'Review undated legacy activity'})).toBeVisible();await shot(page,'review2-team-five-metrics');await page.setViewportSize({width:900,height:1000});await detailShot(page.getByLabel('Team metrics table'),'changelog-team-table');
+ await page.goto('/dashboard/team');await expect(page.getByLabel('Team metrics table').locator('th')).toHaveCount(6);await expect(page.getByRole('link',{name:'Review completion quality'})).toBeVisible();await shot(page,'review2-team-five-metrics');await page.setViewportSize({width:900,height:1000});await detailShot(page.getByLabel('Team metrics table'),'changelog-team-table');
 });

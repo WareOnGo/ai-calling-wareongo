@@ -69,7 +69,7 @@ export type RawFilters = {
   min_area?: number;
   max_area?: number;
   has_phone?: boolean;
-  manual_outcome?:FilterValue;rent_mentioned?:"yes"|"no";onboarded?:"yes"|"no";
+  manual_outcome?:FilterValue;onboarded?:"yes"|"no";
   assignment_state?: string;
   assignee?: FilterValue;             // admin-only: filter by owner ("none" = unassigned)
   page?: number;

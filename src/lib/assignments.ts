@@ -79,9 +79,11 @@ export async function updateAssignment(
     ...("closure_reason" in patch?{closure_reason:patch.closure_reason??null}:{})};
   if (patch.whId?.trim() && patch.whId.trim()!==current.wh_id?.trim() && !(await client.query('select bolna_valid_warehouse($1) valid',[patch.whId])).rows[0].valid)
     throw new ApiError(422,'Warehouse ID must be a positive integer.','INVALID_WAREHOUSE_ID','wh_id');
-  if(current.state!=='done' && proposed.state==='done'){
-    const issue=(await client.query<{issue:{message:string;code:string;field:string}|null}>("select bolna_completion_issue($1,$2,$3,$4,$5,$6) issue",
-      [id,proposed.state,proposed.outcome,proposed.wh_id,proposed.remarks,proposed.closure_reason])).rows[0].issue;
+  const completionChanged=current.state!==proposed.state || current.outcome!==proposed.outcome
+    || current.wh_id!==proposed.wh_id || current.remarks!==proposed.remarks || current.closure_reason!==proposed.closure_reason;
+  if(proposed.state==='done' && completionChanged){
+    const issue=(await client.query<{issue:{message:string;code:string;field:string}|null}>("select bolna_completion_issue($1,$2,$3,$4,$5,$6,$7) issue",
+      [id,proposed.state,proposed.outcome,proposed.wh_id,proposed.remarks,proposed.closure_reason,current.state!=='done'])).rows[0].issue;
     if(issue)throw new ApiError(422,issue.message,issue.code,issue.field);
   }
   const res=await client.query<AssignmentRow>(`update bolna_assignments set state=$2,outcome=$3,remarks=$4,wh_id=$5,added_to_db=$6,closure_reason=$7,

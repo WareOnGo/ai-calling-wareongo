@@ -1,7 +1,7 @@
 import { query } from './db';
 import { assignmentScope,type Viewer } from './scope';
 import { ApiError } from './api';
-export type AiAttempt={execution_id:string;provider_call_id:string;phone_last10:string|null;direction:string|null;status:string|null;provider:string|null;agent_id:string|null;batch_id:string|null;initiated_at:string|null;provider_initiated_at:string|null;execution_created_at:string|null;first_observed_at:string;duration_seconds:string|null;conversation_seconds:string|null;confirmed_conversation:boolean;interval_seconds:string|null;clock_basis:'absolute'|'provider_local'|null};
+export type AiAttempt={execution_id:string;provider_call_id:string;phone_last10:string|null;direction:string|null;status:string|null;provider:string|null;agent_id:string|null;batch_id:string|null;initiated_at:string|null;provider_initiated_at:string|null;execution_created_at:string|null;first_observed_at:string;duration_seconds:string|null;conversation_seconds:string|null;confirmed_conversation:boolean;interval_seconds:string|null};
 export type AiHistory={rows:AiAttempt[];total:number;page:number;pages:number;outbound:number;inbound:number;conversations:number;contacts:number;unknownExecutions:number;scope:'contact'|'execution';batch:string|null};
 export async function aiHistory(viewer:Viewer,entity:'call'|'record',id:string,options:{page?:number;scope?:'contact'|'execution';batch?:string}={}):Promise<AiHistory>{
  const permission:unknown[]=[id],allowed=assignmentScope(viewer,entity,'seed.id',permission);
@@ -20,15 +20,10 @@ export async function aiHistory(viewer:Viewer,entity:'call'|'record',id:string,o
  const unknownExecutions=Number((await query(`select count(*)::int n from bolna_call_logs cl where ${unknown} and cl.status is distinct from 'balance-low'
   and not exists(select 1 from bolna_ai_attempts a where a.execution_id=cl.id)`,params)).rows[0].n);
  const pages=Math.max(1,Math.ceil(summary.total/50)),page=Math.min(pages,Math.max(1,Math.floor(Number.isFinite(options.page)?options.page!:1)));
- const rows=(await query<AiAttempt>(`with dated as (
-  select a.*,coalesce(initiated_at at time zone 'UTC',bolna_local_dial_time(raw->>'initiated_at')) dial_time,
-   case when initiated_at is not null then 'absolute' when bolna_local_dial_time(raw->>'initiated_at') is not null then 'provider_local' end clock_basis
-  from bolna_ai_attempts a where ${where}
- ) select execution_id::text,provider_call_id,phone_last10,direction,status,provider,agent_id,batch_id,clock_basis,
+ const rows=(await query<AiAttempt>(`select execution_id::text,provider_call_id,phone_last10,direction,status,provider,agent_id,batch_id,
   initiated_at::text,raw->>'initiated_at' as provider_initiated_at,execution_created_at::text,first_observed_at::text,duration_seconds::text,conversation_seconds::text,confirmed_conversation,
-  extract(epoch from (dial_time-lag(dial_time) over(partition by phone_last10,direction,clock_basis,
-   case when clock_basis='provider_local' then coalesce(provider,'Bolna') end
-   order by dial_time nulls last,execution_id,provider_call_id)))::text as interval_seconds
-  from dated order by dial_time desc nulls last,first_observed_at desc,execution_id,provider_call_id limit 50 offset ${(page-1)*50}`,params)).rows;
+  extract(epoch from (initiated_at-lag(initiated_at) over(partition by phone_last10,direction
+   order by initiated_at nulls last,execution_id,provider_call_id)))::text as interval_seconds
+  from bolna_ai_attempts a where ${where} order by initiated_at desc nulls last,first_observed_at desc,execution_id,provider_call_id limit 50 offset ${(page-1)*50}`,params)).rows;
  return {rows,total:summary.total,page,pages,outbound:summary.outbound,inbound:summary.inbound,conversations:summary.conversations,contacts:summary.contacts,unknownExecutions,scope,batch};
 }

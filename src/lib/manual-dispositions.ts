@@ -6,3 +6,5 @@ export const CONNECTED_DISPOSITIONS:readonly string[]=["connected","callback","a
 export const CLOSURE_REASONS=["resolved","escalated","invalid_number_verified","exhausted"] as const;
 
 export const dispositionLabel=(value:string|null|undefined)=>value ? DISPOSITION_LABELS[value as Disposition]||value : "No call logged";
+
+export const allocationLabel=(value:string|null|undefined)=>value ? ({assign:"Assigned",reassign:"Reassigned",owned:"Already owned",duplicate:"Duplicate contact",missing_phone:"No usable phone",legacy:"Legacy assignment"} as Record<string,string>)[value]||value : "Not allocated";

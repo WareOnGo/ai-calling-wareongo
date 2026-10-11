@@ -2,6 +2,7 @@
 import {useEffect,useState,useRef} from 'react';
 import {createPortal} from 'react-dom';
 import {dateTime} from '@/lib/display';
+import {elapsedTime} from '@/lib/time';
 import {agentLabel} from '@/lib/agents';
 import type {AiHistory} from '@/lib/ai-attempts';
 import {requestJson} from './requests';
@@ -25,10 +26,10 @@ export function AiTimeline({entity,id,initialOpen=false,initialBatch="",initialS
     <p><strong>{data.total} known attempts</strong> · {data.outbound} outbound · {data.inbound} inbound · {data.contacts} contacts · {data.conversations} confirmed conversations</p>
     <p className="muted">Scope: {data.scope==='contact'?'all matching contact numbers':'this execution'}{data.batch?` · batch ${data.batch}`:''}. {data.unknownExecutions} execution records have no identifiable provider attempt. Conversation counts require finalized duration and caller speech evidence.</p>
     {data.rows.length?data.rows.map(event=><div className="detail-history" key={`${event.execution_id}:${event.provider_call_id}`}>
-     <strong>{event.initiated_at?`Dial started: ${dateTime(event.initiated_at)}`:event.provider_initiated_at?`Provider dial time: ${event.provider_initiated_at} (timezone not supplied)`:'Dial start time unknown'}</strong> · {event.status||'Unknown status'}
+     <strong>{event.initiated_at?`Dial started: ${dateTime(event.initiated_at)}`:'Dial start time unknown'}</strong> · {event.status||'Unknown status'}
      <p>{event.direction||'Unknown direction'} · {event.phone_last10||'Number unavailable'} · {agentLabel(event.agent_id)}</p>
      <p>{event.duration_seconds!==null?`Provider duration: ${event.duration_seconds}s`:'Duration unknown'} · {event.confirmed_conversation?'Confirmed conversation':'Conversation not confirmed'}</p>
-     <p>{event.interval_seconds!==null?`${Number(event.interval_seconds).toLocaleString('en-IN')} seconds since the previous dated attempt for this phone/direction${event.clock_basis==='provider_local'?' · provider clock; timezone not supplied':''}`:'Interval unavailable'}</p>
+     <p>{event.interval_seconds!==null?`${elapsedTime(Number(event.interval_seconds))} since the previous dated attempt for this phone/direction`:'Interval unavailable'}</p>
      <small>Execution created: {dateTime(event.execution_created_at)} · First observed: {dateTime(event.first_observed_at)}<br/>Provider call: {event.provider_call_id} · Batch: {event.batch_id||'Not supplied'}</small>
     </div>):<p>No identifiable provider attempts in this history.</p>}
     {data.pages>1&&<nav aria-label="AI attempt pages"><button type="button" disabled={data.page<=1} onClick={()=>setPage(p=>p-1)}>Previous AI attempts</button><span> {data.page}/{data.pages} </span><button type="button" disabled={data.page>=data.pages} onClick={()=>setPage(p=>p+1)}>Next AI attempts</button></nav>}

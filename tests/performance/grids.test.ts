@@ -73,7 +73,7 @@ it('measures representative local volume and preserves correct pages and scopes'
  await measure('personal_work',()=>personalWork(employee,'record',{},1));
  await measure('team_workloads',()=>getAssigneeWorkloads());
  const teamFilters=parseTeamFilters({});
- await measure('team_report',async()=>{const rows=await teamSummary(admin,teamFilters,new Date(),true);expect(rows.reduce((sum,r)=>sum+(r.counts.attempts||0),0)).toBe(5000);return rows;});
+ await measure('team_report',async()=>{const rows=await teamSummary(admin,teamFilters,new Date());expect(rows.reduce((sum,r)=>sum+(r.counts.attempts||0),0)).toBe(5000);return rows;});
  await measure('team_evidence',()=>teamDetails(admin,teamFilters));
  const ids=(await getRawRecordIds(admin,{min_area:90000},250)).ids;
  await measure('preview_250',()=>previewAssignment({entity:'record',ids,assignees:['caller1@perf.test','caller2@perf.test'],assignedBy:admin.email}));

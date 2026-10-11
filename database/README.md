@@ -26,19 +26,23 @@ schema changes before adopting it. Missing columns or incompatible constraints
 fail the transaction rather than being silently skipped.
 
 The runner holds a session advisory lock and commits each migration separately.
-Applied file checksums are verified. The unreleased migration 015 was corrected
-to use `CREATE OR REPLACE` for its merge functions. Do not edit an already-applied
-production migration or bypass a checksum mismatch. Migration 015's historical recovery is
-executed as a resumable job in 250-row transactions; its checksum is recorded
-only after the job finishes. An interrupted job replays the idempotent 015 DDL
-and resumes its committed cursor. Earlier assignment DDL locks are already released.
+Applied file checksums are verified. Baseline and migrations 001–005 are unchanged.
+The unshipped 006–019 development sequence is consolidated into 006 schema,
+007 retained-payload recovery and 008 concurrent indexes. No superseded intermediate
+tables or policies are created. An installation carrying retired migration names
+is refused; rebuild a disposable development database or prepare a specific
+forward upgrade. Never bypass the ledger or edit applied production migrations.
 
-Migrations 017 and 019 build search indexes concurrently outside a transaction. A failed
-build's invalid index is removed before retrying. Index statements allow ten
-minutes by default (`MIGRATION_INDEX_TIMEOUT_MS`, 1000–3600000); ordinary
-statements allow thirty seconds, with two-second lock waits. A failure rolls back
-only the current transaction: earlier migrations remain applied. Fix the cause
-and rerun the same command. No down migrations are provided.
+Stage 007 uses 250-row transactions and commits evidence with its cursor. Its
+checksum is recorded only after recovery finishes. An interruption resumes that
+cursor; the already-recorded schema stage is not rerun.
+
+Stage 008 builds indexes concurrently. Its lock timeout is zero so older
+transactions can finish, while the overall statement timeout defaults to ten
+minutes (`MIGRATION_INDEX_TIMEOUT_MS`, 1000–3600000). Invalid partial indexes are
+removed before retrying. Ordinary statements retain thirty-second statement and
+two-second lock limits. A failure rolls back only the active transaction;
+earlier stages remain applied. Fix the cause and rerun. No down migrations exist.
 
 See the [deployment runbook](../docs/DEPLOYMENT.md) for maintenance, recovery,
 backfill catch-up and production-volume rehearsal requirements.
@@ -112,37 +116,31 @@ reserved. Recent batches can check the provider or record an administrator's
 verified completion/cancellation. This records who released the reservation and
 why; it does not itself cancel remote calls.
 
-## Bolna DB Fixes rollout (006–019)
+## Bolna DB Fixes rollout (006–008)
 
-The handoff release adds shared contact ownership, durable manual batches, manual
-attempt/audit history and completion rules, numeric filter helpers, per-dial AI
-history, search indexes and reporting evidence. It preserves legacy
-episodes and never fabricates overwritten attempts or missing activity timestamps.
-Use the same tracked migration runner; do not edit previously applied SQL.
+The schema stage adds shared contact ownership, durable manual batches, manual
+attempt/audit history, canonical completion rules, numeric/search helpers,
+per-dial AI history and the reconciliation cursor/lease. It preserves safe exact-call
+legacy onboarding without manufacturing dates. Obsolete contact claims, wallet
+cache and duplicate delivery-ledger tables are absent from the consolidated schema.
 
-Rehearse the entire sequence on a restored staging copy before production. Run
-[handoff-audit.sql](handoff-audit.sql) to list legacy owner conflicts, invalid Done
-rows, missing phone associations, reused warehouse references and ungrouped assignments. Row-level samples are capped at 200. Triage those findings
-explicitly; the migration does not merge properties or mass-rewrite completions.
-Pause assignment mutations and event workers for the migration/deployment window.
-Resume after schema, access, assignment preview, manual follow-up and retained
-provider-history checks. Confirm the account wallet unit and inspect a real retry
-chain against the evidence contract before relying on historical totals.
+Done inserts/transitions need a logged call. Already-Done edits skip that one
+requirement but still validate result, WH ID, notes and closure whenever relevant
+values change. Available always needs a positive integer WH ID, including Exhausted
+closures. Retry work can be deliberately closed as Exhausted with a substantive
+reason; there is no additional attempt threshold or automatic cap. Invalid legacy
+completions can be repaired atomically or reopened.
 
-Local upgrade rehearsal covers a fresh schema, a legacy baseline with conflicting
-owner/invalid-completion rows, an installation already through 005, and a real
-runner failure after 015 commits its schema but before backfill completion. It checks
-checksum replay, read-only audit queries, sparse retained AI deliveries, no invented
-historical verification dates and preservation of an unrelated co-tenant canary
-table. Migration 015 performs retained-payload recovery after installing the final
-sparse-update adapter; 011 only creates the initial evidence schema.
+Provider timestamps without an offset are interpreted as UTC, independently of
+session TimeZone. Explicit offsets retain their instant. The app stores UTC and
+displays IST. Confirm the provider convention against a known call before rollout.
 
-Migration 018 validates completion only when becoming Done, adds explicit
-Exhausted closure, preserves legacy references, copies attributable call-row
-onboarding without inventing dates, and installs provider-clock ordering. It
-removes unused contact claims, the database wallet cache and the duplicate AI
-delivery ledger. Ownership enforcement reads current contact mappings under the
-allocation lock. Imports do not automatically resolve existing ownership conflicts.
-The terminal inbox and merged per-dial rows remain available for recovery.
-Migration 019 indexes identifying fields for fuzzy Calls search; transcript/note
-search remains exact substring matching.
+Run [handoff-audit.sql](handoff-audit.sql) after schema migration on staging (it uses
+handoff views/functions). It identifies overlapping ownership, invalid Done rows,
+missing phones, reused references and legacy ungrouped assignments. Row samples
+are capped at 200. Source imports do not automatically resolve ownership conflicts.
+
+The local rehearsals cover fresh, legacy, through-005, interrupted recovery and
+concurrent-index timeout/retry. They check co-tenant preservation, legacy onboarding,
+unknown dates, retired-history rejection and an index wait exceeding two seconds.
+They do not replace a representative staging migration and restore rehearsal.

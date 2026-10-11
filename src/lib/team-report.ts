@@ -4,7 +4,7 @@ import {ApiError} from './api';
 import type {Viewer} from './scope';
 import type {ExportQuery} from './export';
 
-export const TEAM_METRICS={open:'Open now',completed:'First valid completions',attempts:'Recorded attempts',connected:'Connected attempts',duration:'Timed connected attempts',available:'First Available targets',repeat_available:'Repeat Available attempts',onboarded:'Warehouse references onboarded',quality:'Quality review now',overdue:'Follow-ups due now',reopened:'Reopened targets',comparable:'Comparable AI executions',mismatch:'AI / manual disagreements',legacy:'Undated legacy verification'} as const;
+export const TEAM_METRICS={attempts:'Recorded attempts',connected:'Connected attempts',duration:'Timed connected attempts',available:'First Available targets',onboarded:'Warehouse references onboarded'} as const;
 export type TeamMetric=keyof typeof TEAM_METRICS;
 const metricKeys=Object.keys(TEAM_METRICS) as [TeamMetric,...TeamMetric[]];
 export const teamReportSchema=z.object({date_from:z.string().date(),date_to:z.string().date(),caller:z.string().email().max(320).optional(),metric:z.enum(metricKeys).default('attempts'),page:z.coerce.number().int().min(1).max(1000000).default(1)})
@@ -22,82 +22,62 @@ function adminOnly(viewer:Viewer){if(!viewer.isAdmin)throw new ApiError(403,'for
 
 // All cards, row links and CSV use this same event relation. Date filters are
 // applied AFTER first-evidence selection, so reopen/edit cycles cannot move a
-// first completion or onboarding into a new reporting period.
+// first discovery or onboarding into a new reporting period.
 // Assemble only the CTEs required by the requested measures. The default page
 // requests five metrics; a drill-down builds only its own dependency chain.
-const REPORT_CTES:Record<string,string>={
+const REPORT_CTES={
  "bounds":`bounds as (select ($1::date::timestamp at time zone 'Asia/Kolkata') lo,
  (($2::date+interval '1 day') at time zone 'Asia/Kolkata') hi,$3::timestamptz as_of)`,
  "first_change":`first_change as materialized (select distinct on(assignment_id) assignment_id,before_values from bolna_assignment_changes order by assignment_id,id)`,
  "snapshots":`snapshots as materialized (
-  select a.id assignment_id,coalesce(c.before_values,to_jsonb(a)) v,null::timestamptz at,'Retained legacy state'::text provenance,true verification
+  select a.id assignment_id,coalesce(c.before_values,to_jsonb(a)) v,null::timestamptz at,'Retained legacy state'::text provenance
    from bolna_assignments a left join first_change c on c.assignment_id=a.id where c.before_values is distinct from '{}'::jsonb
-  union all select assignment_id,after_values,changed_at,'Assignment audit',before_values->>'outcome' is distinct from after_values->>'outcome'
+  union all select assignment_id,after_values,changed_at,'Assignment audit'
    from bolna_assignment_changes
-  union all select id,jsonb_build_object('wh_id',wh_id,'added_to_db',added_to_db),null,'Imported legacy onboarding',false
+  union all select id,jsonb_build_object('wh_id',wh_id,'added_to_db',added_to_db),null,'Imported legacy onboarding'
    from bolna_assignments where legacy_onboarding
  )`,
  "states":`states as materialized (select s.*,a.assignee,a.entity_type,a.entity_id,
-  s.v->>'outcome' outcome,s.v->>'wh_id' wh_id,bolna_recorded_warehouse(s.v->>'wh_id') valid_wh,
-  s.v->>'state'='done' and bolna_assignment_quality(s.v->>'state',s.v->>'outcome',case when bolna_recorded_warehouse(s.v->>'wh_id') then '1' else s.v->>'wh_id' end,s.v->>'remarks',s.v->>'disposition',s.v->>'closure_reason') is null valid_done
+  s.v->>'outcome' outcome,s.v->>'wh_id' wh_id,bolna_recorded_warehouse(s.v->>'wh_id') valid_wh
   from snapshots s join bolna_assignments a on a.id=s.assignment_id)`,
- "first_done":`first_done as (select distinct on(assignee,entity_type,entity_id) *,coalesce(at,(v->>'completed_at')::timestamptz) event_at
-  from states where valid_done order by assignee,entity_type,entity_id,coalesce(at,(v->>'completed_at')::timestamptz) nulls first,assignment_id)`,
  "first_onboarded":`first_onboarded as (select distinct on(lower(trim(wh_id))) * from states where valid_wh and (v->>'added_to_db')::boolean
   order by lower(trim(wh_id)),at nulls first,assignment_id)`,
  "attempts":`attempts as materialized (select e.*,a.entity_type,a.entity_id from bolna_effective_manual_attempts e join bolna_assignments a on a.id=e.assignment_id)`,
  "available_observations":`available_observations as (
-  select assignment_id,assignee,entity_type,entity_id,at,provenance from states where outcome='Available'
+  -- Attempt-derived snapshots are projections, not independent discoveries.
+  -- Read their evidence from effective attempts so a correction removes the old result.
+  select assignment_id,assignee,entity_type,entity_id,at,provenance from states
+   where outcome='Available' and nullif(v->>'outcome_attempt_id','') is null
   union all select assignment_id,assignee,entity_type,entity_id,occurred_at,'Recorded manual attempt' from attempts where outcome='Available'
  )`,
  "first_available":`first_available as (select distinct on(assignee,entity_type,entity_id) * from available_observations
   order by assignee,entity_type,entity_id,at nulls first,assignment_id,provenance)`,
  "period_attempts":`period_attempts as (select e.* from attempts e,bounds b where e.occurred_at>=b.lo and e.occurred_at<b.hi)`,
- "reopened":`reopened as (select distinct on(a.assignee,a.entity_type,a.entity_id) a.*,c.changed_at from bolna_assignment_changes c join bolna_assignments a on a.id=c.assignment_id,bounds b
-  where c.before_values->>'state'='done' and c.after_values->>'state'='open' and c.changed_at>=b.lo and c.changed_at<b.hi order by a.assignee,a.entity_type,a.entity_id,c.changed_at)`,
- "verifications":`verifications as (select assignment_id,assignee,entity_type,entity_id,at,outcome from states where verification and at is not null and outcome in ('Available','Unavailable','Unclear')
-  union all select assignment_id,assignee,entity_type,entity_id,occurred_at,outcome from attempts where outcome is not null)`,
- "comparisons":`comparisons as materialized (select distinct on(v.assignee,v.entity_id) v.*,bolna_availability(c.status,c.llm_availability) ai_result from verifications v
-  join bolna_call_logs c on v.entity_type='call' and c.id=v.entity_id,bounds b
-  where v.at>=b.lo and v.at<b.hi and c.status in ('completed','call-disconnected') and c.llm_availability in ('Available','Unavailable','Unclear')
-  order by v.assignee,v.entity_id,v.at desc)`,
- "reused_wh":`reused_wh as (select lower(trim(wh_id)) wh from bolna_assignments where state<>'dropped' and added_to_db and bolna_valid_warehouse(wh_id)
-  group by 1 having count(distinct(entity_type,entity_id))>1)`,
- "current_quality":`current_quality as (select a.*,coalesce(bolna_assignment_quality(state,outcome,wh_id,remarks,disposition,closure_reason),
-   case when (outcome='Available' or added_to_db) and not bolna_valid_warehouse(wh_id) then 'Missing or invalid warehouse reference'
-    when added_to_db and lower(trim(wh_id)) in (select wh from reused_wh) then 'Warehouse reference reused across work targets; verify the property match' end) issue
-  from bolna_assignments a where state<>'dropped')`,
 };
 const REPORT_EVENTS:Record<TeamMetric,string>={
- "open":`select 'open'::text metric,a.assignee,a.id assignment_id,a.id::text event_id,null::timestamptz occurred_at,'Current open workload'::text detail,null::integer duration_seconds from bolna_assignments a where state='open'`,
- "completed":`select 'completed',assignee,assignment_id,assignment_id::text,event_at,provenance||' · '||coalesce(outcome,'Verified closure'),null from first_done,bounds where event_at>=lo and event_at<hi`,
  "available":`select 'available',assignee,assignment_id,assignment_id::text,at,provenance||' · Available found (onboarding counted separately)',null from first_available,bounds where at>=lo and at<hi`,
  "onboarded":`select 'onboarded',assignee,assignment_id,assignment_id::text,at,'Staff-recorded · '||wh_id,null from first_onboarded,bounds where at>=lo and at<hi`,
  "attempts":`select 'attempts',assignee,assignment_id,id::text,occurred_at,disposition||' · '||coalesce(outcome,'No new result')||' · Recorded by '||actor,duration_seconds from period_attempts`,
  "connected":`select 'connected',assignee,assignment_id,id::text,occurred_at,disposition,duration_seconds from period_attempts where disposition in ('connected','callback','awaiting_confirmation')`,
  "duration":`select 'duration',assignee,assignment_id,id::text,occurred_at,'Self-reported seconds',duration_seconds from period_attempts where disposition in ('connected','callback','awaiting_confirmation') and duration_seconds is not null`,
- "repeat_available":`select 'repeat_available',e.assignee,e.assignment_id,e.id::text,e.occurred_at,'Repeated Available result in an explicit attempt',null from period_attempts e where e.outcome='Available'
-   and exists(select 1 from attempts old where old.assignee=e.assignee and old.entity_type=e.entity_type and old.entity_id=e.entity_id and old.outcome='Available' and (old.occurred_at,old.created_at,old.id)<(e.occurred_at,e.created_at,e.id))`,
- "quality":`select 'quality',assignee,id,id::text,null,issue,null from current_quality where issue is not null`,
- "overdue":`select 'overdue',assignee,id,id::text,next_due_at,case when next_due_at is null then 'Follow-up needs a date' else 'Follow-up is due' end,null from bolna_assignments,bounds
-   where state='open' and disposition=any(bolna_retry_dispositions()) and (next_due_at is null or next_due_at<=as_of)`,
- "reopened":`select 'reopened',assignee,id,id::text,changed_at,'Completion reopened',null from reopened`,
- "comparable":`select 'comparable',assignee,assignment_id,assignment_id::text,at,'Latest AI: '||ai_result||' · Manual: '||outcome,null from comparisons`,
- "mismatch":`select 'mismatch',assignee,assignment_id,assignment_id::text,at,'Latest AI: '||ai_result||' · Manual: '||outcome,null from comparisons where outcome<>ai_result`,
- "legacy":`select 'legacy',a.assignee,a.id,a.id::text,null,'First verification date is unknown; excluded from dated discoveries/onboarding/completions',null from bolna_assignments a where a.id in (
-   select assignment_id from first_done where event_at is null union select assignment_id from first_available where at is null union select assignment_id from first_onboarded where at is null)`,
 };
 export const PRIMARY_TEAM_METRICS:TeamMetric[]=['attempts','connected','available','onboarded','duration'];
+const attemptCtes=['attempts','period_attempts'] as const;
+const stateCtes=['first_change','snapshots','states'] as const;
+// Explicit, typed dependencies avoid inferring a query graph from SQL text.
+const METRIC_CTES:Record<TeamMetric,readonly (keyof typeof REPORT_CTES)[]>={
+ attempts:attemptCtes,connected:attemptCtes,duration:attemptCtes,
+ available:[...stateCtes,'attempts','available_observations','first_available'],
+ onboarded:[...stateCtes,'first_onboarded'],
+};
 export function teamEvidenceSql(metrics:TeamMetric[]){
- const events=metrics.map(metric=>REPORT_EVENTS[metric]).join(' union all '),needed=new Set<string>(['bounds']);
- const include=(fragment:string)=>{for(const [name,definition] of Object.entries(REPORT_CTES)){
-  if(!needed.has(name)&&new RegExp('\\b'+name+'\\b').test(fragment)){needed.add(name);include(definition);}
- }};include(events);
+ const events=metrics.map(metric=>REPORT_EVENTS[metric]).join(' union all ');
+ const needed=new Set<string>(['bounds',...metrics.flatMap(metric=>METRIC_CTES[metric])]);
  return 'with '+Object.entries(REPORT_CTES).filter(([name])=>needed.has(name)).map(([,sql])=>sql).join(',')+',events(metric,assignee,assignment_id,event_id,occurred_at,detail,duration_seconds) as ('+events+')';
 }
 export type TeamSummary={email:string;name:string|null;active:boolean;counts:Partial<Record<TeamMetric,number>>;average_seconds:number|null;duration_coverage:number};
-export async function teamSummary(viewer:Viewer,f:TeamFilters,now=new Date(),primaryOnly=false):Promise<TeamSummary[]>{
- adminOnly(viewer);const params=[f.date_from,f.date_to,now.toISOString()];const evidence=teamEvidenceSql(primaryOnly?PRIMARY_TEAM_METRICS:metricKeys);
+export async function teamSummary(viewer:Viewer,f:TeamFilters,now=new Date()):Promise<TeamSummary[]>{
+ adminOnly(viewer);const params=[f.date_from,f.date_to,now.toISOString()];const evidence=teamEvidenceSql(PRIMARY_TEAM_METRICS);
  return (await query<TeamSummary>(`${evidence},totals as(select assignee,metric,count(*)::int n,avg(duration_seconds) average_seconds from events  group by assignee,metric),
  grouped as(select assignee,jsonb_object_agg(metric,n) counts,max(average_seconds) filter(where metric='duration')::float8 average_seconds,max(n) filter(where metric='duration') duration_coverage from totals group by assignee)
  select u.email,u.name,u.active,coalesce(g.counts,'{}'::jsonb) counts,g.average_seconds,coalesce(g.duration_coverage,0)::int duration_coverage

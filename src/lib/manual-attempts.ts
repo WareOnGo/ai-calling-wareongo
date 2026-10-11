@@ -24,21 +24,26 @@ export async function recordManualAttempt(assignmentId:string,user:Viewer,input:
     if(prior){if(prior.actor!==user.email.toLowerCase()||prior.request_hash!==hash)throw new ApiError(409,"This attempt key was already used for another event");return {id:body.id,replayed:true};}
     if(!assignment || assignment.revision!==body.revision)throw new ApiError(409,"Assignment changed or is no longer editable. Refresh before recording the attempt.");
     if(Date.parse(body.occurred_at)<Date.parse(assignment.assigned_at)-300000)throw new ApiError(400,"Attempt time cannot precede this assignment");
+    let recordedOutcome=body.outcome??null;
     if(body.corrects_id){
-      const previous=(await client.query("select id from bolna_effective_manual_attempts where id=$1 and assignment_id=$2",[body.corrects_id,assignmentId])).rows[0];
+      const previous=(await client.query("select id,outcome from bolna_effective_manual_attempts where id=$1 and assignment_id=$2",[body.corrects_id,assignmentId])).rows[0];
       if(!previous)throw new ApiError(409,"That event has already been corrected or belongs to another assignment");
       if(!body.notes||body.notes.length<10)throw new ApiError(400,"Explain the correction in at least 10 characters");
+      // Keep existing result also retains the corrected event's result, so its
+      // replacement remains the source for later corrections and reporting.
+      recordedOutcome=body.outcome??previous.outcome;
     }
     await client.query(`insert into bolna_manual_attempts(id,assignment_id,actor,assignee,occurred_at,disposition,outcome,notes,next_due_at,duration_seconds,corrects_id,request_hash)
-      values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,[body.id,assignmentId,user.email.toLowerCase(),assignment.assignee,body.occurred_at,body.disposition,body.outcome??null,body.notes||null,body.next_due_at??null,body.duration_seconds??null,body.corrects_id??null,hash]);
+      values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,[body.id,assignmentId,user.email.toLowerCase(),assignment.assignee,body.occurred_at,body.disposition,recordedOutcome,body.notes||null,body.next_due_at??null,body.duration_seconds??null,body.corrects_id??null,hash]);
     const latest=(await client.query("select * from bolna_effective_manual_attempts where assignment_id=$1 order by occurred_at desc,created_at desc,id desc limit 1",[assignmentId])).rows[0];
     const effectiveResult=(await client.query("select id,outcome from bolna_effective_manual_attempts where assignment_id=$1 and outcome is not null order by occurred_at desc,created_at desc,id desc limit 1",[assignmentId])).rows[0];
     // Null means Keep existing result. Only an explicit newest result or a
     // correction to the event currently supplying that result changes it. A
-    // correction of the latest call can also fill a previously unknown result.
+    // correction of the latest call can replace an inherited attempt result or
+    // fill an unknown result, while preserving an independent dropdown choice.
     const replaceResult=(!body.corrects_id && !!body.outcome && effectiveResult?.id===body.id)
       || (!!body.corrects_id && (assignment.outcome_attempt_id===body.corrects_id
-        || assignment.outcome===null && latest.id===body.id && !!body.outcome));
+        || (assignment.outcome===null || assignment.outcome_attempt_id!==null) && latest.id===body.id && !!body.outcome));
     const outcome=replaceResult ? effectiveResult?.outcome ?? null : assignment.outcome;
     const outcomeAttemptId=replaceResult ? effectiveResult?.id ?? null : assignment.outcome_attempt_id;
     await client.query(`update bolna_assignments set disposition=$2,last_attempt_at=$3,next_due_at=$4,

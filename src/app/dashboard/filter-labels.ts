@@ -5,6 +5,7 @@ export function filterLabel(key: string, path: string) {
 }
 
 export function filterValue(key: string, value: string) {
+  if (key === "follow_up") return ({pending:"Pending follow-up",due:"Follow-up due"} as Record<string,string>)[value] || value;
   if (value === "none") return ["outcome","manual_outcome","availability","last_result"].includes(key) ? "No result yet" : "Unassigned now";
   if (key === "state" && value === "dropped") return "Unassigned";
   return value === "1" && key !== "q" ? "Yes" : value;

@@ -51,8 +51,20 @@ export async function POST(req: NextRequest) {
       // processing snapshot. Repeated deliveries do not add another dial.
       await client.query("select bolna_record_ai_evidence($1::jsonb,'webhook')",[body]);
       if(!isTerminal(e.status))return;
-      await client.query(`insert into bolna_webhook_events(id,raw,status,next_attempt_at,retry_count)
-        values($1,$2,'pending',now(),bolna_retry_index($2::jsonb))
+      // Reuse retained facts for this exact provider dial, including earlier
+      // nonterminal deliveries. A new dial must not inherit another call's speech.
+      // Apply the same ordering rule before feeding the worker's latest snapshot.
+      await client.query(`with retained as (
+        select raw from bolna_ai_attempts where execution_id=$1
+          and provider_call_id=nullif(trim($2::jsonb#>>'{telephony_data,provider_call_id}'),'')
+      ), incoming as (
+        select case when retained.raw is null then $2::jsonb
+          when bolna_execution_newer(bolna_merge_ai_payload(retained.raw,$2::jsonb),retained.raw)
+            then bolna_merge_ai_payload(retained.raw,$2::jsonb)
+          else retained.raw end raw
+        from (select 1) seed left join retained on true
+      ) insert into bolna_webhook_events(id,raw,status,next_attempt_at,retry_count)
+        select $1,raw,'pending',now(),bolna_retry_index(raw) from incoming
         on conflict(id) do update set raw=excluded.raw,retry_count=excluded.retry_count,
         status='pending',attempts=0,next_attempt_at=now(),processed_at=null,
         lease_token=null,lease_until=null,last_error=null

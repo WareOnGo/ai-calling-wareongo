@@ -12,9 +12,17 @@ type Props = { revision: number; assignmentId: string; outcome: string | null; r
 export function OutcomeCells({ revision, assignmentId, outcome, remarks, addedToDb, whId, state = "open", closureReason,disposition,nextDueAt,onStateChange }: Props) {
   const { pending } = useDashboardUI();
   const key = `assignment-${assignmentId}`;
-  const save = useAutosave(key, `/api/assignments/${assignmentId}`, { outcome: outcome ?? "", remarks: remarks ?? "", added_to_db: addedToDb, wh_id: whId ?? "", state,closure_reason:closureReason??"" }, ["outcome", "added_to_db", "state","closure_reason"], revision);
+  const save = useAutosave(key, `/api/assignments/${assignmentId}`, { outcome: outcome ?? "", remarks: remarks ?? "", added_to_db: addedToDb, wh_id: whId ?? "", state,closure_reason:closureReason??"" }, ["outcome", "added_to_db", "state","closure_reason"], revision,["outcome","closure_reason"]);
   const whInput=useRef<HTMLInputElement>(null),notesInput=useRef<HTMLTextAreaElement>(null);
-  useEffect(()=>{if(save.status==="error"){if(save.field === "wh_id")whInput.current?.focus();else if(save.field === "remarks")notesInput.current?.focus();}},[save.status,save.field]);
+  const focusedError=useRef('');
+  useEffect(()=>{
+    if(!save.dirty){focusedError.current='';return;}
+    const key=`${save.field}:${save.error}`;
+    if(save.status==='error'&&focusedError.current!==key){
+      focusedError.current=key;
+      if(save.field==='wh_id')whInput.current?.focus();else if(save.field==='remarks')notesInput.current?.focus();
+    }
+  },[save.status,save.field,save.error,save.dirty]);
   const done = save.values.state === "done";
   useEffect(() => { onStateChange?.(assignmentId, save.values.state); }, [assignmentId, save.values.state, onStateChange]);
   const cls = save.status === "saving" ? "saving" : save.status === "error" ? "err" : save.status === "saved" ? "ok" : "";

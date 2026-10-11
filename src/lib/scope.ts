@@ -108,14 +108,14 @@ export function ownershipFilter(entity: EntityType, idExpr: string, f: { assigne
   if (f.assignment_state === "unassigned") where.push(`not (${assigned})`);
   if (f.assignment_state === "open") where.push(`(${open})`);
   if (f.assignment_state === "never") where.push(`not (${idExpr} in (${ownedIds("", "true")}))`);
-  if (f.assignment_state === "done") where.push(`exists(select 1 from bolna_assignments a where a.entity_type='${entity}' and a.entity_id=${idExpr} and a.state='done')`);
+  if (f.assignment_state === "done") where.push(`${idExpr} in (${ownedIds("", "a.state='done'")})`);
   const assignees=filterValues(f.assignee),named=assignees.filter(email=>email!=="none");
   const ownerChoices:string[]=[];
   if(assignees.includes("none"))ownerChoices.push(`not (${assigned})`);
   if(named.length){
     params.push(named.map(email=>email.toLowerCase()));
     ownerChoices.push(f.assignment_state === 'done'
-      ? `exists(select 1 from bolna_assignments a where a.assignee=any($${params.length}::text[]) and a.state='done' and a.entity_type='${entity}' and a.entity_id=${idExpr})`
+      ? `${idExpr} in (${ownedIds(`and a.assignee=any($${params.length}::text[])`, "a.state='done'")})`
       : `${idExpr} in (${ownedIds(`and a.assignee=any($${params.length}::text[])`)})`);
   }
   if(ownerChoices.length)where.push(`(${ownerChoices.join(" or ")})`);

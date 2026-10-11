@@ -1,5 +1,5 @@
 {
-  "label": "review2",
+  "label": "audit5",
   "indexes": [
     "bolna_ai_attempts_contact",
     "bolna_manual_attempts_assignment_idx",
@@ -15,6 +15,6 @@
     "raw_records_pkey",
     "uq_bolna_assignments_open"
   ],
-  "planningMs": 4.525,
-  "executionMs": 21.338
+  "planningMs": 4.644,
+  "executionMs": 23.358
 }

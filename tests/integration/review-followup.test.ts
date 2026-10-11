@@ -35,8 +35,8 @@ const provider=(id:string,callId:string,time:string,status='completed')=>({id,st
 const capture=(body:object)=>query("select bolna_record_ai_evidence($1,'retained')",[body]);
 
 it('allows legacy Done notes/result/reference corrections through the real route without inventing calls',async()=>{
- const {id}=await assigned();await seedLegacyAssignments("update bolna_assignments set state='done',outcome='Available',wh_id='WH-123',added_to_db=true where id=$1",[id]);
- for(const body of [{revision:0,remarks:'Confirmed the historical owner details',wh_id:'WH-123'},{revision:1,outcome:'Unavailable'},{revision:2,wh_id:'123'}])expect((await patch(id,body)).status).toBe(200);
+ const {id}=await assigned();await seedLegacyAssignments("update bolna_assignments set state='done',outcome='Available',wh_id='123',added_to_db=true where id=$1",[id]);
+ for(const body of [{revision:0,remarks:'Confirmed the historical owner details',wh_id:'123'},{revision:1,outcome:'Unavailable'},{revision:2,wh_id:'123'}])expect((await patch(id,body)).status).toBe(200);
  expect((await query('select state,wh_id,remarks from bolna_assignments where id=$1',[id])).rows[0]).toMatchObject({state:'done',wh_id:'123',remarks:'Confirmed the historical owner details'});
  expect((await query('select count(*)::int n from bolna_manual_attempts')).rows[0].n).toBe(0);
  await query("update bolna_assignments set remarks='Direct SQL historical note edit' where id=$1",[id]);
@@ -58,6 +58,24 @@ it('a correction can supply the previously unknown result of the latest call and
  await recordManualAttempt(id,caller,correction);
  expect((await query('select outcome,outcome_attempt_id from bolna_assignments where id=$1',[id])).rows[0]).toEqual({outcome:'Unavailable',outcome_attempt_id:correction.id});
  expect((await patch(id,{revision:2,state:'done'})).status).toBe(200);
+});
+it('correcting the latest Keep-existing call can replace a result inherited from an earlier attempt',async()=>{
+ const {id}=await assigned();
+ const first={...attempt(0,'connected','Available'),occurred_at:new Date(Date.now()-60000).toISOString()};
+ await recordManualAttempt(id,caller,first);
+ const latest=attempt(1);await recordManualAttempt(id,caller,latest);
+ const correction={...attempt(2,'connected','Unavailable'),occurred_at:latest.occurred_at,corrects_id:latest.id,notes:'The latest call confirmed the warehouse is no longer available'};
+ await recordManualAttempt(id,caller,correction);
+ expect((await query('select outcome,outcome_attempt_id from bolna_assignments where id=$1',[id])).rows[0]).toEqual({outcome:'Unavailable',outcome_attempt_id:correction.id});
+ expect((await patch(id,{revision:3,state:'done'})).status).toBe(200);
+});
+it('correcting the latest call still preserves an independently selected dropdown result',async()=>{
+ const {id}=await assigned();
+ await recordManualAttempt(id,caller,{...attempt(0,'connected','Available'),occurred_at:new Date(Date.now()-60000).toISOString()});
+ const latest=attempt(1);await recordManualAttempt(id,caller,latest);
+ await updateAssignment(id,caller,{revision:2,outcome:'Unclear'});
+ await recordManualAttempt(id,caller,{...attempt(3,'connected','Unavailable'),occurred_at:latest.occurred_at,corrects_id:latest.id,notes:'Correct the call history without replacing the independent verification'});
+ expect((await query('select outcome,outcome_attempt_id from bolna_assignments where id=$1',[id])).rows[0]).toEqual({outcome:'Unclear',outcome_attempt_id:null});
 });
 it('a correction to an older unknown call does not supply the result of a later unknown call',async()=>{
  const {id}=await assigned(),old={...attempt(0),occurred_at:new Date(Date.now()-1000).toISOString()};await recordManualAttempt(id,caller,old);
@@ -82,18 +100,18 @@ it('completion does not wait behind the global allocation lock',async()=>{
  expect(await Promise.race([save.then(()=>true),new Promise(resolve=>setTimeout(()=>resolve(false),750))])).toBe(true);
  }finally{await client.query('rollback');client.release();await save;}
 });
-it('provider-clock dials sort correctly and show intervals across midnight without an assumed timezone',async()=>{
+it('timezone-less dials use UTC and show ordered intervals across midnight',async()=>{
  const entity=await listing(),id=randomUUID();
  for(const [callId,time] of [['later','2026-10-11T00:05:00'],['earlier','2026-10-10T23:59:00']])await capture(provider(id,callId,time));
  const h=await aiHistory(admin,'record',entity);expect(h.rows.map(r=>r.provider_call_id)).toEqual(['later','earlier']);
- expect(h.rows[0]).toMatchObject({initiated_at:null,provider_initiated_at:'2026-10-11T00:05:00',interval_seconds:'360.000000',clock_basis:'provider_local'});
+ expect(h.rows[0]).toMatchObject({initiated_at:'2026-10-11 00:05:00+00',provider_initiated_at:'2026-10-11T00:05:00',interval_seconds:'360.000000'});
  expect(h.rows[1].interval_seconds).toBeNull();
 });
-it('never subtracts a provider-local timestamp from a zoned timestamp or a different provider clock',async()=>{
+it('uses the same UTC convention across explicit offsets and provider timestamps',async()=>{
  const entity=await listing(),id=randomUUID();await capture(provider(id,'zoned','2026-10-10T03:00:00Z'));
  await capture(provider(id,'local','2026-10-10T04:00:00'));
  const other=provider(id,'other-provider','2026-10-10T05:00:00');other.telephony_data.provider='plivo';await capture(other);
- expect((await aiHistory(admin,'record',entity)).rows.every(r=>r.interval_seconds===null)).toBe(true);
+ expect((await aiHistory(admin,'record',entity)).rows.map(r=>r.interval_seconds)).toEqual(['3600.000000','3600.000000',null]);
 });
 it('unqualified update clocks finalize sparse provider data monotonically without delivery-ledger growth',async()=>{
  const entity=await listing(),id=randomUUID();const old=provider(id,'same','2026-10-10T03:00:00');await capture(old);
@@ -128,7 +146,7 @@ it('keeps exact transcript/note search but never fuzzy-matches their misspelling
 it('retains legacy warehouse references in onboarding filters and dated Team history',async()=>{
  const {id,entity}=await assigned();await seedLegacyAssignments("update bolna_assignments set state='done',outcome='Available',wh_id='WH-123',added_to_db=true,completed_at=now() where id=$1",[id]);
  expect((await getRawRecords(admin,{onboarded:'yes'})).rows.map(r=>r.id)).toEqual([entity]);
- const report=(await teamSummary(admin,parseTeamFilters({}))).find(p=>p.email===caller.email)!;expect(report.counts.onboarded).toBe(1);expect(report.counts.completed).toBe(1);expect(report.counts.quality).toBe(1);
+ const report=(await teamSummary(admin,parseTeamFilters({}))).find(p=>p.email===caller.email)!;expect(report.counts.onboarded).toBe(1);expect((await query('select count(*)::int n from bolna_assignment_quality_review')).rows[0].n).toBe(1);
 });
 it('shows and exports unmatched legacy call-row onboarding without fabricating an owner',async()=>{
  const id=randomUUID();await query("insert into bolna_call_logs(id,status,added_to_db,wh_id) values($1,'completed',true,'WH-123')",[id]);
@@ -138,7 +156,7 @@ it('shows and exports unmatched legacy call-row onboarding without fabricating a
 it('the default Team query contains only five measures; individual evidence avoids unrelated CTEs',async()=>{
  const sql=teamEvidenceSql(PRIMARY_TEAM_METRICS);expect(sql).not.toMatch(/current_quality|comparisons|reopened as|first_done/);
  expect(teamEvidenceSql(['attempts'])).not.toMatch(/snapshots|first_change|first_onboarded|first_available/);
- const five=await teamSummary(admin,parseTeamFilters({}),new Date(),true);expect(five).toHaveLength(2);
+ const five=await teamSummary(admin,parseTeamFilters({}),new Date());expect(five).toHaveLength(2);
 });
 it('application and database retry policy agree',async()=>{
  expect((await query('select bolna_retry_dispositions() values')).rows[0].values).toEqual(RETRY_DISPOSITIONS);
@@ -158,10 +176,11 @@ it('reconciliation tolerates null/string metadata, commits bounded pages and ret
  const batch=randomUUID();await query("insert into call_batches(id,created_by,agent_id,scheduled_at,state,total,callable,bolna_batch_id) values($1,$2,gen_random_uuid(),now(),'scheduled',1,1,'provider-batch')",[batch,admin.email]);
  await query("insert into call_batch_items(batch_id,record_id,name,contact_number,area,cat) values($1,'fixture','Fixture','+919876543210','Delhi','')",[batch]);
  await query("insert into bolna_dispatch_reservations(phone_last10,batch_id) values('9876543210',$1)",[batch]);
- const executions=Array.from({length:501},(_,i)=>({...provider(randomUUID(),'dial-'+i,'2026-10-10T03:00:00'),retry_count:i%2?null:'0',batch_run_details:{retried:i%2?'2':null}}));
+ const executions=Array.from({length:501},(_,i)=>({...provider('00000000-0000-4000-8000-'+String(i).padStart(12,'0'),'dial-'+i,'2026-10-10T03:00:00'),retry_count:i%2?null:'0',batch_run_details:{retried:i%2?'2':null}}));
  vi.stubGlobal('fetch',vi.fn(async(url:string)=>Response.json(url.endsWith('/executions')?executions:{batch_id:'provider-batch',status:'executed',valid_contacts:1})));
  await query("create function fail_reconcile_page() returns trigger language plpgsql as $$ begin if NEW.provider_call_id='dial-250' then raise exception 'injected page failure'; end if;return NEW;end $$; create trigger fail_reconcile_page before insert on bolna_ai_attempts for each row execute function fail_reconcile_page()");
- try{await expect(reconcileBatch(batch)).rejects.toThrow('injected page failure');expect((await query('select count(*)::int n from bolna_ai_attempts')).rows[0].n).toBe(250);expect((await query('select count(*)::int n from bolna_dispatch_reservations')).rows[0].n).toBe(1);
+ try{await expect(reconcileBatch(batch)).rejects.toThrow('injected page failure');expect((await query('select count(*)::int n from bolna_ai_attempts')).rows[0].n).toBe(250);expect((await query('select count(*)::int n from bolna_dispatch_reservations')).rows[0].n).toBe(1);expect((await query('select reconciliation_offset from call_batches where id=$1',[batch])).rows[0].reconciliation_offset).toBe(250);
  }finally{await query('drop function fail_reconcile_page() cascade');}
- expect((await reconcileBatch(batch)).state).toBe('completed');expect((await query('select count(*)::int n from bolna_ai_attempts')).rows[0].n).toBe(501);expect((await query('select count(*)::int n from bolna_dispatch_reservations')).rows[0].n).toBe(0);
+ await query("create function fail_replayed_page() returns trigger language plpgsql as $$ begin if NEW.provider_call_id='dial-0' then raise exception 'must not replay committed page'; end if;return NEW;end $$; create trigger fail_replayed_page before insert on bolna_ai_attempts for each row execute function fail_replayed_page()");
+ try{expect((await reconcileBatch(batch)).state).toBe('completed');}finally{await query('drop function fail_replayed_page() cascade');}expect((await query('select count(*)::int n from bolna_ai_attempts')).rows[0].n).toBe(501);expect((await query('select count(*)::int n from bolna_dispatch_reservations')).rows[0].n).toBe(0);
 });

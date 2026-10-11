@@ -1,4 +1,5 @@
 import { z } from "zod";
+import {providerTimestamp} from './time';
 
 // Statuses that mean "the call is over" — only these get processed.
 // (Mirrors the AgentExecution status enum in Bolna's Get Execution API.)
@@ -85,7 +86,7 @@ export function normalize(e: Execution) {
     answered_by_vm: e.answered_by_voice_mail ?? null,
     transcript: e.transcript?.trim() || null,
     context_details: e.context_details ?? null,
-    call_created_at: e.created_at ?? null,
+    call_created_at: providerTimestamp(e.created_at),
   };
 }
 

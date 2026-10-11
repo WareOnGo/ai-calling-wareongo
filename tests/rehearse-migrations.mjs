@@ -1,14 +1,14 @@
 import pg from "pg";
 import {backfillAiEvidence} from "../database/backfill-ai-evidence.mjs";
 import { readFile,readdir } from "node:fs/promises";
-import { spawnSync } from "node:child_process";
+import { spawn,spawnSync } from "node:child_process";
 import { randomUUID,createHash } from "node:crypto";
 import assert from "node:assert/strict";
 const target=new URL(process.env.TEST_DATABASE_URL||"");
 if(target.hostname!=="127.0.0.1"||target.port!=="55439")throw new Error("Dedicated handoff test cluster required");
 const admin=new pg.Client({connectionString:target.href,ssl:false});await admin.connect();
 const report=[];
-for(const mode of ["fresh","legacy","current","interrupted"]){
+for(const mode of ["fresh","legacy","current","interrupted","index_wait"]){
   const legacy=mode!=="fresh";
   const name=`bolna_rehearsal_${randomUUID().replaceAll('-','')}`;
   await admin.query(`create database ${name}`);
@@ -54,7 +54,7 @@ for(const mode of ["fresh","legacy","current","interrupted"]){
        create trigger fail_migration_backfill before insert or update on bolna_backfill_progress for each row execute function fail_migration_backfill()`);
       const failed=spawnSync(process.execPath,['database/migrate.mjs'],{env:{...process.env,DIRECT_URL:url.href,DATABASE_URL:url.href,DATABASE_SSL:'disable'},encoding:'utf8'});
       assert.notEqual(failed.status,0);assert.match(failed.stderr,/injected migration backfill failure/);
-      assert.equal((await db.query("select count(*)::int n from bolna_schema_migrations where name ~ '^[0-9]' and name >= '015'")).rows[0].n,0);
+      assert.equal((await db.query("select count(*)::int n from bolna_schema_migrations where name ~ '^[0-9]' and name >= '007'")).rows[0].n,0);
       assert.ok((await db.query("select to_regprocedure('bolna_merge_ai_payload(jsonb,jsonb)') name")).rows[0].name);
       assert.equal((await db.query('select count(*)::int n from bolna_backfill_progress')).rows[0].n,1,'Earlier recovery page committed before failure');
       await db.query('drop function fail_migration_backfill() cascade');
@@ -66,6 +66,31 @@ for(const mode of ["fresh","legacy","current","interrupted"]){
     assert.equal((await db.query('select value from customer_canary')).rows[0].value,'preserve co-tenant data');
     const expectedMigrations=(await readdir('database/migrations')).filter(file=>file.endsWith('.sql'));
     assert.equal((await db.query('select count(*)::int n from bolna_schema_migrations')).rows[0].n,expectedMigrations.length+1);
+    if(mode==='index_wait'){
+      await db.query('drop index concurrently bolna_raw_search_trgm');
+      await db.query("delete from bolna_schema_migrations where name='008_handoff_search_indexes.sql'");
+      const runIndex=(timeout='10000')=>{
+        const child=spawn(process.execPath,['database/migrate.mjs'],{env:{...process.env,DIRECT_URL:url.href,DATABASE_URL:url.href,DATABASE_SSL:'disable',MIGRATION_INDEX_TIMEOUT_MS:timeout}});
+        let output='',finished=false;child.stdout.on('data',b=>output+=b);child.stderr.on('data',b=>output+=b);
+        const result=new Promise(resolve=>child.on('close',code=>{finished=true;resolve({code,output});}));
+        return {result,finished:()=>finished};
+      };
+      await db.query('begin');await db.query("update raw_records set city='Held fixture' where id='a0000000-0000-4000-8000-000000000001'");
+      const timed=await runIndex('1000').result;assert.notEqual(timed.code,0);assert.match(timed.output,/statement timeout/);
+      await db.query('rollback');
+      assert.equal((await db.query("select indisvalid from pg_index where indexrelid='bolna_raw_search_trgm'::regclass")).rows[0].indisvalid,false);
+      await db.query('begin');await db.query("update raw_records set city='Held fixture' where id='a0000000-0000-4000-8000-000000000001'");
+      const retry=runIndex();await new Promise(resolve=>setTimeout(resolve,3200));
+      assert.equal(retry.finished(),false,'Online index must survive lock waits longer than two seconds');
+      await db.query('commit');const completed=await retry.result;assert.equal(completed.code,0,completed.output);
+      assert.equal((await db.query("select indisvalid from pg_index where indexrelid='bolna_raw_search_trgm'::regclass")).rows[0].indisvalid,true);
+    }
+    if(mode==='fresh'){
+      await db.query("insert into bolna_schema_migrations(name,checksum) values('006_assignment_contacts.sql','retired-development-history')");
+      const refused=spawnSync(process.execPath,['database/migrate.mjs'],{env:{...process.env,DIRECT_URL:url.href,DATABASE_URL:url.href,DATABASE_SSL:'disable'},encoding:'utf8'});
+      assert.notEqual(refused.status,0);assert.match(refused.stderr,/Unrecognized migration history/);
+      await db.query("delete from bolna_schema_migrations where name='006_assignment_contacts.sql'");
+    }
     assert.deepEqual((await db.query("select bolna_valid_warehouse(' 17 ') valid,bolna_valid_warehouse('N/A') placeholder")).rows[0],{valid:true,placeholder:false});
     if(legacy){
       assert.equal((await db.query('select count(*) n from bolna_assignments')).rows[0].n,'4');

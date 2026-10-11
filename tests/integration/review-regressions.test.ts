@@ -122,7 +122,7 @@ it('string duration and nullable retry metadata survive the actual webhook trans
  try{const id=randomUUID(),body={id,status:'completed',conversation_duration:'45',initiated_at:'2026-10-10T10:30:00',batch_run_details:{retried:null},transcript:'user: Available',telephony_data:{provider_call_id:'review-provider',call_type:'outbound',to_number:'+919876543210'}};
  const response=await POST(new NextRequest('http://localhost/api/bolna-webhook',{method:'POST',headers:{'x-webhook-secret':'fixture'},body:JSON.stringify(body)}));expect(response.status).toBe(200);
  expect((await query('select raw from bolna_webhook_events where id=$1',[id])).rows[0].raw).toEqual(body);
- expect((await query('select conversation_seconds::int,initiated_at from bolna_ai_attempts where execution_id=$1',[id])).rows[0]).toEqual({conversation_seconds:45,initiated_at:null});
+ expect((await query('select conversation_seconds::int,initiated_at from bolna_ai_attempts where execution_id=$1',[id])).rows[0]).toEqual({conversation_seconds:45,initiated_at:new Date('2026-10-10T10:30:00Z')});
  }finally{vi.unstubAllEnvs();}
 });
 

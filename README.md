@@ -17,7 +17,7 @@ that a particular migration, scheduler, or deployment is active in production.
 Those are environment-specific operational facts.
 
 The [Bolna DB Fixes checklist](BOLNA_DB_FIXES_PLAN.md) records the 22-item handoff,
-implementation stages and validation. Apply migrations through 017 before running
+implementation stages and validation. Apply the consolidated migrations through 008 before running
 this version. The [requirement-by-requirement re-audit](docs/HANDOFF_COMPLETENESS_AUDIT.md)
 links each original request to its implementation, tests and remaining limits.
 The [browser interaction audit](docs/BROWSER_UX_AUDIT.md) records additional UI,
@@ -232,7 +232,7 @@ references, which have no listing FK to repair them.
 
 | Data | Writer | Reason for separation |
 |---|---|---|
-| Call facts and original payload | Processing worker | Trace results back to the execution. |
+| Call facts and accepted provider snapshot | Processing worker | Trace results back to the execution. |
 | Model verdict, extracted fields, inference JSON/version/model | Worker and enrichment endpoints | Recompute analysis independently of employee results. |
 | `m_call_status`, `called_by`, `added_to_db`, `wh_id` on a call | Retained legacy metadata | Read-only; current manual work and onboarding are stored on assignments. |
 | Outcome, remarks, `added_to_db`, `wh_id` on an assignment | Assignee or administrator | A manual call has no Bolna log row; its deliverable belongs to its assignment. |
@@ -255,12 +255,12 @@ Source: [webhook handler](src/app/api/bolna-webhook/route.ts),
 ### Capture is the durability boundary
 
 `POST /api/bolna-webhook` authenticates, parses JSON, validates the fields the app
-uses, and inserts the original payload. Zod allows additional fields so a new
-provider field does not break ingestion. Telephony duration accepts strings or
-numbers and is normalized to whole seconds later.
+uses, and merges the accepted provider facts. Zod allows additional fields so a
+new provider field does not break ingestion. Optional duration/retry metadata
+accepts number, string and null variants; duration is normalized later.
 
 Identified provider dials are merged into one row per execution/provider-call ID.
-These terminal statuses also retain their latest accepted original payload in the processing queue:
+These terminal statuses also retain their latest accepted snapshot in the processing queue:
 
 ```text
 completed, failed, busy, no-answer, canceled, stopped,
@@ -275,7 +275,10 @@ Repeated deliveries update the same dial; no separate immutable delivery ledger 
 Identified provider call IDs retain separate attempts. Retry index, provider identity, status
 progression and explicit provider timestamps determine whether a delivery can
 advance the execution projection. Older events cannot rewind it. Sparse newer
-updates retain known attempt metadata; unknown ordering remains conservative.
+updates retain known attempt metadata and call-log fields for the exact provider
+dial, including facts received while ringing. New provider IDs do not inherit
+another call's speech or duration. Missing dial identity falls back to the incoming
+payload; unknown ordering remains conservative.
 See [the evidence contract](docs/AI_ATTEMPT_EVIDENCE.md).
 
 ### Postgres acts as the job queue
@@ -479,7 +482,10 @@ retryable failures. Unknown retry metadata remains reserved. Recent batches lets
 an admin check provider status or record a verified completion/cancellation note,
 including who released the numbers. That action does not cancel calls remotely.
 Stale in-flight states and legacy failures require reconciliation; a timeout alone
-never frees a phone.
+never frees a phone. Reconciliation commits a snapshot fingerprint and cursor with
+each 250-execution page, yielding after 1,000 executions per invocation. It resumes
+unchanged snapshots and safely restarts changed ones; expiring leases fence
+concurrent checks.
 
 Provider contracts: [batch status](https://www.bolna.ai/docs/api-reference/batches/get_batch),
 [batch executions](https://www.bolna.ai/docs/api-reference/batches/executions), and
@@ -526,7 +532,7 @@ The Call Analytics **Legacy Called By** field is labelled, hidden initially even
 for existing column preferences, and read-only. It is not proof of who called.
 Actual caller attribution comes from logged attempts. Calls notes, Added and WH
 ID controls edit the current assignment and use its revision and validation.
-Becoming Done requires a logged attempt; existing Done rows remain editable.
+Becoming Done requires a logged attempt. Existing Done edits skip that prerequisite but still validate result, WH ID, notes and closure. Invalid legacy completion data must be repaired or reopened before relevant edits.
 New or changed warehouse references must be positive integers. Unchanged legacy
 references remain visible, exportable and included in historical reporting, with
 quality flags. Unmatched legacy call-row Added/WH values remain visible separately.

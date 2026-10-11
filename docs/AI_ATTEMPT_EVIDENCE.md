@@ -1,20 +1,23 @@
 # AI attempt history contract
 
-`bolna_ai_attempts` stores one merged row per execution and identifiable provider call ID. Repeated deliveries update that row; different provider call IDs remain separate dials. Sparse updates preserve known fields and older deliveries cannot rewind newer evidence. The `raw` column is the accepted merge, not an original delivery. Migration 018 removes the redundant immutable delivery ledger and its deletion restriction. The terminal webhook inbox still retains its latest accepted original payload per execution for processing/replay.
+`bolna_ai_attempts` stores one merged row per execution and identifiable provider call ID. Repeated deliveries update that row; different provider IDs remain separate dials. Sparse updates preserve known fields and older deliveries cannot rewind newer evidence. Its `raw` column is the accepted merge. The webhook inbox feeds the worker the accepted merged snapshot for that exact dial, including retained nonterminal metadata. Missing dial identity falls back to the incoming payload. There is no duplicate delivery ledger.
 
-No ID means no verified dial count. Legacy counters, overwritten retries and missing provider identities cannot reconstruct lost calls. Inbound calls, outbound attempts and confirmed conversations are separate measures. Confirmation requires finalized duration and caller speech evidence, not a completed status alone. Balance-low records are retained for diagnosis but excluded from default call history and Raw's Last Called, Last Status and Already called logic.
+Telephony and batch-run metadata merge their individual fields, retaining known retry counts when later metadata omits or nulls them. Contact identity is derived from the accepted merged numbers and direction: an inbound call stays linked to its caller when a partial update repeats only the destination, and a direction correction uses retained numbers.
 
-## Dial times and intervals
+Missing IDs, overwritten retries and unlogged calls cannot be reconstructed from totals. Inbound, outbound and confirmed conversations are separate. A confirmed conversation requires `completed` status, positive conversation duration and caller speech, and excludes voicemail. `call-disconnected` is final for batch processing and still counts as a dial, but does not satisfy this conversation rule. Balance-low remains diagnosable but is excluded from default Calls and Raw calling-history fields/filters.
 
-- Zoned timestamps use absolute time and display in IST.
-- Unqualified timestamps display the provider's original value, labelled **timezone not supplied**. They are ordered as calendar timestamps; compatible consecutive values produce a provider-clock interval, including across midnight.
-- Intervals compare only the same phone, direction and clock basis; local-clock values additionally require the same provider. Zoned and local values are never subtracted from each other.
-- This does not assert that an unqualified time is UTC or IST. A read-only sample found no supplied timezone in 20,000 stored payloads; the new interval path explicitly covers that shape. Provider timezone confirmation remains a staging acceptance check.
+## Time policy
 
-## Ingestion and recovery
+Store UTC and display IST consistently. The application interprets timezone-less provider values as UTC; explicit offsets retain their actual instant. Parsing does not depend on the Node or PostgreSQL session timezone. This is the agreed application convention, not provider-timezone verification: check one known call before production acceptance. Invalid and missing times remain unknown.
 
-Webhooks and batch reconciliation share the optional duration/retry schema: number, string and null variants are accepted. Required fields still validate. An unrecognized optional value cannot fabricate a duration or retry count.
+Intervals compare dated attempts for the same phone and direction, including across pages and midnight. The UI formats seconds as days, hours, minutes and seconds. Calls, Raw and the timeline all use IST display.
 
-Reconciliation writes at most 250 execution payloads per transaction. A later failure preserves earlier commits; replay merges those dials without duplication. Calling reservations remain until every page succeeds and provider completion checks pass. The 501-execution regression interrupts the second page, verifies the first page and reservations, then successfully replays.
+## Reconciliation and migration recovery
 
-Migration 015 recovers retained call/inbox payloads in cursor-based 250-row transactions. Its functions use `CREATE OR REPLACE`, so a real runner retry after a committed schema change is safe. Recovery is limited to retained identities. Compare representative retry chains against provider call history before production acceptance.
+Webhooks and reconciliation share tolerant optional duration/retry validation: number, string and null variants are accepted; required fields still validate.
+
+Reconciliation saves a deterministic snapshot fingerprint and offset on the batch. It commits each 250-execution page with the cursor and processes at most four pages per invocation. Reordered snapshots keep the same fingerprint. A changed snapshot resets the cursor and replays idempotent per-dial upserts. Reservations are released only after every page and completion check succeeds.
+
+A two-minute renewable lease fences concurrent checks. A hard-killed worker leaves its committed cursor and a lease that expires; the next check resumes. Updating the batch's scheduling timestamp at claim/page boundaries lets other batches advance in cron. The provider API still returns its full snapshot; the cursor bounds database work, not provider response size.
+
+Migration 007 independently recovers retained call/inbox payloads in cursor-based 250-row transactions, after schema 006 has committed. It records completion only after both sources finish. This path preserves identities actually retained; it cannot recreate overwritten provider history.

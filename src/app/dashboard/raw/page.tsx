@@ -84,7 +84,7 @@ export default async function RawDataset({
 
   const numCols = COLUMNS.length + 1; // + select col (group toggles count as one col each)
   const startRow = (page - 1) * pageSize;
-  const activeFilters = ["source", "state", "city", "contact", "called", "last_result", "min_area", "max_area", "has_phone", "assignee", "assignment_state", "manual_outcome", "rent_mentioned", "onboarded", "warehouse_type"]
+  const activeFilters = ["source", "state", "city", "contact", "called", "last_result", "min_area", "max_area", "has_phone", "assignee", "assignment_state", "manual_outcome", "onboarded", "warehouse_type"]
     .filter((k) => sp[k]).length;
 
   return (

@@ -56,12 +56,25 @@ it('missing provider identity stays unknown even when retry_count and durations 
  const h=await aiHistory(admin,'call',id);expect(h.total).toBe(0);expect(h.unknownExecutions).toBe(1);
  expect((await query('select count(*) n from bolna_ai_attempts')).rows[0].n).toBe('0');
 });
-it.each(['2026-10-10T03:01:00','garbage','2026-99-99T03:01:00Z',null])('does not guess a dial time or interval from ambiguous input %s',async(time)=>{
+it.each(['garbage','2026-99-99T03:01:00Z',null])('rejects invalid or missing dial timestamps %s',async(time)=>{
  await capture(payload({initiated_at:time}));const h=await aiHistory(admin,'call',id);expect(h.rows[0].initiated_at).toBeNull();expect(h.rows[0].interval_seconds).toBeNull();expect(h.rows[0].execution_created_at).not.toBeNull();
 });
 it('keeps inbound counts and phone identity separate from outbound attempts',async()=>{
  await capture(payload({telephony_data:{provider_call_id:'inbound',from_number:'+919876543210',to_number:'+918000000000',call_type:'inbound',duration:30}}));
  const h=await aiHistory(admin,'record',record);expect(h.inbound).toBe(1);expect(h.outbound).toBe(0);expect(h.rows[0].phone_last10).toBe('9876543210');
+});
+it('a sparse inbound update without direction retains the customer contact instead of the agent number',async()=>{
+ await deliver(payload({telephony_data:{provider_call_id:'inbound',from_number:'+919876543210',to_number:'+918000000000',call_type:'inbound',duration:30}}));
+ await deliver({id,status:'completed',updated_at:'2026-10-10T03:03:00Z',telephony_data:{provider_call_id:'inbound',to_number:'+918000000000',recording_url:'https://example.test/inbound'}});
+ const h=await aiHistory(admin,'record',record);
+ expect(h.inbound).toBe(1);expect(h.rows[0].phone_last10).toBe('9876543210');
+ expect((await query('select raw from bolna_ai_attempts')).rows[0].raw.telephony_data.call_type).toBe('inbound');
+});
+it('a direction correction derives the contact from the retained numbers for that dial',async()=>{
+ await capture(payload({telephony_data:{provider_call_id:'direction-correction',from_number:'+919876543210',to_number:'+918000000000',call_type:'outbound',duration:30}}));
+ await capture({id,status:'completed',updated_at:'2026-10-10T03:03:00Z',telephony_data:{provider_call_id:'direction-correction',call_type:'inbound'}});
+ const h=await aiHistory(admin,'record',record);
+ expect(h.inbound).toBe(1);expect(h.outbound).toBe(0);expect(h.rows[0].phone_last10).toBe('9876543210');
 });
 it.each([{conversation_duration:0},{transcript:'assistant: Are you there?'},{answered_by_voice_mail:true},{status:'call-disconnected'}])('requires finalized duration and caller speech to count a conversation: %j',async(extra)=>{
  await capture(payload(extra));expect((await aiHistory(admin,'call',id)).conversations).toBe(0);
@@ -104,4 +117,37 @@ it('retains known provider metadata and conversation evidence through sparse new
 });
 it('missing provider status cannot invent a conversation or fail capture',async()=>{
  await capture(payload({status:null}));expect((await query('select confirmed_conversation from bolna_ai_attempts')).rows[0].confirmed_conversation).toBe(false);
+});
+it.each([0,2])('preserves call-log facts when a sparse webhook updates the same provider dial at retry %s',async retry=>{
+ await deliver(payload({retry_count:retry}));await storeEvent((await claimEvent())!);
+ const sparse={id,status:'completed',updated_at:'2026-10-10T03:03:00Z',telephony_data:{provider_call_id:'provider-1',recording_url:'https://example.test/corrected-recording'}};
+ expect(await deliver(sparse)).toBe(200);
+ const event=await claimEvent();expect(event).toBeDefined();await storeEvent(event!);
+ const log=(await query('select to_number,transcript,duration_secs,recording_url,raw from bolna_call_logs where id=$1',[id])).rows[0];
+ expect(log.to_number).toBe('+919876543210');expect(log.transcript).toContain('user: Warehouse available');expect(log.duration_secs).toBe(30);
+ expect(log.recording_url).toBe('https://example.test/corrected-recording');expect(log.raw.retry_count).toBe(retry);
+ expect((await aiHistory(admin,'record',record)).total).toBe(1);
+});
+it.each([null,{retried:null},{run_label:'finalized'}])('retains nested retry identity during a sparse update with batch metadata %j',async batch_run_details=>{
+ await deliver(payload({retry_count:undefined,batch_run_details:{retried:'2',run_label:'initial'}}));await storeEvent((await claimEvent())!);
+ await deliver({id,status:'completed',updated_at:'2026-10-10T03:03:00Z',batch_run_details,telephony_data:{provider_call_id:'provider-1',recording_url:'https://example.test/nested-retry'}});
+ const event=await claimEvent();expect(event).toBeDefined();await storeEvent(event!);
+ const log=(await query('select recording_url,raw from bolna_call_logs where id=$1',[id])).rows[0];
+ expect(log.recording_url).toBe('https://example.test/nested-retry');expect(log.raw.batch_run_details.retried).toBe('2');
+ expect((await query('select count(*)::int n from bolna_ai_attempts')).rows[0].n).toBe(1);
+});
+it('does not carry speech or duration from one provider dial into a different retry',async()=>{
+ await deliver(payload());await storeEvent((await claimEvent())!);
+ await deliver({id,status:'no-answer',retry_count:1,initiated_at:'2026-10-10T04:00:00Z',updated_at:'2026-10-10T04:01:00Z',telephony_data:{provider_call_id:'provider-2',call_type:'outbound',to_number:'+919876543210'}});
+ await storeEvent((await claimEvent())!);
+ const log=(await query('select transcript,duration_secs,raw from bolna_call_logs where id=$1',[id])).rows[0];
+ expect(log.transcript).toBeNull();expect(log.duration_secs).toBeNull();expect(log.raw.telephony_data.provider_call_id).toBe('provider-2');
+ expect((await aiHistory(admin,'record',record)).total).toBe(2);
+});
+it('uses retained ringing metadata when the first terminal webhook is sparse',async()=>{
+ await deliver(payload({status:'ringing',updated_at:'2026-10-10T03:01:10Z',conversation_duration:0,transcript:''}));
+ await deliver({id,status:'completed',updated_at:'2026-10-10T03:03:00Z',conversation_duration:30,transcript:'user: Warehouse available',telephony_data:{provider_call_id:'provider-1',duration:30}});
+ await storeEvent((await claimEvent())!);
+ const log=(await query('select to_number,call_created_at,transcript,duration_secs from bolna_call_logs where id=$1',[id])).rows[0];
+ expect(log.to_number).toBe('+919876543210');expect(log.call_created_at.toISOString()).toBe('2026-10-10T03:00:00.000Z');expect(log.transcript).toContain('user:');expect(log.duration_secs).toBe(30);
 });

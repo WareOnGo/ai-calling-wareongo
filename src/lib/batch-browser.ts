@@ -1,6 +1,7 @@
 import {z} from 'zod';
 import {query} from './db';
 import {ApiError,uuid} from './api';
+import {TERMINAL_STATUSES} from './bolna';
 import type {Viewer} from './scope';
 import {contactTargets} from './scope';
 import type {ExportQuery} from './export';
@@ -64,13 +65,13 @@ function membersBase(batch:BatchRow):{sql:string;params:unknown[]}{
    left join lateral(select p.phone from raw_phones rp join raw_phone_numbers p using(phone_id) where rp.master_id=r.id order by rp.is_primary desc,rp.id limit 1) rphone on true
    left join lateral(select count(*) attempts,bool_or(e.disposition in ('connected','callback','awaiting_confirmation')) connected from bolna_effective_manual_attempts e where e.assignment_id=a.id) activity on true`};
  }
- return {params:[batch.id,batch.bolna_batch_id],sql:`select i.phone member_id,'record'::text entity_type,i.record_id entity_id,null::text assignment_id,i.name,i.phone,i.city,
+ return {params:[batch.id,batch.bolna_batch_id,[...TERMINAL_STATUSES]],sql:`select i.phone member_id,'record'::text entity_type,i.record_id entity_id,null::text assignment_id,i.name,i.phone,i.city,
   null::text assignee,null::text current_owner,coalesce(cl.status,'No result') state,null::text disposition,
   case when cl.id is not null and cl.status is distinct from 'balance-low' then bolna_availability(cl.status,cl.llm_availability) end outcome,
   null::text wh_id,false onboarded,null::text quality_issue,false retry_due,coalesce(activity.connected,false) connected,coalesce(activity.attempts,0)::int attempts,
   cl.id::text execution_id,cl.status,coalesce(cl.status is distinct from 'balance-low' and bolna_availability(cl.status,cl.llm_availability)='Available',false) available,
   false assigned,coalesce(activity.attempts>0,false) attempted,
-  cl.id is null or coalesce(cl.status not in ('completed','failed','busy','no-answer','canceled','stopped','error','balance-low'),true) pending,
+  cl.id is null or coalesce(not (cl.status=any($3::text[])),true) pending,
   coalesce(cl.status in ('failed','error','balance-low','canceled','stopped'),false) failure,coalesce(cl.status='balance-low',false) blocked,
   false dropped,false done,false open,
   cl.id is not null and cl.status is distinct from 'balance-low' and bolna_availability(cl.status,cl.llm_availability)='Unclear' unclear,
