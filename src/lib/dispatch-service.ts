@@ -13,7 +13,7 @@ export const dispatchSchema = z.object({
   ids: selectedIds, intentKey: uuid, confirm: z.literal(true),
   // Older tabs previewed Hindi-only calls and omit this field. Auto must be explicit.
   routingMode: z.enum(["auto", "hindi", "english"]).default("hindi"),
-  filters: z.record(z.string().max(1000)).nullable().optional(),
+  filters: z.record(z.union([z.string().max(1000),z.array(z.string().max(1000)).max(100)])).nullable().optional(),
   excludeCats: z.array(z.enum(["dead", "unclear", "available", "unavailable"])).max(4).default([]),
 }).strict();
 export type DispatchInput = z.output<typeof dispatchSchema>;
@@ -101,11 +101,13 @@ export async function dispatchBatch(viewer: Viewer, input: DispatchInput): Promi
   if (!process.env.BOLNA_API_KEY || !availableLanguages.length) throw new ApiError(503, "Calling service is not configured");
   if (input.routingMode !== "auto" && !agents[input.routingMode]) throw new ApiError(503, `${LANGUAGE_LABELS[input.routingMode]} agent is not configured`);
   if (agents.hindi && agents.english && agents.hindi.id === agents.english.id) throw new ApiError(503, "Hindi and English must use different agent IDs");
+  // Expensive preview metadata is read before acquiring either shared lock.
   const candidates = await getRawQueueRowsByIds(viewer, input.ids);
   const prepared = await transaction(async client => {
     // Reserve every phone across both languages in a single transaction before
     // either provider request. The global unique phone key also fences other admins.
     await client.query("select pg_advisory_xact_lock(81620402)");
+    await client.query("select pg_advisory_xact_lock(81620404)");
     const duplicate = (await client.query<DispatchRequest>("select * from bolna_dispatch_requests where id = $1", [input.intentKey])).rows[0];
     if (duplicate) {
       if (duplicate.request_hash !== hash) throw new ApiError(409, "Dispatch key was already used for another selection or agent choice");
@@ -115,11 +117,22 @@ export async function dispatchBatch(viewer: Viewer, input: DispatchInput): Promi
     // Never reinterpret its key as a new multi-agent request during a rolling deploy.
     const legacyRace = await client.query("select id from call_batches where intent_key = $1 and dispatch_request_id is null", [input.intentKey]);
     if (legacyRace.rowCount) throw new ApiError(409, "This dispatch was accepted by an earlier dashboard version. Refresh Recent batches before continuing.");
+    const contacts=(await client.query<{entity_id:string;phones:string[]}>(`select entity_id,array_agg(phone_last10 order by phone_last10) phones from bolna_assignment_contacts
+      where entity_type='record' and entity_id=any($1::uuid[]) group by entity_id`,[candidates.map(r=>r.id)])).rows;
+    const byId=new Map(contacts.map(r=>[r.entity_id,r.phones]));
+    if(candidates.some(r=>JSON.stringify([...(r.phones||[])].sort())!==JSON.stringify([...(byId.get(r.id)||[])].sort())))
+      throw new ApiError(409,'Contact numbers changed. Refresh the queue preview before dispatching.');
+    const phones=[...new Set(contacts.flatMap(r=>r.phones))];
+    const owners=(await client.query<{phone_last10:string;email:string;name:string|null;state:'open';outcome:string|null}>(`select distinct c.phone_last10,a.assignee email,u.name,a.state,a.outcome
+      from bolna_assignments a join bolna_assignment_contacts c using(entity_type,entity_id) join bolna_app_users u on u.email=a.assignee
+      where a.state='open' and c.phone_last10=any($1::text[])`,[phones])).rows;
+    const byPhone=new Map<string,typeof owners>();
+    for(const owner of owners)byPhone.set(owner.phone_last10,[...(byPhone.get(owner.phone_last10)||[]),owner]);
     const live = await client.query<{ phone: string }>(`select phone_last10 as phone from bolna_dispatch_reservations
       union select right(regexp_replace(i.contact_number, '\\D', '', 'g'), 10)
         from call_batch_items i join call_batches b on b.id = i.batch_id where b.state in ${ACTIVE_BATCH_SQL}`);
     const reserved = new Set(live.rows.map(r => r.phone));
-    const summary = assembleBatch(candidates.map(r => ({ ...r, queued: reserved.has(normNum(r.contact)) })), input.excludeCats,
+    const summary = assembleBatch(candidates.map(r => ({ ...r, owners:(r.phones||[]).flatMap(phone=>byPhone.get(phone)||[]),queued: (r.phones||[normNum(r.contact)]).some(phone=>reserved.has(phone)) })), input.excludeCats,
       { mode: input.routingMode, availableLanguages });
     if (!summary.callable.length) throw new ApiError(409, "No callable numbers remain after routing and reservation checks");
     const scheduledAt = computeScheduleAt(new Date());
@@ -139,7 +152,7 @@ export async function dispatchBatch(viewer: Viewer, input: DispatchInput): Promi
         values ($1,$2,$3,$4,$5,'creating',$6,$7,$7,0,0,0,0,gen_random_uuid(),$8) returning *`,
         [viewer.email, agent.id, language, request.id, scheduledAt, input.filters ?? null, rows.length, hash])).rows[0];
       await client.query(`insert into bolna_dispatch_reservations(phone_last10, batch_id)
-        select x, $2 from unnest($1::text[]) x order by x`, [rows.map(r => normNum(r.contact)), batch.id]);
+        select x, $2 from unnest($1::text[]) x order by x`, [[...new Set(rows.flatMap(r => r.phones||[normNum(r.contact)]))], batch.id]);
       await client.query(`insert into call_batch_items(batch_id, record_id, name, contact_number, area, cat)
         select $1, * from unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::text[])`,
         [batch.id, rows.map(r => r.id), rows.map(r => r.name), rows.map(r => r.contact), rows.map(r => r.area), rows.map(r => r.cat)]);

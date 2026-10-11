@@ -1,3 +1,7 @@
+import {dispositionLabel} from "@/lib/manual-dispositions";
+import { firstValue, filterValues, searchQuery, type SearchValues } from "@/lib/filter-values";
+import { PageJump } from "../PageJump";
+import { AssignmentNotices } from "../GridNotices";
 import { SelectionProvider } from "../Selection";
 import { ASSIGNMENT_COLUMNS as COLUMNS } from "../sheet-columns";
 import { dateTime as fmt } from "@/lib/display";
@@ -10,6 +14,7 @@ import { listUsers } from "@/lib/users";
 import { AssignmentColumns, AssignmentHeaders, AssignmentStats } from "./AssignmentStructure";
 import { AssignmentFilters } from "./AssignmentFilters";
 import { AssignmentNotes } from "./AssignmentNotes";
+import { ReopenAssignment } from "../ReopenAssignment";
 import { UnassignButton } from "../UnassignButton";
 import { CopyText } from "../CopyText";
 import { GridInteractivity } from "../GridInteractivity";
@@ -41,30 +46,24 @@ function resultCell(r: AssignmentHistoryRow) {
   return (
     <>
       <span className={`pill pill-${r.outcome.toLowerCase()}`}>{r.outcome}</span>
-      {disagrees && <span className="review-tag" title={`AI heard "${ai}"`}>≠ AI</span>}
+      {disagrees && r.entity_type === "call" && <span className="review-tag" title={`AI heard "${ai}"`}>≠ AI</span>}
     </>
   );
 }
 
-type SP = Record<string, string | undefined>;
-function qs(base: SP, override: SP) {
-  const p = new URLSearchParams();
-  for (const [k, v] of Object.entries({ ...base, ...override })) if (v) p.set(k, v);
-  return `?${p.toString()}`;
-}
+type SP=SearchValues;
+function qs(base:SP,override:SP){return `?${searchQuery({...base,...override})}`;}
 
 export default async function Assignments({
   searchParams,
 }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const user = await requireAdmin();
-  const rawSp = await searchParams;
-  const sp: SP = {};
-  for (const [k, v] of Object.entries(rawSp)) sp[k] = Array.isArray(v) ? v[0] : v;
+  const sp=await searchParams;
 
   const filters = {
-    q: sp.q, assignee: sp.assignee, state: sp.state,
-    entity_type: sp.type, outcome: sp.outcome,
-    page: sp.page ? Number(sp.page) : 1,
+    q: firstValue(sp.q), assignee: sp.assignee, state: sp.state, batch_id: firstValue(sp.batch_id),
+    entity_type: sp.type, outcome: sp.outcome, quality_review:sp.quality_review === "1",follow_up:sp.follow_up === "due" ? "due" as const : sp.follow_up === "pending" ? "pending" as const : undefined,
+    page: Number(firstValue(sp.page)||1),
   };
 
   const [{ rows, total, page, pages }, totals, assignees] = await Promise.all([
@@ -82,8 +81,8 @@ export default async function Assignments({
         <span className="pt-icon"><IconClipboard size={18} /></span> Assignments <Freshness updatedAt={new Date().toISOString()} />
       </div>
 
-      <AssignmentStats totals={totals} assignee={sp.assignee} person={assignees.find(person => person.email === sp.assignee)?.name || undefined} state={sp.state} />
-      <AssignmentFilters applied={sp} assignees={assignees} />
+      <AssignmentStats totals={totals} assignee={sp.assignee} person={filterValues(sp.assignee).map(email=>assignees.find(p=>p.email===email)?.name||email).join(", ") || undefined} state={sp.state} />
+      <AssignmentFilters applied={sp} assignees={assignees} /><AssignmentNotices />
       <div className="assignment-summary"><span>{total.toLocaleString()} {total === 1 ? "assignment" : "assignments"}{activeFilters || sp.q ? " matching filters" : ""}</span><span>Newest first</span></div>
 
       <div className="gridwrap">
@@ -108,9 +107,9 @@ export default async function Assignments({
                   <Link className="assignee-name" href={qs(sp, { assignee: r.assignee, page: undefined })} title={`Show assignments for ${r.assignee_name || r.assignee}`}>{r.assignee_name || r.assignee}</Link>
                   {r.assignee_name && <span className="assignee-email">{r.assignee}</span>}
                 </td>
-                <td className="assignment-note-cell"><AssignmentNotes text={r.remarks} /></td>
+                <td className="assignment-note-cell"><AssignmentNotes text={r.remarks} /><p className="muted">{dispositionLabel(r.disposition)}{r.closure_reason==='exhausted'&&' · Exhausted'}{r.next_due_at&&<><br/>Due {fmt(r.next_due_at)}</>}</p></td>
                 <td><span className={`pill pill-${r.state}`}>{r.state === "dropped" ? "unassigned" : r.state}</span></td>
-                <td>{resultCell(r)}</td>
+                <td>{resultCell(r)}</td><td title={r.entity_type === "record" ? "AI context from a shared phone; may describe another property" : "AI result for this execution"}>{r.ai_availability||"No AI result"}{r.entity_type === "record" && r.ai_availability && <small> · contact context</small>}</td>
                 <td className="assignment-subject">{r.subject ?? <span className="muted">—</span>} <RecordDetails id={r.entity_id} entity={r.entity_type} /></td>
                 <td><CopyText value={r.phone} label="phone number" /></td>
                 <td>{r.city ?? <span className="muted">—</span>}</td>
@@ -120,6 +119,7 @@ export default async function Assignments({
                 <td>{r.wh_id ?? <span className="muted">—</span>}</td>
                 <td className="assignment-brief">{r.note || <span className="muted">—</span>}</td>
                 <td className="actions">
+                  {r.state === "done" && <ReopenAssignment id={r.id} revision={r.revision}/>}<RecordDetails id={r.entity_id} entity={r.entity_type} label="History"/>
                   {r.state === "open" && <UnassignButton id={r.id} who={r.assignee_name || r.assignee} />}
                 </td>
               </tr>
@@ -143,6 +143,7 @@ export default async function Assignments({
         </div>
       </div>
 
+      <PageJump key={page} page={page} pages={pages}/>
       <GridInteractivity key={JSON.stringify(sp)} />
     </SelectionProvider>
   );

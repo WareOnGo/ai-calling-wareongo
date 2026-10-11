@@ -1,21 +1,31 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect,useRef } from "react";
+import { useDashboardUI } from "./DashboardUI";
+import { ManualAttemptButton } from "./ManualAttemptButton";
+import { DISPOSITION_LABELS,RETRY_DISPOSITIONS,type Disposition } from "@/lib/manual-dispositions";
+import { dateTime } from "@/lib/display";
 import { OUTCOMES } from "@/lib/scope";
 import { IconCheck } from "./icons";
 import { useAutosave, SaveStatus } from "./useAutosave";
 
-type Props = { revision: number; assignmentId: string; outcome: string | null; remarks: string | null; addedToDb: boolean; whId: string | null; state?: string; onStateChange?: (id: string, state: string) => void };
-export function OutcomeCells({ revision, assignmentId, outcome, remarks, addedToDb, whId, state = "open", onStateChange }: Props) {
+type Props = { revision: number; assignmentId: string; outcome: string | null; remarks: string | null; addedToDb: boolean; whId: string | null; state?: string; closureReason?:string|null; disposition?:string|null; nextDueAt?:string|null; onStateChange?: (id: string, state: string) => void };
+export function OutcomeCells({ revision, assignmentId, outcome, remarks, addedToDb, whId, state = "open", closureReason,disposition,nextDueAt,onStateChange }: Props) {
+  const { pending } = useDashboardUI();
   const key = `assignment-${assignmentId}`;
-  const save = useAutosave(key, `/api/assignments/${assignmentId}`, { outcome: outcome ?? "", remarks: remarks ?? "", added_to_db: addedToDb, wh_id: whId ?? "", state }, ["outcome", "added_to_db", "state"], revision);
+  const save = useAutosave(key, `/api/assignments/${assignmentId}`, { outcome: outcome ?? "", remarks: remarks ?? "", added_to_db: addedToDb, wh_id: whId ?? "", state,closure_reason:closureReason??"" }, ["outcome", "added_to_db", "state","closure_reason"], revision);
+  const whInput=useRef<HTMLInputElement>(null),notesInput=useRef<HTMLTextAreaElement>(null);
+  useEffect(()=>{if(save.status==="error"){if(save.field === "wh_id")whInput.current?.focus();else if(save.field === "remarks")notesInput.current?.focus();}},[save.status,save.field]);
   const done = save.values.state === "done";
   useEffect(() => { onStateChange?.(assignmentId, save.values.state); }, [assignmentId, save.values.state, onStateChange]);
   const cls = save.status === "saving" ? "saving" : save.status === "error" ? "err" : save.status === "saved" ? "ok" : "";
   return <>
-    <td className={`edit-cell edit-first ${cls}`}><select className="field field-select" aria-label="Result of the call" value={save.values.outcome} onChange={e => save.set("outcome", e.target.value, true)}><option value="">Not called yet</option>{OUTCOMES.map(o => <option key={o}>{o}</option>)}</select></td>
-    <td className={`edit-cell notes-cell ${cls}`}><textarea className="field notes-field" aria-label="Your notes" rows={2} value={save.values.remarks} placeholder="What did they say?" onChange={e => save.set("remarks", e.target.value)} onBlur={save.flush} /><SaveStatus id={key} {...save} /></td>
-    <td className={`edit-cell center ${cls}`}><label className="checkfield" title="Your verification: this warehouse is in the database"><input type="checkbox" checked={save.values.added_to_db} onChange={e => save.set("added_to_db", e.target.checked, true)} /><span>{save.values.added_to_db ? "Added" : "Not yet"}</span></label></td>
-    <td className={`edit-cell ${cls}`}><input className="field field-narrow" aria-label="Warehouse ID" value={save.values.wh_id} placeholder="WH ID" onChange={e => save.set("wh_id", e.target.value)} onBlur={save.flush} /></td>
-    <td className={`edit-cell ${cls}`}><button type="button" className={`btn-done${done ? " is-done" : ""}`} aria-pressed={done} onClick={() => save.set("state", done ? "open" : "done", true)} title={done ? "Reopen this one" : "Mark finished — it stays visible"}><IconCheck size={14} />{done ? "Done" : "Mark done"}</button></td>
+    <td className={`edit-cell edit-first ${cls}`}><select disabled={pending} className="field field-select" aria-label="Result of the call" value={save.values.outcome} onChange={e => save.set("outcome", e.target.value, true)}><option value="">No manual result</option>{OUTCOMES.map(o => <option key={o}>{o}</option>)}</select></td>
+    <td className={`edit-cell notes-cell ${cls}`}><textarea disabled={pending} ref={notesInput} className="field notes-field" aria-label="Your notes" rows={2} value={save.values.remarks} placeholder="What did they say?" onChange={e => save.set("remarks", e.target.value)} onBlur={save.flush} />
+      {(save.values.outcome==="Unclear"||disposition==="invalid_number"||!!disposition&&RETRY_DISPOSITIONS.includes(disposition)||save.values.closure_reason==="exhausted")&&<select disabled={pending} className="field" aria-label="Closure reason" value={save.values.closure_reason} onChange={e=>save.set("closure_reason",e.target.value,true)}><option value="">Choose closure reason…</option><option value="resolved">No further action — explained in notes</option><option value="escalated">Escalated to an admin — explained in notes</option><option value="invalid_number_verified">Number verified invalid — evidence in notes</option><option value="exhausted">Exhausted follow-ups — explain why in notes</option></select>}
+      {disposition&&<p>{DISPOSITION_LABELS[disposition as Disposition]||disposition}{nextDueAt&&<> · Due {dateTime(nextDueAt)}</>}</p>}
+      <SaveStatus id={key} {...save} /><ManualAttemptButton assignmentId={assignmentId} revision={save.revision} disabled={pending||save.dirty||done}/></td>
+    <td className={`edit-cell center ${cls}`}><label className="checkfield" title="Your verification: this warehouse is in the database"><input disabled={pending} type="checkbox" checked={save.values.added_to_db} onChange={e => save.set("added_to_db", e.target.checked, true)} /><span>{save.values.added_to_db ? "Added" : "Not yet"}</span></label></td>
+    <td className={`edit-cell ${cls}`}><input disabled={pending} ref={whInput} className="field field-narrow" aria-label="Warehouse ID" inputMode="numeric" pattern="[1-9][0-9]*" value={save.values.wh_id} placeholder="WH ID" onChange={e => save.set("wh_id", e.target.value)} onBlur={save.flush} /></td>
+    <td className={`edit-cell ${cls}`}><button type="button" disabled={pending} className={`btn-done${done ? " is-done" : ""}`} aria-pressed={done} onClick={() => save.set("state", done ? "open" : "done", true)} title={done ? "Reopen this one" : "Mark finished — it stays visible"}><IconCheck size={14} />{done ? "Done" : "Mark done"}</button></td>
   </>;
 }

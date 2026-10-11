@@ -1,4 +1,5 @@
 "use client";
+import { PageJump } from "../PageJump";
 import { WorkColumns, WorkHeaders, WorkLegend, WorkStatusBar, WorkResultSummary } from "./WorkTableStructure";
 import { WorkFilters } from "./WorkFilters";
 import { AssignmentBrief } from "./AssignmentBrief";
@@ -56,14 +57,14 @@ export function WorkLists({ records, calls, totals, matchingTotals, filters, ass
               <AssignmentBrief id={r.id} note={r.brief} assignedBy={r.assignedBy} name={r.assignedByName} assignedAt={r.assignedAt} />
             </td>
             <td className="work-phone"><CopyText value={r.phone} label="phone number" /><AiCallStatus result={r.ai} count={r.aiCount} /></td>
-            <OutcomeCells revision={r.revision} assignmentId={r.id} outcome={r.outcome} remarks={r.remarks} addedToDb={r.addedToDb} whId={r.whId} state={r.state} onStateChange={onStateChange} />
+            <OutcomeCells closureReason={r.closureReason} disposition={r.disposition} nextDueAt={r.nextDueAt} revision={r.revision} assignmentId={r.id} outcome={r.outcome} remarks={r.remarks} addedToDb={r.addedToDb} whId={r.whId} state={r.state} onStateChange={onStateChange} />
           </tr>)}</tbody>
         </table></div>
         {list.pages > 1 && <nav className="work-pager" aria-label={`${title} pages`}>
           {list.page > 1 ? <Link className="btn-row" href={pageHref(entity, list.page-1)}>Previous</Link> : <button className="btn-row" disabled>Previous</button>}
           <span>Page {list.page} of {list.pages} · {list.total} {filters.view || ''} assignments</span>
           {list.page < list.pages ? <Link className="btn-row" href={pageHref(entity, list.page+1)}>Next</Link> : <button className="btn-row" disabled>Next</button>}
-        </nav>}
+        <PageJump key={list.page} page={list.page} pages={list.pages} param={entity==="record"?"records_page":"calls_page"} label={`Go to ${entity==="record"?"listings":"AI follow-ups"} page`}/></nav>}
       </section>)}
     </div>
   </>;

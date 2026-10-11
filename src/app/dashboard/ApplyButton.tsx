@@ -6,7 +6,7 @@ import { useDashboardUI } from "./DashboardUI";
 // Blue + enabled only when the filter form differs from the currently-applied
 // state; grey + disabled when there's nothing new to apply.
 export function ApplyButton() {
-  const { pending } = useDashboardUI();
+  const { pending, transitioning } = useDashboardUI();
   const ref = useRef<HTMLButtonElement>(null);
   const [dirty, setDirty] = useState(false);
 
@@ -33,7 +33,7 @@ export function ApplyButton() {
 
   return (
     <button ref={ref} type="submit" className="btn apply-button" disabled={!dirty || pending}>
-      {pending ? "Applying…" : "Apply"}
+      {transitioning ? "Applying…" : "Apply"}
     </button>
   );
 }

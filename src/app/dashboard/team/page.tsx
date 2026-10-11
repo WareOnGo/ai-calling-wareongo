@@ -1,3 +1,7 @@
+import Link from "next/link";
+import {parseTeamFilters} from "@/lib/team-report";
+import {firstValue,type SearchValues} from "@/lib/filter-values";
+import {TeamReport} from "./TeamReport";
 import { requireAdmin } from "@/lib/auth";
 import { listUsers, getWorkload } from "@/lib/users";
 import { TeamEditor, type Person } from "./TeamEditor";
@@ -9,8 +13,11 @@ export const dynamic = "force-dynamic";
 // Admin-only. Since bolna_app_users became the access list (there is no
 // ALLOWED_EMAILS any more), this page IS access control — so it's laid out as a
 // people directory grouped by what each person can do, not as another spreadsheet.
-export default async function Team() {
+export default async function Team({searchParams}:{searchParams:Promise<SearchValues>}) {
   const me = await requireAdmin();
+  const sp=await searchParams;let filters;
+  try{filters=parseTeamFilters(Object.fromEntries(Object.entries(sp).map(([k,v])=>[k,firstValue(v)])));}
+  catch(error){return <p role="alert">Invalid report range. {error instanceof Error?error.message:'Check the dates.'} <Link href="/dashboard/team">Reset report</Link></p>;}
   const [users, workload] = await Promise.all([listUsers(), getWorkload()]);
 
   const counts = new Map<string, { open: number; done: number }>();
@@ -38,7 +45,7 @@ export default async function Team() {
         <span className="title-sub">{people.filter((p) => p.active).length} with access</span>
         <Freshness updatedAt={new Date().toISOString()} />
       </div>
-      <TeamEditor people={people} activeAdmins={activeAdmins} myEmail={me.email} />
+      <div className="team-page"><TeamReport viewer={me} filters={filters} showEvidence={!!firstValue(sp.metric)}/><h2 className="team-access-title">Team access</h2><TeamEditor people={people} activeAdmins={activeAdmins} myEmail={me.email} /></div>
     </>
   );
 }

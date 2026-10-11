@@ -2,10 +2,10 @@
   "name": "bolna-processing",
   "version": "0.1.0",
   "private": true,
-  "description": "Bolna Processing \u2014 receives Bolna post-call webhooks, enriches them with OpenAI, and stores results in Supabase Postgres.",
+  "description": "Bolna Processing — receives Bolna post-call webhooks, enriches them with OpenAI, and stores results in Supabase Postgres.",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "next dev --webpack",
+    "build": "next build --webpack",
     "start": "next start",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -19,12 +19,13 @@
     "drain": "node --env-file=.env.local scripts/drain.mjs http://localhost:3000/api/process",
     "enrich": "node --env-file=.env.local scripts/drain.mjs http://localhost:3000/api/enrich",
     "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:stage": "node tests/run-stage.mjs",
     "typecheck": "tsc --noEmit --incremental false",
     "db:migrate": "node database/migrate.mjs",
     "check": "npm run typecheck && npm test"
   },
   "dependencies": {
-    "next": "^15.1.0",
+    "next": "16.4.0",
     "openai": "^4.77.0",
     "pg": "^8.13.1",
     "react": "^19.0.0",

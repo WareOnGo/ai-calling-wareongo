@@ -24,3 +24,14 @@ prisma/
 
 # Ad-hoc query exports (owner PII / source names) — keep private
 exports/
+
+# Local maintenance SQL and generated browser evidence
+/database/maintenance/
+/tests/browser/node_modules
+/tests/browser/shots
+/tests/browser/test-results
+/tests/browser/playwright-report
+
+# Reproducible browser harness scripts belong in version control.
+!/tests/browser/scripts/
+!/tests/browser/scripts/**

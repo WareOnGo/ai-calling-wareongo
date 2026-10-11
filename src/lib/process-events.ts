@@ -26,6 +26,7 @@ export async function storeEvent(row: Event): Promise<boolean> {
     const owned = await client.query(`select id from bolna_webhook_events
       where id = $1 and lease_token = $2 and status = 'processing' and lease_until > now() for update`, [row.id, row.lease_token]);
     if (!owned.rowCount) return false;
+    await client.query("select bolna_record_ai_evidence($1::jsonb,'worker')",[row.raw]);
     const number = c.call_type === "inbound" ? c.from_number : c.to_number;
     const digits = String(number ?? "").replace(/\D/g, "").slice(-10);
     let phoneId: string | null = null;

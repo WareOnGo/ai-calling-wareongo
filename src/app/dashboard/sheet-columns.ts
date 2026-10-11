@@ -1,34 +1,35 @@
-const DEFAULTS: Record<string, number> = { Owner: 215, Number: 174, Phone: 174, Availability: 195, "Call Status": 130, "Called By": 130, Added: 72, "WH ID": 125, When: 185, Direction: 95, Agent: 110, Area: 110, Sqft: 90, "Built-up sqft": 115, "Carpet sqft": 110, Rent: 155, "AI Call Details": 145, DB: 100, "Assigned To": 205, Notes: 260, Transcript: 320, Recording: 100, Address: 270, "Record ID": 110, Source: 100, Calls: 85 };
+const DEFAULTS: Record<string, number> = { Owner: 215, Number: 174, Phone: 174, Availability: 195, "Manual notes": 220, "Legacy Called By": 130, Added: 72, "WH ID": 125, When: 185, Direction: 95, Agent: 110, Area: 110, Sqft: 90, "Built-up sqft": 115, "Carpet sqft": 110, Rent: 155, "AI Call Details": 145, DB: 100, "Assigned To": 205, Notes: 260, Transcript: 320, Recording: 100, Address: 270, "Record ID": 110, Source: 100, Calls: 85 };
 
 export const CALL_COLUMNS = [
-  "Owner", "Number", "Availability", "Call Status", "Called By", "Added", "WH ID", "When", "Direction", "Agent", "Area", "Built-up sqft", "Carpet sqft", "Rent",
+  "Owner", "Number", "AI result", "AI attempts", "Manual result", "Manual notes", "Legacy Called By", "Added", "WH ID", "When", "Direction", "Agent", "Source city", "Area", "Built-up sqft", "Carpet sqft", "Rent",
   "AI Call Details", "Notes", "Transcript", "Recording", "DB", "DB Owner", "DB Type", "DB City", "DB State", "DB Sqft", "All Sources",
 ];
 export const RAW_COLUMNS = [
-  "Owner", "Phone", "Sqft", "Source", "Record ID", "Calls", "Last Status", "Last Result", "Last Called", "Transcript", "Audio", "Notes",
-  "Contact", "City", "State", "Address", "Assigned To",
+  "Owner", "Phone", "Sqft", "Source", "Record ID", "AI attempts", "Last Status", "Last Result", "Last Called", "Transcript", "Audio", "Notes",
+  "Manual calls", "Contact", "City", "State", "Address", "Assigned To",
 ];
 export const CALL_GROUPS = [
   { key: "call", toggle: "AI Call Details", members: ["Notes", "Transcript", "Recording"] },
   { key: "db", toggle: "DB", members: ["DB Owner", "DB Type", "DB City", "DB State", "DB Sqft", "All Sources"] },
 ];
 export const RAW_GROUPS = [
-  { key: "calls", toggle: "Calls", members: ["Last Status", "Last Result", "Last Called", "Transcript", "Audio", "Notes"] },
+  { key: "calls", toggle: "AI attempts", members: ["Last Status", "Last Result", "Last Called", "Transcript", "Audio", "Notes"] },
 ];
-export const ASSIGNMENT_COLUMNS = ["Assignee", "Notes", "Status", "Result", "Who", "Phone", "City", "Channel", "Assigned", "In DB", "WH ID", "Brief", "Actions"];
+export const ASSIGNMENT_COLUMNS = ["Assignee", "Notes", "Status", "Manual result", "AI result", "Who", "Phone", "City", "Channel", "Assigned", "In DB", "WH ID", "Brief", "Actions"];
+export const ASSIGNMENT_WIDTHS: Record<string, number> = Object.fromEntries(ASSIGNMENT_COLUMNS.map((name, i) => [name, [205, 290, 115, 140, 140, 225, 174, 125, 110, 115, 80, 110, 245, 165][i]]));
 
 export function defaultColumnWidth(name: string) {
   return name === 'Row' ? 32 : name === 'Select' ? 34 : DEFAULTS[name] || 125;
 }
 
 // Both the loaded table and its skeleton honour the same saved geometry.
-export function readColumnPreferences(path: string, labels: string[], defaults: Record<string, number> = DEFAULTS) {
+export function readColumnPreferences(path: string, labels: string[], defaults: Record<string, number> = path.endsWith('/assignments') ? ASSIGNMENT_WIDTHS : DEFAULTS) {
   const key = `sheet-col-widths-v6:${path}`;
   let saved: Record<string, number> = {};
   let hiddenColumns: string[] = [];
   try {
     saved = JSON.parse(localStorage.getItem(key) || "{}");
-    hiddenColumns = JSON.parse(localStorage.getItem(`sheet-hidden:${path}`) || "[]");
+    hiddenColumns = JSON.parse(localStorage.getItem(`sheet-hidden:${path}`) || (path.endsWith("/calls") ? '["Legacy Called By"]' : "[]"));
     if (!saved || Array.isArray(saved) || typeof saved !== 'object') saved = {};
     if (!Array.isArray(hiddenColumns)) hiddenColumns = [];
     // Preserve earlier saved widths by their old column names after reordering.
@@ -40,10 +41,20 @@ export function readColumnPreferences(path: string, labels: string[], defaults: 
     }
   } catch { /* storage may be unavailable */ }
   if (path.endsWith("/calls")) {
+    hiddenColumns=hiddenColumns.map(name=>name==='Called By'?'Legacy Called By':name==='Call Status'?'Manual notes':name);
+    try {
+      if(!localStorage.getItem('sheet-legacy-columns-v1')){
+        hiddenColumns=[...new Set([...hiddenColumns,'Legacy Called By'])];
+        localStorage.setItem(`sheet-hidden:${path}`,JSON.stringify(hiddenColumns));
+        localStorage.setItem('sheet-legacy-columns-v1','1');
+      }
+    } catch {hiddenColumns=[...new Set([...hiddenColumns,'Legacy Called By'])];}
+    if(saved.Availability && !saved["AI result"])saved["AI result"]=saved.Availability;
+    hiddenColumns=hiddenColumns.map(name=>name==="Availability"?"AI result":name);
     if (saved.Sqft && !saved["Built-up sqft"]) saved["Built-up sqft"] = saved.Sqft;
     hiddenColumns = hiddenColumns.map(name => name === "Sqft" ? "Built-up sqft" : name);
   }
-  const locked = new Set(['Row','Select','Owner','Number','Phone']);
+  const locked = new Set(['Row','Select','Owner','Number','Phone','Actions']);
   hiddenColumns = hiddenColumns.filter(name => !locked.has(name));
   return { widths: labels.map(name => Number.isFinite(saved[name]) && saved[name] >= 40 ? saved[name] : name === 'Row' ? 32 : name === 'Select' ? 34 : defaults[name] || 125), hiddenColumns };
 }

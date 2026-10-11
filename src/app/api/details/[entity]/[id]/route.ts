@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { getCallDetailsByIds } from "@/lib/calls";
-import { getRawRecordsByIds } from "@/lib/raw";
+import { getRawRecordsByIds, getRelatedListings } from "@/lib/raw";
+import { manualHistory } from "@/lib/manual-attempts";
 import { listAssignments } from "@/lib/assignments";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ entity: string; id: string }> }) {
@@ -12,5 +13,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ entity:
   const rows = entity === 'call' ? await getCallDetailsByIds(user, [id]) : await getRawRecordsByIds(user, [id]);
   if (!rows.length) return NextResponse.json({ error: "not found" }, { status: 404 });
   const history = await listAssignments(user, { entity_id: id, entity_type: entity, assignee: user.isAdmin ? undefined : user.email, pageSize: 50 });
-  return NextResponse.json({ row: rows[0], history: history.rows, historyTotal: history.total });
+  const manual=await manualHistory(user,entity as "call"|"record",id,Number(new URL(_req.url).searchParams.get("manual_page")||1));
+  const related = await getRelatedListings(user, entity as "call" | "record", id);
+  return NextResponse.json({ manual,row: rows[0], history: history.rows, historyTotal: history.total,
+    relatedListings: related.slice(0,100), relatedListingsCapped: related.length > 100 });
 }

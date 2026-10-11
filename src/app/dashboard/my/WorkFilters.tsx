@@ -19,8 +19,9 @@ export function WorkFilters({ filters, assigners = [], loading = false }: { filt
       <option value="">All work</option><option value="record">Listings</option><option value="call">AI follow-ups</option>
     </select></label>
     <label className={`work-filter chip${filters.outcome ? " active" : ""}`}><span>Result</span><select aria-label="Filter by result" name="outcome" defaultValue={filters.outcome || ""} disabled={loading}>
-      <option value="">Any result</option><option value="none">Not called yet</option>{OUTCOMES.map(outcome => <option key={outcome}>{outcome}</option>)}
+      <option value="">Any result</option><option value="none">No manual result</option>{OUTCOMES.map(outcome => <option key={outcome}>{outcome}</option>)}
     </select></label>
+    <label className="work-filter chip"><span>Follow-up</span><select name="follow_up" aria-label="Follow-up" defaultValue={filters.follow_up||""} disabled={loading}><option value="">All tasks</option><option value="pending">Needs another call</option><option value="due">Due now / needs scheduling</option></select></label>
     {loading ? <button className={`filters-toggle${moreCount ? " active" : ""}`} type="button" disabled><IconFilter size={15} />More filters{moreCount > 0 && <span className="fbadge">{moreCount}</span>}</button> : <FiltersToggle label="More filters" count={moreCount} />}
     {loading ? <button type="button" className="btn apply-button" disabled>Apply</button> : <ApplyButton />}
     <span className="spacer" /><a className="btn-text" href={loading ? undefined : workHref({ view: filters.view })}>Reset</a>

@@ -1,3 +1,9 @@
+import {dispositionLabel} from "@/lib/manual-dispositions";
+import {InlineAiTimeline} from '../AiTimeline';
+import { firstValue, searchQuery, type SearchValues } from "@/lib/filter-values";
+import { MultiSelect } from "../MultiSelect";
+import { PageJump } from "../PageJump";
+import { WalletBalance } from "../WalletBalance";
 import { rawFiltersSchema } from "@/lib/filters";
 import { RAW_COLUMNS as COLUMNS, RAW_GROUPS as GROUPS } from "../sheet-columns";
 import { dateTime as fmtDate } from "@/lib/display";
@@ -43,14 +49,6 @@ function colClass(label: string): string | undefined {
 
 
 
-// Full call history for the hover tooltip on the Calls cell (one call per line).
-function callsTooltip(history: RawRow["calls_history"]): string {
-  if (!history || history.length === 0) return "";
-  return history
-    .map((h) => `${fmtDate(h.at)} · ${h.status ?? "?"}${h.availability ? ` · ${h.availability}` : ""}`)
-    .join("\n");
-}
-
 function hl(text: string | null | undefined, terms: string[]): React.ReactNode {
   const s = text ?? "";
   if (!s || terms.length === 0) return s;
@@ -61,13 +59,8 @@ function hl(text: string | null | undefined, terms: string[]): React.ReactNode {
   return parts.map((p, i) => (isMatch(p) ? <mark key={i}>{p}</mark> : <span key={i}>{p}</span>));
 }
 
-type SP = Record<string, string | undefined>;
-
-function qs(base: SP, override: SP) {
-  const p = new URLSearchParams();
-  for (const [k, v] of Object.entries({ ...base, ...override })) if (v) p.set(k, v);
-  return `?${p.toString()}`;
-}
+type SP = SearchValues;
+function qs(base: SP, override: SP) { return `?${searchQuery({ ...base, ...override })}`; }
 
 export default async function RawDataset({
   searchParams,
@@ -75,13 +68,11 @@ export default async function RawDataset({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const user = await requireAdmin();
-  const rawSp = await searchParams;
-  const sp: SP = {};
-  for (const [k, v] of Object.entries(rawSp)) sp[k] = Array.isArray(v) ? v[0] : v;
+  const sp = await searchParams;
 
   const parsedFilters = rawFiltersSchema.safeParse(sp);
   if (!parsedFilters.success) return <p role="alert">Invalid filters. {parsedFilters.error.issues.map(i => i.message).join("; ")} <Link href="/dashboard/raw">Clear filters</Link></p>;
-  const filters: RawFilters = { ...parsedFilters.data, page: sp.page ? Number(sp.page) : 1 };
+  const filters: RawFilters = { ...parsedFilters.data, page: Number(firstValue(sp.page) || 1) };
 
 
   const [{ rows, total, page, pages, pageSize, terms }, opts, queuedSet, assignees] = await Promise.all([
@@ -93,18 +84,19 @@ export default async function RawDataset({
 
   const numCols = COLUMNS.length + 1; // + select col (group toggles count as one col each)
   const startRow = (page - 1) * pageSize;
-  const activeFilters = ["source", "state", "city", "contact", "called", "last_result", "min_area", "max_area", "has_phone", "assignee"]
+  const activeFilters = ["source", "state", "city", "contact", "called", "last_result", "min_area", "max_area", "has_phone", "assignee", "assignment_state", "manual_outcome", "rent_mentioned", "onboarded", "warehouse_type"]
     .filter((k) => sp[k]).length;
 
   return (
     <SelectionProvider key={JSON.stringify(sp)} total={total}>
       <div className="page-title"><span className="pt-icon"><IconDataset size={18} /></span> Raw Dataset <BatchActivity /> <Freshness updatedAt={new Date().toISOString()} /></div>
+      <WalletBalance/>
       <FilterForm key={JSON.stringify(sp)} applied={sp} action="/dashboard/raw">
         <div className="search">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
-          <input name="q" defaultValue={sp.q ?? ""} aria-label="Search records" placeholder="Search records…" title="Search owner, phone, city, source or address" />
+          <input name="q" defaultValue={firstValue(sp.q) || ""} aria-label="Search records" placeholder="Search records…" title="Search owner, phone, city, source or address" />
         </div>
 
         <FiltersToggle count={activeFilters} />
@@ -118,56 +110,20 @@ export default async function RawDataset({
         <a className="btn-text" href="/dashboard/raw">Reset</a>
 
         <div className="filters-panel" id="filters-panel">
-            <div className={`chip${sp.source ? " active" : ""}`}>
-              <select aria-label="source" name="source" defaultValue={sp.source ?? ""}>
-                <option value="">Source</option>
-                {opts.sources.map((v) => <option key={v} value={v}>{v}</option>)}
-              </select>
-            </div>
-            <div className={`chip${sp.state ? " active" : ""}`}>
-              <select aria-label="state" name="state" defaultValue={sp.state ?? ""}>
-                <option value="">State</option>
-                {opts.states.map((v) => <option key={v} value={v}>{v}</option>)}
-              </select>
-            </div>
-            <label className="chip"><span className="sr-only">City</span><input name="city" aria-label="City" placeholder="City" defaultValue={sp.city ?? ""} /></label>
-            <div className={`chip${sp.contact ? " active" : ""}`}>
-              <select aria-label="contact" name="contact" defaultValue={sp.contact ?? ""}>
-                <option value="">Contact</option>
-                <option value="owner">Owner</option>
-                <option value="broker">Probable broker</option>
-              </select>
-            </div>
-            <div className={`chip${sp.called ? " active" : ""}`}>
-              <select aria-label="called" name="called" defaultValue={sp.called ?? ""}>
-                <option value="">Called?</option>
-                <option value="no">Not called</option>
-                <option value="yes">Already called</option>
-              </select>
-            </div>
-            <div className={`chip${sp.last_result ? " active" : ""}`}>
-              <select aria-label="last result" name="last_result" defaultValue={sp.last_result ?? ""}>
-                <option value="">Last result</option>
-                <option value="Available">Available</option>
-                <option value="Unavailable">Unavailable</option>
-                <option value="Unclear">Unclear</option>
-              </select>
-            </div>
-            <input className="num-filter" type="number" aria-label="Minimum square feet" min="0" name="min_area" defaultValue={sp.min_area ?? ""} placeholder="min sqft" />
-            <input className="num-filter" type="number" aria-label="Maximum square feet" min="0" name="max_area" defaultValue={sp.max_area ?? ""} placeholder="max sqft" />
-            <label className={`toggle${sp.has_phone === "1" ? " active" : ""}`}>
-              <input type="checkbox" name="has_phone" value="1" defaultChecked={sp.has_phone === "1"} />
-              Has phone
-            </label>
-            <div className={`chip${sp.assignee ? " active" : ""}`}>
-              <select aria-label="assignee" name="assignee" defaultValue={sp.assignee ?? ""}>
-                <option value="">Assigned to</option>
-                <option value="none">Unassigned</option>
-                {assignees.map((a) => (
-                  <option key={a.email} value={a.email}>{a.name || a.email}</option>
-                ))}
-              </select>
-            </div>
+            <MultiSelect name="last_result" label="Last result" value={sp.last_result} options={["Available","Unavailable","Unclear",{value:"none",label:"No AI result"}]}/>
+            <MultiSelect name="source" label="Source" value={sp.source} options={opts.sources}/>
+            <MultiSelect name="state" label="State" value={sp.state} options={opts.states}/>
+            <label className="chip"><span className="sr-only">City</span><input name="city" aria-label="City" placeholder="City" defaultValue={firstValue(sp.city) || ""}/></label>
+            <MultiSelect name="contact" label="Contact" value={sp.contact} options={[{value:"owner",label:"Owner"},{value:"broker",label:"Probable broker"}]}/>
+            <MultiSelect name="manual_outcome" label="Manual result" value={sp.manual_outcome} options={["Available","Unavailable","Unclear",{value:"none",label:"No manual result"}]}/>
+            <input className="num-filter" type="number" aria-label="Minimum square feet" min="0" name="min_area" defaultValue={firstValue(sp.min_area)||""} placeholder="min sqft"/>
+            <input className="num-filter" type="number" aria-label="Maximum square feet" min="0" name="max_area" defaultValue={firstValue(sp.max_area)||""} placeholder="max sqft"/>
+            <div className="chip"><select name="onboarded" aria-label="Onboarded" defaultValue={firstValue(sp.onboarded)||""}><option value="">Any onboarding</option><option value="yes">Onboarded with WH ID</option><option value="no">Not onboarded</option></select></div>
+            <div className="chip"><select name="assignment_state" aria-label="Ownership" defaultValue={firstValue(sp.assignment_state)||""}><option value="">Any ownership</option><option value="unassigned">Unassigned now</option><option value="open">Open assignment</option><option value="done">Completed history</option><option value="never">Never assigned</option></select></div>
+            <MultiSelect name="warehouse_type" label="Warehouse type" value={sp.warehouse_type} options={opts.warehouseTypes}/>
+            <div className="chip"><select aria-label="Called" name="called" defaultValue={firstValue(sp.called)||""}><option value="">Called?</option><option value="no">Not called</option><option value="yes">Already called</option></select></div>
+            <label className="toggle"><input type="checkbox" name="has_phone" value="1" defaultChecked={sp.has_phone==="1"}/>Has phone</label>
+            <MultiSelect name="assignee" label="Assigned to" value={sp.assignee} options={[{value:"none",label:"Unassigned now"},...assignees.map(a=>({value:a.email,label:a.name||a.email}))]}/>
         </div>
       </FilterForm>
 
@@ -220,15 +176,16 @@ export default async function RawDataset({
                 <td>{hl(r.source, terms)}</td>
                 <td className="clip" title={r.source_record_id ?? ""}>{r.source_record_id ?? ""}</td>
                 {/* Calls group (collapsible, middle) */}
-                <td className="calls-toggle" title={r.call_count > 1 ? callsTooltip(r.calls_history) : undefined}>
-                  {r.call_count > 0 ? r.call_count : "—"}
+                <td className="calls-toggle" title="Open AI timeline for attempt history">
+                  {r.ai_attempt_count||0} outbound · {r.ai_inbound_count||0} inbound<small><br/>{r.call_count} execution records</small><br/><InlineAiTimeline entity="record" id={r.id}/>
                 </td>
                 <td className="calls-col">{r.last_status ?? ""}</td>
                 <td className="calls-col">{r.last_availability ?? ""}</td>
                 <td className="calls-col">{fmtDate(r.last_called_at)}</td>
-                <td className="calls-col clip" title={r.last_transcript ?? ""}>{r.last_transcript ?? ""}</td>
+                <td className="calls-col clip" title="Transcript preview; open Details for the full transcript">{r.last_transcript ?? ""}</td>
                 <td className="calls-col">{r.last_recording_url ? <a href={r.last_recording_url} target="_blank" rel="noreferrer">Play</a> : ""}</td>
                 <td className="calls-col clip" title={r.last_notes ?? ""}>{r.last_notes ?? ""}</td>
+                <td><RecordDetails id={r.id} entity="record" label="Manual calls"/><br/>{r.manual_attempt_count||0} recorded in {r.assignment_state==='open'?'current':'latest'} assignment<br/>{r.assignment_outcome||"No manual result"}{r.manual_disposition&&<><br/>{dispositionLabel(r.manual_disposition)}</>}{r.assignment_closure_reason==='exhausted'&&<><br/>Closed: Exhausted</>}{r.manual_last_attempt_at&&<><br/>{fmtDate(r.manual_last_attempt_at)}</>}{r.manual_next_due_at&&<><br/>Due {fmtDate(r.manual_next_due_at)}</>}</td>
                 {/* location kept together */}
                 <td>{r.contact_type === "probable broker" ? <span className="review-tag">probable broker</span> : "owner"}</td>
                 <td>{hl(r.city, terms)}</td>
@@ -236,7 +193,7 @@ export default async function RawDataset({
                 <td className="clip" title={r.address ?? ""}>{hl(r.address, terms)}</td>
                 <td className="clip" title={r.assignment_note ?? ""}>
                   {r.assigned_to ?? <span className="muted">—</span>}
-                  {r.assignment_state === "done" && <span className="review-tag">done</span>}
+                  {!r.assigned_to && r.assignment_state === "done" && <span className="review-tag" title={`Previously assigned to ${r.assignment_assignee || "a caller"}; see Details`}>completed history</span>}
                 </td>
               </tr>
             ))}
@@ -257,6 +214,8 @@ export default async function RawDataset({
           <span className="muted">{page}/{pages}</span>
         </div>
       </div>
+
+      <PageJump key={page} page={page} pages={pages}/>
 
       <GridInteractivity />
     </SelectionProvider>

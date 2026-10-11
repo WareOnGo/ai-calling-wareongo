@@ -1,10 +1,13 @@
+import {matchesCallSearch,rawSearch,matchesSearch} from "./search";
+import {cityWhere} from "./filter-values";
+import { categoryWhere,filterValues,type FilterValue } from "./filter-values";
 import { ApiError } from "./api";
 import { getDispatchAgents } from "./agents";
 import { unstable_cache } from "next/cache";
 import { query } from "@/lib/db";
 import { MIN_COST_CENTS, ENABLE_ENRICHMENT } from "@/lib/inference";
 import { INFERENCE_VERSION } from "@/lib/openai";
-import { assignmentScope, currentAssignmentLateral, type Viewer } from "@/lib/scope";
+import { assignmentScope, currentAssignmentLateral, ownershipFilter,verificationFilters, type Viewer } from "@/lib/scope";
 
 export type CallRow = {
   revision: number;
@@ -29,26 +32,35 @@ export type CallRow = {
   needs_review: boolean;
   inferred: boolean;      // has OpenAI enrichment run on this call?
   can_enrich: boolean;    // qualifies for (re-)inference but isn't enriched at the current version
-  // editable workflow fields
+  // Retained legacy metadata; current manual work is stored on the assignment.
   call_status: string | null;
-  called_by: string | null;      // who actually dialled — distinct from assigned_to
+  called_by: string | null;      // legacy read-only metadata; actual manual attempts record actor separately
   added_to_db: boolean;
   wh_id: string | null;
   // current assignment (who owns the follow-up)
   assigned_to: string | null;
+  assignment_assignee: string | null;
+  assignment_revision:number|null;
   assignment_id: string | null;   // bigint → pg returns a string; used as a URL segment
   assignment_state: string | null;
+  assignment_closure_reason: string | null;
   assignment_outcome: string | null;
   assignment_remarks: string | null;
   assignment_note: string | null;
   assignment_added_to_db: boolean | null;
   assignment_wh_id: string | null;
+  manual_attempt_count:number|null;
+  manual_disposition:string|null;
+  manual_next_due_at:string|null;
+  manual_last_attempt_at:string|null;
   // Representative matched listing (scalar columns) + count + full set.
   raw_match_count: number;
   raw_source: string | null;
   raw_owner_name: string | null;
   raw_warehouse_type: string | null;
   raw_city: string | null;
+  source_cities:string|null;
+  ai_attempt_count:number;ai_conversation_count:number;
   raw_state: string | null;
   raw_area_sqft: string | null;
   raw_contact_type: string | null;
@@ -72,28 +84,28 @@ export type RawMatch = {
 
 export type CallFilters = {
   ids?: string[];
+  include_blocked?:boolean;batch_id?:string;
   q?: string;
-  availability?: string;
-  agent_id?: string;
-  status?: string;
-  source?: string;        // matched raw-dataset source
-  state?: string;         // matched raw-dataset state
-  contact?: string;       // "broker" | "owner"
-  call_type?: string;     // "inbound" | "outbound"
+  availability?: FilterValue;
+  agent_id?: FilterValue;
+  status?: FilterValue;
+  source?: FilterValue;        // matched raw-dataset source
+  state?: FilterValue;         // matched raw-dataset state
+  contact?: FilterValue;       // "broker" | "owner"
+  call_type?: FilterValue;     // "inbound" | "outbound"
   date_from?: string;     // YYYY-MM-DD (inclusive)
   date_to?: string;       // YYYY-MM-DD (inclusive)
   needs_review?: boolean;
-  assignee?: string;      // admin-only: filter by owner ("none" = unassigned)
+  city?:string;min_area?:number;max_area?:number;area_basis?:"source"|"built_up"|"carpet";
+  manual_outcome?:FilterValue;rent_mentioned?:"yes"|"no";onboarded?:"yes"|"no";
+  assignment_state?: string;
+  assignee?: FilterValue;      // admin-only: filter by owner ("none" = unassigned)
   page?: number;
   pageSize?: number;
 };
 
 // Columns the free-text search scans (substring) for highlighting + matching.
-const SEARCH_COLS = [
-  "from_number", "to_number", "owner_name", "db_area", "city_area",
-  "raw_owner_name", "raw_source", "raw_sources", "raw_city", "raw_state", "raw_warehouse_type",
-  "expected_rent", "built_up_area_sqft", "carpet_area_sqft", "status", "notes", "transcript",
-];
+
 
 export const PAGE_SIZE = 25;
 
@@ -112,11 +124,15 @@ const SELECT_LIST = `(select revision from bolna_call_logs c where c.id = bolna_
        status, availability, segment, confidence, built_up_area_sqft, carpet_area_sqft, expected_rent,
        notes, transcript, recording_url, needs_review, inferred, ${CAN_ENRICH_SQL},
        call_status, called_by, added_to_db, wh_id,
-       asg.assignee as assigned_to, asg.assignment_id, asg.state as assignment_state, asg.outcome as assignment_outcome,
+       asg.current_assignee as assigned_to, asg.assignee as assignment_assignee, asg.assignment_id, asg.assignment_revision, asg.state as assignment_state, asg.outcome as assignment_outcome,
        asg.remarks as assignment_remarks, asg.note as assignment_note,
-       asg.asg_added as assignment_added_to_db, asg.asg_wh as assignment_wh_id,
+       coalesce(asg.asg_added,bolna_call_analysis.added_to_db) as assignment_added_to_db, case when asg.assignment_id is null then bolna_call_analysis.wh_id else asg.asg_wh end as assignment_wh_id,
+       asg.closure_reason as assignment_closure_reason,asg.manual_attempt_count,asg.disposition as manual_disposition,asg.next_due_at::text as manual_next_due_at,asg.last_attempt_at::text as manual_last_attempt_at,
        raw_match_count, raw_source, raw_owner_name, raw_warehouse_type,
-       raw_city, raw_state, raw_area_sqft, raw_contact_type, raw_sources, raw_matches`;
+       raw_city, raw_state, raw_area_sqft, raw_contact_type, raw_sources,
+       (select string_agg(distinct r.city,', ' order by r.city) from raw_phone_numbers p join raw_phones rp using(phone_id) join raw_records r on r.id=rp.master_id where p.phone_last10=bolna_call_analysis.phone_last10 and nullif(trim(r.city),'') is not null) as source_cities,
+       (select count(*)::int from bolna_ai_attempts ai where ai.execution_id=bolna_call_analysis.id) as ai_attempt_count,
+       (select count(*)::int from bolna_ai_attempts ai where ai.execution_id=bolna_call_analysis.id and ai.confirmed_conversation) as ai_conversation_count, raw_matches`;
 
 // Build the WHERE clause + params shared by the paged list, the CSV export and the
 // id resolver. `viewer` is FIRST and required so a new call site can't forget the
@@ -125,6 +141,8 @@ const SELECT_LIST = `(select revision from bolna_call_logs c where c.id = bolna_
 function buildFilter(viewer: Viewer, f: CallFilters): { whereSql: string; params: unknown[]; terms: string[] } {
   const where: string[] = [];
   const params: unknown[] = [];
+  if(!f.include_blocked&&!filterValues(f.status).includes('balance-low'))where.push("status is distinct from 'balance-low'");
+  if(f.batch_id){params.push(f.batch_id);where.push(`batch_id=$${params.length}`);}
 
   // Mandatory row-level scope (no-op for admins), before any user-supplied filter.
   const scope = assignmentScope(viewer, "call", "bolna_call_analysis.id", params);
@@ -137,40 +155,30 @@ function buildFilter(viewer: Viewer, f: CallFilters): { whereSql: string; params
   for (const term of terms) {
     params.push(term);
     const p = `$${params.length}`;
-    const subs = SEARCH_COLS.map((c) => `coalesce(${c}::text,'') ilike '%'||${p}||'%'`);
-    // word_similarity catches typos within a name ("raghuv" -> "Raghav"); per-column,
-    // not a concat blob (which would dilute a short term's score).
-    const fuzzyCols = ["owner_name", "raw_owner_name", "raw_source", "raw_city"];
-    const fuzzy = fuzzyCols.map((c) => `word_similarity(${p}, coalesce(${c},'')) > 0.5`);
-    where.push(`(${[...subs, ...fuzzy].join(" or ")})`);
+    where.push(`bolna_call_analysis.id in (
+      select cs.id from bolna_call_logs cs where ${matchesCallSearch('cs',p)}
+      union select cs.id from raw_records rs join raw_phones rp on rp.master_id=rs.id
+       join raw_phone_numbers pp using(phone_id) join bolna_call_logs cs using(phone_last10)
+       where ${matchesSearch(rawSearch('rs'),p)})`);
   }
 
-  if (f.availability) { params.push(f.availability); where.push(`availability = $${params.length}`); }
-  if (f.agent_id) { params.push(f.agent_id); where.push(`agent_id = $${params.length}`); }
-  if (f.status) { params.push(f.status); where.push(`status = $${params.length}`); }
-  // Match ANY source the number is listed in (cross-listed numbers count for each),
-  // not just the single representative — so a source filter never undercounts.
-  if (f.source) { params.push(f.source); where.push(`raw_sources ilike '%'||$${params.length}||'%'`); }
-  if (f.state) { params.push(f.state); where.push(`raw_state = $${params.length}`); }
-  if (f.contact === "broker") { where.push(`raw_contact_type = 'probable broker'`); }
-  if (f.contact === "owner") { where.push(`raw_source is not null and raw_contact_type is null`); }
-  if (f.call_type) { params.push(f.call_type); where.push(`call_type = $${params.length}`); }
-  if (f.date_from) { params.push(f.date_from); where.push(`call_created_at >= $${params.length}::date`); }
-  if (f.date_to) { params.push(f.date_to); where.push(`call_created_at < ($${params.length}::date + interval '1 day')`); }
+  for(const [column,value] of [["availability",f.availability],["agent_id::text",f.agent_id],["status",f.status],["call_type",f.call_type]] as const){const clause=categoryWhere(column,value,params,column==='availability'?'none':undefined);if(clause)where.push(clause);}
+  const listing:string[]=[];
+  for(const [column,value] of [["r.source",f.source],["r.state",f.state]] as const){const clause=categoryWhere(column,value,params);if(clause)listing.push(clause);}
+  if(f.city)listing.push(cityWhere("r.city",f.city,params));
+  const contacts=filterValues(f.contact),contactChoices:string[]=[];
+  if(contacts.includes('broker'))contactChoices.push("r.contact_type='probable broker'");
+  if(contacts.includes('owner'))contactChoices.push("r.contact_type is null");
+  if(contactChoices.length)listing.push(`(${contactChoices.join(' or ')})`);
+  const measure=f.area_basis==='built_up'?'bolna_numeric_measure(built_up_area_sqft)':f.area_basis==='carpet'?'bolna_numeric_measure(carpet_area_sqft)':'r.area_sqft';
+  for(const [value,op] of [[f.min_area,">="],[f.max_area,"<="]] as const)if(value!=null){params.push(value);(measure==='r.area_sqft'?listing:where).push(`${measure} ${op} $${params.length}`);}
+  if(listing.length)where.push(`exists(select 1 from raw_phone_numbers p join raw_phones rp using(phone_id) join raw_records r on r.id=rp.master_id where p.phone_last10=bolna_call_analysis.phone_last10 and ${listing.join(' and ')})`);
+  if(f.rent_mentioned)where.push(`${f.rent_mentioned==='no'?'not ':''}bolna_rent_mentioned(expected_rent)`);
+  where.push(...verificationFilters('call','bolna_call_analysis.id',viewer,f,params));
+  if (f.date_from) { params.push(f.date_from); where.push(`call_created_at >= ($${params.length}::date::timestamp at time zone 'Asia/Kolkata')`); }
+  if (f.date_to) { params.push(f.date_to); where.push(`call_created_at < (($${params.length}::date + interval '1 day') at time zone 'Asia/Kolkata')`); }
   if (f.needs_review) { where.push(`needs_review = true`); }
-  // Admin-only in practice: an employee already sees only their own rows, so this
-  // narrows nothing for them.
-  // "none" = no OPEN owner; a named assignee matches their open or completed work.
-  if (viewer.isAdmin && f.assignee === "none") {
-    where.push(`not exists (select 1 from bolna_assignments a
-                  where a.entity_type = 'call' and a.entity_id = bolna_call_analysis.id
-                    and a.state = 'open')`);
-  } else if (viewer.isAdmin && f.assignee) {
-    params.push(f.assignee.toLowerCase());
-    where.push(`exists (select 1 from bolna_assignments a
-                 where a.entity_type = 'call' and a.entity_id = bolna_call_analysis.id
-                   and a.state <> 'dropped' and a.assignee = $${params.length})`);
-  }
+  if (viewer.isAdmin) where.push(...ownershipFilter("call", "bolna_call_analysis.id", f, params));
 
   const whereSql = where.length ? `where ${where.join(" and ")}` : "";
   return { whereSql, params, terms };
@@ -180,7 +188,7 @@ function buildFilter(viewer: Viewer, f: CallFilters): { whereSql: string; params
 export async function getCallDetailsByIds(viewer: Viewer, ids: string[]): Promise<CallRow[]> {
   if (!ids.length) return [];
   if (ids.length > 1000) throw new ApiError(400, "Too many detail IDs; use the export endpoint");
-  const { whereSql, params } = buildFilter(viewer, { ids });
+  const { whereSql, params } = buildFilter(viewer, { ids,include_blocked:true });
   const res = await query<CallRow>(
     `select ${SELECT_LIST} from bolna_call_analysis ${currentAssignmentLateral("call", "bolna_call_analysis.id", viewer, params)} ${whereSql}
        order by call_created_at desc nulls last, id`,
@@ -207,21 +215,27 @@ export async function getCalls(viewer: Viewer, f: CallFilters) {
   const requestedPage = Number.isFinite(f.page) ? Math.max(1, Math.floor(f.page!)) : 1;
   const pageSize = Number.isFinite(f.pageSize) ? Math.max(1, Math.min(100, Math.floor(f.pageSize!))) : PAGE_SIZE;
 
-  const countRes = await query<{ n: string }>(
-    `select count(*)::text n from bolna_call_analysis ${whereSql}`,
+  // Evaluate expensive fuzzy/property filters once for both the count and page.
+  // Materialize only IDs/timestamps; full transcripts and property JSON stay out.
+  const countRes = await query<{ n: string; ids: string[] }>(
+    `with matching as materialized (select id,call_created_at from bolna_call_analysis ${whereSql}),
+      totals as (select count(*) n from matching)
+     select n::text, array(select id from matching order by call_created_at desc nulls last,id
+       limit ${pageSize} offset least(${requestedPage - 1},greatest(ceil(n::numeric/${pageSize})-1,0))*${pageSize}) ids
+     from totals`,
     params,
   );
   const total = Number(countRes.rows[0].n);
   const page = Math.min(requestedPage, Math.max(1, Math.ceil(total / pageSize)));
-  const offset = (page - 1) * pageSize;
-
+  const detailParams: unknown[] = [countRes.rows[0].ids];
+  // Recheck access at the detail read if an admin reassigns work between queries.
+  const detailScope = assignmentScope(viewer,"call","bolna_call_analysis.id",detailParams);
   const rowsRes = await query<CallRow>(
-    `select ${SELECT_LIST}
-       from bolna_call_analysis ${currentAssignmentLateral("call", "bolna_call_analysis.id", viewer, params)}
-       ${whereSql}
-       order by call_created_at desc nulls last, id
-       limit ${pageSize} offset ${offset}`,
-    params,
+    `select ${SELECT_LIST.replace('notes, transcript, recording_url', 'left(notes,240) as notes, left(transcript,240) as transcript, recording_url').replace(/raw_matches$/, 'null::jsonb as raw_matches')}
+       from bolna_call_analysis ${currentAssignmentLateral("call", "bolna_call_analysis.id", viewer, detailParams)}
+       where id=any($1::uuid[])${detailScope ? ` and ${detailScope}` : ''}
+       order by call_created_at desc nulls last, id`,
+    detailParams,
   );
 
   return { rows: rowsRes.rows, total, page, pageSize, pages: Math.max(1, Math.ceil(total / pageSize)), terms };
@@ -250,7 +264,7 @@ async function _getFilterOptions() {
     statuses: statuses.rows.map((r) => r.status),
     sources: sources.rows.map((r) => r.raw_source),
     states: states.rows.map((r) => r.raw_state),
-    availabilities: ["Available", "Unavailable", "Unclear", "dead number - do not call"],
+    availabilities: ["Available", "Unavailable", "Unclear"],
   };
 }
 
@@ -260,4 +274,10 @@ export function callsExportQuery(viewer: Viewer, f: CallFilters): import("./expo
   const join = currentAssignmentLateral("call", "bolna_call_analysis.id", viewer, params);
   return { sql: `select ${SELECT_LIST.replace(/raw_matches$/, "null::jsonb as raw_matches")} from bolna_call_analysis ${join} ${whereSql} order by call_created_at desc nulls last, id`,
     countSql: `select count(*)::text n from bolna_call_analysis ${whereSql}`, params, countParams };
+}
+
+
+export async function countCalls(viewer:Viewer,filters:CallFilters){
+  const {whereSql,params}=buildFilter(viewer,filters);
+  return Number((await query<{n:string}>(`select count(*)::text n from bolna_call_analysis ${whereSql}`,params)).rows[0].n);
 }

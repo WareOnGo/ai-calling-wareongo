@@ -1,3 +1,4 @@
+import { searchValues } from "@/lib/filter-values";
 import { z } from "zod";
 import { getPool } from "./db";
 import { ApiError, jsonBody, uuid } from "./api";
@@ -11,7 +12,7 @@ export const exportSchema = z.object({
 export async function exportInput(req: Request) {
   if (req.method === "POST") return jsonBody(req, exportSchema);
   const params = new URL(req.url).searchParams;
-  return exportSchema.parse({ ids: params.has("ids") ? params.get("ids")!.split(",") : undefined, filters: Object.fromEntries(params) });
+  return exportSchema.parse({ ids: params.has("ids") ? params.get("ids")!.split(",") : undefined, filters: searchValues(params) });
 }
 
 export type ExportQuery = { sql: string; countSql: string; params: unknown[]; countParams: unknown[] };

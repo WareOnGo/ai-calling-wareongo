@@ -2,18 +2,20 @@ import { z } from "zod";
 import { query, transaction } from "./db";
 import { ApiError } from "./api";
 import { normNum } from "./queue";
+import {executionMetadataSchema} from './bolna';
 
 const snapshotSchema = z.object({
   batch_id: z.string(), status: z.string(), valid_contacts: z.number().int().nonnegative(),
 }).passthrough();
-const executionSchema = z.object({
-  status: z.string(), retry_count: z.number().int().nonnegative().optional(),
-  batch_run_details: z.object({ retried: z.number().int().nonnegative().optional() }).passthrough().optional(),
-  telephony_data: z.object({ to_number: z.string().nullable().optional() }).passthrough().nullable().optional(),
-}).passthrough();
+const executionSchema = executionMetadataSchema;
 type Execution = z.infer<typeof executionSchema>;
 const TERMINAL = new Set(["completed", "call-disconnected", "failed", "busy", "no-answer", "canceled", "stopped", "error", "balance-low"]);
 const RETRYABLE = new Set(["no-answer", "busy", "failed", "error"]);
+function retryCount(e:Execution){
+ const raw=e.retry_count??e.batch_run_details?.retried;
+ if(raw===null||raw===undefined||raw==='')return -1;
+ const n=Number(raw);return Number.isSafeInteger(n)&&n>=0?n:-1;
+}
 
 export function executionsFinished(expected: string[], executions: Execution[]): boolean {
   // A failed attempt can have a delayed retry. Without exhaustion metadata we keep
@@ -21,7 +23,7 @@ export function executionsFinished(expected: string[], executions: Execution[]):
   if (!executions.length) return false;
   if (executions.some(e => !TERMINAL.has(e.status))) return false;
   return expected.every(phone => executions.some(e => normNum(e.telephony_data?.to_number) === phone &&
-    (!RETRYABLE.has(e.status) || (e.retry_count ?? e.batch_run_details?.retried ?? -1) >= 3)));
+    (!RETRYABLE.has(e.status) || retryCount(e) >= 3)));
 }
 
 async function providerGet(path: string): Promise<unknown> {
@@ -48,6 +50,12 @@ export async function reconcileBatch(id: string) {
     const executions = z.array(executionSchema).max(80000).parse(await providerGet(`/batches/${encodeURIComponent(batch.bolna_batch_id)}/executions`));
     const items = await query<{ contact_number: string }>("select contact_number from call_batch_items where batch_id = $1", [id]);
     const expected = [...new Set(items.rows.map(r => normNum(r.contact_number)))];
+    // Retain independently identified provider attempts discovered by reconciliation.
+    // Commit bounded pages. A failed later page can replay prior per-dial upserts;
+    // reservations are released only after every page has been retained.
+    for(let offset=0;offset<executions.length;offset+=250){
+      await transaction(async client=>{await client.query("select bolna_record_ai_evidence(value,'reconcile') from jsonb_array_elements($1::jsonb)",[JSON.stringify(executions.slice(offset,offset+250))]);});
+    }
     complete = expected.length > 0 && remote.valid_contacts === expected.length && executionsFinished(expected, executions);
   }
   return transaction(async client => {

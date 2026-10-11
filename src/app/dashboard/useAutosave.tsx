@@ -43,7 +43,10 @@ export function useAutosave<T extends Values>(id: string, url: string, initial: 
     const unsubscribe = queue.subscribe(report);
     return () => {unsubscribe();reportSave(id, null);};
   }, [id, queue, reportSave]);
-  return { ...snapshot, set: queue.set.bind(queue), flush: () => queue.flush(), retry: queue.retry };
+  // A server refresh can advance only the revision (for example an attempt event)
+  // without changing any editable value. reconcile then emits no render, so
+  // consumers must receive the fresh prop revision in this render itself.
+  return { ...snapshot, revision:snapshot.dirty ? version.current : Math.max(initialRevision,version.current),set: queue.set.bind(queue), flush: () => queue.flush(), retry: queue.retry };
 }
 
 export function SaveStatus({ id, status, error, retry }: { id: string; status: string; error: string; retry: () => void }) {

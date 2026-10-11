@@ -1,5 +1,7 @@
 "use client";
+import { searchValues } from "@/lib/filter-values";
 
+import { WalletBalance } from "./WalletBalance";
 import { useCallback, useMemo, useState, useRef } from "react";
 import { IconPhoneOutgoing, IconDownload, IconX, IconAlert, IconPlus } from "./icons";
 import {
@@ -26,10 +28,10 @@ import type { DispatchResult } from "@/lib/dispatch-service";
 // Per-row checkboxes (input.rowsel) and the header select-all (input.selall) are
 // rendered server-side in raw/page.tsx; this client component wires them up via
 // event delegation (survives grid re-renders, same pattern as GridInteractivity).
-// Each row checkbox carries the Bolna call fields (and a call category) as data-*.
+// Both scopes load current phone and ownership metadata from the server.
 //
 // Two selection scopes:
-//   • header select-all → all rows on the CURRENT page (DOM-based, instant)
+//   • header select-all → all rows on the CURRENT page (server-verified preview)
 //   • "Select all N matching" banner → every record matching the filters across
 //     ALL pages (fetched from /api/raw/queue)
 //
@@ -39,21 +41,8 @@ import type { DispatchResult } from "@/lib/dispatch-service";
 // with a per-category toggle. Sending requires explicit confirmation before live calls.
 // Pure preprocessing (dedup, CSV, classification) lives in @/lib/queue (unit-tested).
 
-function readPageSelection(root: HTMLElement | null): Sel[] {
-  const boxes = root?.querySelectorAll<HTMLInputElement>("table.sheet tbody input.rowsel:checked") ?? [];
-  return Array.from(boxes).map((b) => ({
-    id: b.dataset.id ?? "",
-    name: b.dataset.name ?? "",
-    contact: b.dataset.contact ?? "",
-    area: b.dataset.area ?? "",
-    state: b.dataset.state ?? "",
-    cat: (b.dataset.cat ?? "") as CallCat,
-    queued: b.dataset.queued === "1",
-  }));
-}
-
 export function QueueForCalling({ availableLanguages }: { availableLanguages: CallLanguage[] }) {
-  const { root, total, ids, allMatching, hasSelection } = useSelection();
+  const { total, ids, allMatching, hasSelection } = useSelection();
   const { pending, refresh, notify } = useDashboardUI();
   const intent = useRef<string | null>(null);
   const [uncertain, setUncertain] = useState(false);
@@ -61,6 +50,7 @@ export function QueueForCalling({ availableLanguages }: { availableLanguages: Ca
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<Sel[]>([]);   // deduped rows (full set for the modal)
+  const [previewIds,setPreviewIds]=useState<string[]>([]);
   const [offCats, setOffCats] = useState<Set<CallCat>>(new Set()); // called categories toggled OFF
   const [matchingCount, setMatchingCount] = useState(0);
   const [noPhone, setNoPhone] = useState(0);
@@ -80,29 +70,12 @@ export function QueueForCalling({ availableLanguages }: { availableLanguages: Ca
     setResult(null);       // clear any prior dispatch result
     setConfirming(false);
     setOffCats(new Set()); // fresh toggle state each time the modal opens
-    if (allMatching) {
-      setLoading(true);
-      setOpen(true);
-      try {
-        const data: { rows: (Omit<Sel, "contact"> & { contact: string | null })[]; capped: boolean; total: number; skippedNoPhone: number } = await requestJson(`/api/raw/queue${window.location.search}`);
-        const norm: Sel[] = data.rows.map((r) => ({ ...r, contact: r.contact ?? "", state: r.state ?? "", queued: !!r.queued }));
-        setRawCount(norm.length); setMatchingCount(data.total); setNoPhone(data.skippedNoPhone);
-        setRows(dedupByNumber(norm));
-        setCapped(data.capped);
-      } catch {
-        setError("Couldn't load the full set. Try again.");
-      } finally {
-        setLoading(false);
-      }
-    } else {
-      const sel = readPageSelection(root.current);
-      if (sel.length === 0) return;
-      setRawCount(sel.length); setMatchingCount(sel.length);
-      setRows(dedupByNumber(sel));
-      setCapped(false);
-      setOpen(true);
-    }
-  }, [allMatching, uncertain, root]);
+    setLoading(true);setOpen(true);
+    try {
+      const data:{rows:Sel[];capped:boolean;total:number;skippedNoPhone:number}=await requestJson(allMatching?`/api/raw/queue${window.location.search}`:'/api/raw/queue',allMatching?undefined:{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ids})});
+      setPreviewIds(data.rows.map(row=>row.id));setRawCount(data.rows.length);setMatchingCount(data.total);setNoPhone(data.skippedNoPhone);setRows(dedupByNumber(data.rows));setCapped(data.capped);
+    } catch {setError("Couldn't load the calling preview. Try again.");} finally {setLoading(false);}
+  }, [allMatching,uncertain,ids]);
 
   // Category counts across ALL called rows (stable — chips stay visible when toggled off).
   const catCounts = useMemo(() => {
@@ -113,7 +86,6 @@ export function QueueForCalling({ availableLanguages }: { availableLanguages: Ca
   const presentCats = CALLED_CATS.filter((c) => catCounts[c.key]);
   // The live batch = deduped rows minus rows whose category is toggled off.
   const active = useMemo(() => rows.filter((r) => !(r.cat && offCats.has(r.cat))), [rows, offCats]);
-  const withContact = active.filter((r) => r.contact.trim());
   const calledInBatch = active.filter((r) => r.cat).length;
   const calledTotal = rows.filter((r) => r.cat).length;
 
@@ -138,17 +110,24 @@ export function QueueForCalling({ availableLanguages }: { availableLanguages: Ca
   const plannedLanguages = CALL_LANGUAGES.filter(language => groups[language].length > 0);
   const routeSummary = plannedLanguages.map(language => `${groups[language].length.toLocaleString()} ${LANGUAGE_LABELS[language]}`).join(" + ");
 
-  // The manual CSV includes every previewed contact, including held/queued rows.
-  // Live dispatch uses the server's callable set and splits it by agent.
-  const download = useCallback(() => {
-    const blob = new Blob([buildCsv(withContact)], { type: "text/csv;charset=utf-8" });
+  // CSV and live dispatch use the same eligibility and ownership rules.
+  const download = useCallback(async () => {
+    setLoading(true);setError(null);
+    try{
+    const fresh=await requestJson<{rows:Sel[]}>('/api/raw/queue',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ids:previewIds})});
+    setRows(dedupByNumber(fresh.rows));
+    const eligible=assembleBatch(fresh.rows,[...offCats],{mode:routingMode,availableLanguages}).callable;
+    if(!eligible.length){setError('No eligible contacts remain. Ownership and calling reservations were checked again; no CSV was exported.');return;}
+    const blob = new Blob([buildCsv(eligible)], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
     a.download = "bolna-queue.csv";
     a.click();
     URL.revokeObjectURL(url);
-  }, [withContact]);
+    }catch{setError('Could not verify the current calling selection. Try loading the preview again.');}
+    finally{setLoading(false);}
+  }, [previewIds,offCats,routingMode,availableLanguages]);
 
   // "Send to Bolna" — LIVE. Places real calls. Server re-fetches numbers by id, so we
   // only send ids + a filters snapshot + confirm:true. Guarded by a two-step confirm.
@@ -159,12 +138,12 @@ export function QueueForCalling({ availableLanguages }: { availableLanguages: Ca
     let mayHaveDispatched = true;
     try {
       const params = new URLSearchParams(window.location.search);
-      const filters = Object.fromEntries(params.entries());
+      const filters = searchValues(params);
       const res = await fetch("/api/raw/dispatch", {
         method: "POST",
         signal: AbortSignal.timeout(120000),
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: rows.map((r) => r.id), excludeCats: [...offCats], routingMode, intentKey: intent.current, filters, confirm: true }),
+        body: JSON.stringify({ ids: previewIds, excludeCats: [...offCats], routingMode, intentKey: intent.current, filters, confirm: true }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -184,7 +163,7 @@ export function QueueForCalling({ availableLanguages }: { availableLanguages: Ca
     } finally {
       setSending(false);
     }
-  }, [rows, offCats, routingMode, sending, uncertain, notify, refresh]);
+  }, [previewIds, offCats, routingMode, sending, uncertain, notify, refresh]);
 
   const btnCount = allMatching ? total : ids.length;
   const dupes = rawCount - rows.length;
@@ -231,7 +210,7 @@ export function QueueForCalling({ availableLanguages }: { availableLanguages: Ca
                 <div className="cw-head">
                   <IconAlert size={16} />
                   <span>
-                    <strong>{calledInBatch.toLocaleString()}</strong> already-called number(s) still in this batch
+                    <strong>{calledInBatch.toLocaleString()}</strong> previously called contact(s) in this preview
                     {calledInBatch < calledTotal ? ` (${(calledTotal - calledInBatch).toLocaleString()} excluded)` : ""}.
                     Toggle a category to exclude or re-include it:
                   </span>
@@ -267,13 +246,17 @@ export function QueueForCalling({ availableLanguages }: { availableLanguages: Ca
                   <span>
                     <strong>{heldRegion.toLocaleString()}</strong> number(s) are <strong>held</strong> because their
                     region needs an agent that is unavailable under this language choice. Review the language selection
-                    and configured agents. They remain included in the CSV download.
+                    and configured agents. They are excluded from the CSV download.
                   </span>
                 </div>
               </div>
             )}
 
-            <div className="modal-body">
+            <div className="modal-body"><WalletBalance/>
+              {!loading&&!result&&<section aria-label="Calling ownership preview">
+                <p><strong>{summary.humanOwned} contacts held for open human assignments</strong> · {rows.filter(r=>r.aiCalls).length} contacts previously called by AI. Shared primary/alternate numbers are grouped before dispatch.</p>
+                {[...new Set(rows.flatMap(r=>(r.owners||[]).map(o=>o.email)))].map(email=>{const owned=rows.filter(r=>r.owners?.some(o=>o.email===email));const person=owned[0]?.owners?.find(o=>o.email===email);return <p key={email}>{owned.length} contacts assigned to {person?.name||email}: {[...new Set(owned.flatMap(r=>r.owners?.filter(o=>o.email===email).map(o=>`${o.state}${o.outcome?' · '+o.outcome:''}`)||[]))].join('; ')}</p>;})}
+              </section>}
               {result ? (
                 <div className="dispatch-ok">
                   <div className="ok-badge">{result.scheduled ? "✓" : "!"}</div>
@@ -345,8 +328,8 @@ export function QueueForCalling({ availableLanguages }: { availableLanguages: Ca
                 </>
               ) : (
                 <>
-                  <button type="button" className="btn-text" onClick={download} disabled={loading || sending || withContact.length === 0}>
-                    <IconDownload size={15} /> Download CSV ({withContact.length.toLocaleString()})
+                  <button type="button" className="btn-text" onClick={download} disabled={loading || sending || callable.length === 0}>
+                    <IconDownload size={15} /> Download CSV ({callable.length.toLocaleString()})
                   </button>
                   <span className="spacer" />
                   <button type="button" className="btn-text" disabled={loading || sending} onClick={() => setOpen(false)}>Cancel</button>

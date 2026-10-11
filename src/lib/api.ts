@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) { super(message); }
+  constructor(public status: number, message: string, public code?: string, public field?: string) { super(message); }
 }
 
 export async function jsonBody<S extends z.ZodTypeAny>(req: Request, schema: S): Promise<z.output<S>> {
@@ -12,10 +12,13 @@ export async function jsonBody<S extends z.ZodTypeAny>(req: Request, schema: S):
 }
 
 export function apiError(error: unknown): NextResponse {
-  if (error instanceof ApiError) return NextResponse.json({ error: error.message }, { status: error.status });
+  if (error instanceof ApiError) return NextResponse.json({ error: error.message, code: error.code, field: error.field }, { status: error.status });
   if (error instanceof z.ZodError) return NextResponse.json({ error: error.issues.map(i => `${i.path.join(".") || "body"}: ${i.message}`).join("; ") }, { status: 400 });
   if (error && typeof error === "object" && "code" in error && error.code === "23505") {
     return NextResponse.json({ error: "This item has changed or already has an owner. Refresh before trying again." }, { status: 409 });
+  }
+  if (error && typeof error === 'object' && 'code' in error && error.code === '23514' && 'detail' in error) {
+    try { const issue=JSON.parse(String(error.detail)); if(issue.code && issue.field && issue.message) return NextResponse.json({error:issue.message,code:issue.code,field:issue.field},{status:422}); } catch { /* Not a structured application constraint. */ }
   }
   console.error("[api] request failed", error);
   return NextResponse.json({ error: "Request failed. Please retry." }, { status: 500 });

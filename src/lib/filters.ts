@@ -1,16 +1,19 @@
 import { z } from "zod";
 const optional = <S extends z.ZodTypeAny>(schema: S) => z.preprocess(v => v === "" || v === null ? undefined : v, schema.optional());
 const text = optional(z.string().max(1000));
+const multiple = optional(z.union([z.string().trim().max(1000),z.array(z.string().trim().min(1).max(1000)).max(100)]).transform(v=>Array.isArray(v)?[...new Set(v)]:v));
+const choices = (allowed:string[]) => multiple.refine(v=>(Array.isArray(v)?v:v?[v]:[]).every(value=>allowed.includes(value)),"Unknown filter option");
 const flag = z.preprocess(v => v === "1" || v === "true" ? true : v === "0" || v === "false" ? false : v === "" || v === null ? undefined : v, z.boolean().optional());
 const area = optional(z.union([z.number(), z.string().regex(/^\d+(\.\d+)?$/).transform(Number)]).pipe(z.number().finite().nonnegative()));
-const common = { q: text, source: text, state: text, contact: optional(z.enum(["broker", "owner"])), assignee: text };
-export const rawFiltersSchema = z.object({ ...common,
-  city: text, warehouse_type: text, called: optional(z.enum(["yes", "no"])), last_result: text,
-  min_area: area, max_area: area, has_phone: flag,
-}).refine(f => f.min_area == null || f.max_area == null || f.min_area <= f.max_area, "Minimum area cannot exceed maximum area");
-export const callFiltersSchema = z.object({ ...common,
-  availability: text, agent_id: text, status: text, call_type: optional(z.enum(["inbound", "outbound"])),
-  date_from: optional(z.string().date()), date_to: optional(z.string().date()), needs_review: flag,
-}).refine(f => !f.date_from || !f.date_to || f.date_from <= f.date_to, "Start date cannot follow end date");
-export const toRawFilters = (value: unknown) => rawFiltersSchema.parse(value);
-export const toCallFilters = (value: unknown) => callFiltersSchema.parse(value);
+const common = {q:text,source:multiple,state:multiple,contact:choices(["broker","owner"]),assignee:multiple,
+  assignment_state:optional(z.enum(["unassigned","open","done","never"])),city:text,
+  min_area:area,max_area:area,onboarded:optional(z.enum(["yes","no"])),
+  manual_outcome:choices(["none","Available","Unavailable","Unclear"])};
+export const rawFiltersSchema=z.object({...common,warehouse_type:multiple,called:optional(z.enum(["yes","no"])),last_result:multiple,has_phone:flag,
+}).refine(f=>f.min_area==null||f.max_area==null||f.min_area<=f.max_area,"Minimum area cannot exceed maximum area");
+export const callFiltersSchema=z.object({...common,rent_mentioned:optional(z.enum(["yes","no"])),availability:multiple,agent_id:multiple,status:multiple,call_type:choices(["inbound","outbound"]),
+  area_basis:optional(z.enum(["source","built_up","carpet"])),date_from:optional(z.string().date()),date_to:optional(z.string().date()),include_blocked:flag,batch_id:text,needs_review:flag,
+}).refine(f=>!f.date_from||!f.date_to||f.date_from<=f.date_to,"Start date cannot follow end date")
+  .refine(f=>f.min_area==null||f.max_area==null||f.min_area<=f.max_area,"Minimum area cannot exceed maximum area");
+export const toRawFilters=(value:unknown)=>rawFiltersSchema.parse(value);
+export const toCallFilters=(value:unknown)=>callFiltersSchema.parse(value);

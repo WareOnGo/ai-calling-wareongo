@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { executionSchema, isTerminal } from "@/lib/bolna";
-import { query } from "@/lib/db";
+import { transaction } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,22 +45,19 @@ export async function POST(req: NextRequest) {
   }
   const e = parsed.data;
 
-  // Bolna fires on every status change. Only the final state matters here.
-  if (!isTerminal(e.status)) {
-    return NextResponse.json({ ok: true, ignored: `non-terminal status: ${e.status}` });
-  }
-
   try {
-    // Duplicate and older attempts are ignored; a newer provider retry replaces the prior attempt.
-    await query(
-      `insert into bolna_webhook_events (id, raw, status, next_attempt_at, retry_count)
-       values ($1, $2, 'pending', now(), $3)
-       on conflict (id) do update set raw = excluded.raw, retry_count = excluded.retry_count,
-         status = 'pending', attempts = 0, next_attempt_at = now(), processed_at = null,
-         lease_token = null, lease_until = null, last_error = null
-       where excluded.retry_count > bolna_webhook_events.retry_count`,
-      [e.id, body, e.retry_count ?? 0],
-    );
+    await transaction(async client=>{
+      // Merge each identified provider dial before advancing the latest terminal
+      // processing snapshot. Repeated deliveries do not add another dial.
+      await client.query("select bolna_record_ai_evidence($1::jsonb,'webhook')",[body]);
+      if(!isTerminal(e.status))return;
+      await client.query(`insert into bolna_webhook_events(id,raw,status,next_attempt_at,retry_count)
+        values($1,$2,'pending',now(),bolna_retry_index($2::jsonb))
+        on conflict(id) do update set raw=excluded.raw,retry_count=excluded.retry_count,
+        status='pending',attempts=0,next_attempt_at=now(),processed_at=null,
+        lease_token=null,lease_until=null,last_error=null
+        where bolna_execution_newer(excluded.raw,bolna_webhook_events.raw)`,[e.id,body]);
+    });
   } catch (err) {
     console.error("[bolna-webhook] landing insert failed", err);
     // We did NOT safely capture the event -> 5xx so it can be redelivered.

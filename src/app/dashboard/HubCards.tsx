@@ -42,6 +42,7 @@ export function HubCards({ isAdmin, open = 0, teamOpen = 0, loading = false }: {
           </Link>
         )}
 
+        {isAdmin && <Link className="hub-card" href="/dashboard/batches"><div className="hub-icon"><IconClipboard size={28}/></div><h2>Batches</h2><p>Review AI dispatches and manual assignment runs, their original members, outcomes, and follow-ups.</p><span className="hub-go">Browse batches →</span></Link>}
         {isAdmin && (
           <Link className="hub-card" href="/dashboard/team">
             <div className="hub-icon"><IconUsers size={28} /></div>

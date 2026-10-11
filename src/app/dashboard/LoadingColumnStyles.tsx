@@ -8,9 +8,7 @@ export function LoadingColumnStyles({ view, labels, groups }: {
 }) {
   const config = JSON.stringify({ path: `/dashboard/${view}`, labels, groups, defaults: Object.fromEntries(labels.map(label => [label, defaultColumnWidth(label)])) });
   const id = `loading-column-styles-${view}`;
-  return <>
-    <style id={id} />
-    <script dangerouslySetInnerHTML={{ __html: `(()=>{try{
+  return <script dangerouslySetInnerHTML={{ __html: `(()=>{try{
       const config=${config};
       const read=${readColumnPreferences.toString()};
       const prefs=read(config.path,config.labels,config.defaults);
@@ -23,8 +21,10 @@ export function LoadingColumnStyles({ view, labels, groups }: {
         return column+'{width:'+(hidden?0:prefs.widths[index])+'px!important;display:'+(hidden?'none':'table-column')+'!important}'+cells+'{display:'+(hidden?'none':'table-cell')+'!important}';
       }).join('');
       const carets=config.groups.filter(group=>localStorage.getItem('sheet-groups:'+config.path+':'+group.key)==='true').map(group=>table+' .'+group.key+'-toggle .grp-caret{border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid var(--green);border-bottom:0}').join('');
-      const sheet=document.getElementById('${id}').sheet;
-      for(const rule of (css+carets).match(/[^}]+}/g)||[]) sheet.insertRule(rule,sheet.cssRules.length);
+      // Keep the stylesheet outside streamed containers: moving a style element
+      // recreates its sheet and discards rules inserted only through CSSOM.
+      let style=document.getElementById('${id}');
+      if(!style){style=document.createElement('style');style.id='${id}';document.head.appendChild(style);}
+      style.textContent=css+carets;
     }catch{}})();` }} />
-  </>;
 }

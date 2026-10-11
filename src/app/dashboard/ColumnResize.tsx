@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { readColumnPreferences } from "./sheet-columns";
+import { CALL_GROUPS, RAW_GROUPS, readColumnPreferences } from "./sheet-columns";
 import { useSelection } from "./Selection";
 import { useDashboardUI } from "./DashboardUI";
 import { usePathname } from "next/navigation";
@@ -11,6 +11,8 @@ export function ColumnResize() {
   const path = usePathname();
   const [revision, setRevision] = useState(0);
   const [options, setOptions] = useState<string[]>([]);
+  const groups=path.endsWith("/raw")?RAW_GROUPS:CALL_GROUPS;
+  const [collapsed,setCollapsed]=useState<string[]>([]);
   const [hidden, setHidden] = useState<string[]>([]);
   useEffect(() => {
     if (pending) return;
@@ -24,9 +26,9 @@ export function ColumnResize() {
     const preferences = readColumnPreferences(path, labels);
     const widths = preferences.widths;
     let hiddenColumns = preferences.hiddenColumns;
-    const locked = new Set(['Row','Select','Owner','Number','Phone']);
+    const locked = new Set(['Row','Select','Owner','Number','Phone','Actions']);
     setHidden(hiddenColumns);
-    setOptions(labels.filter((name,i) => !locked.has(name) && !headers[i].matches('.call-col,.db-col,.calls-col')));
+    setOptions(labels.filter(name => !locked.has(name)));
     table.querySelector('colgroup')?.remove();
     const colgroup = document.createElement('colgroup');
     labels.forEach((name,i) => { const col = document.createElement('col'); col.className = headers[i].className; col.style.width = `${widths[i]}px`; colgroup.append(col); headers[i].dataset.column = name; });
@@ -34,6 +36,8 @@ export function ColumnResize() {
     const cols = [...colgroup.children] as HTMLElement[];
     const pinEnd = labels.findIndex(name => name === 'Number' || name === 'Phone');
     const sync = () => {
+      const closed=groups.filter(g=>table.classList.contains(`${g.key}-collapsed`)).map(g=>g.key);
+      setCollapsed(previous=>previous.join()===closed.join()?previous:closed);
       const rows = [...table.rows];
       let left = 0;
       headers.forEach((th,i) => {
@@ -60,8 +64,15 @@ export function ColumnResize() {
     sync();
     document.addEventListener('pointermove',move); document.addEventListener('pointerup',up); element.addEventListener('columns-changed',sync); element.addEventListener('column-visibility',visibility);
     return () => { observer.disconnect(); handles.forEach(h => h?.remove()); document.removeEventListener('pointermove',move); document.removeEventListener('pointerup',up); element.removeEventListener('columns-changed',sync); element.removeEventListener('column-visibility',visibility); document.body.style.cursor = ''; };
-  }, [path, revision, root, pending]);
-  function toggle(name: string) { const next = hidden.includes(name) ? hidden.filter(n => n !== name) : [...hidden,name]; setHidden(next); try { localStorage.setItem(`sheet-hidden:${path}`,JSON.stringify(next)); } catch { /* unavailable */ } root.current?.dispatchEvent(new CustomEvent('column-visibility',{detail:next})); }
+  }, [path, revision, root, pending, groups]);
+  function toggle(name: string, visible:boolean) {
+    const next=visible?hidden.filter(n=>n!==name):[...new Set([...hidden,name])];
+    setHidden(next);
+    try { localStorage.setItem(`sheet-hidden:${path}`,JSON.stringify(next)); } catch { /* unavailable */ }
+    root.current?.dispatchEvent(new CustomEvent('column-visibility',{detail:next}));
+    const group=groups.find(g=>g.members.includes(name));
+    if(visible&&group)root.current?.dispatchEvent(new CustomEvent('expand-column-group',{detail:group.key}));
+  }
   function reset() { try { for (const key of [`sheet-col-widths-v6:${path}`,`sheet-col-widths-v5:${path}`,`sheet-hidden:${path}`,...['call','calls','db'].map(g => `sheet-groups:${path}:${g}`)]) localStorage.removeItem(key); } catch { /* unavailable */ } root.current?.dispatchEvent(new Event('reset-columns')); setRevision(n => n+1); }
-  return <details className="column-menu"><summary>Columns</summary><div className="column-options">{options.map(name => <label key={name}><input type="checkbox" checked={!hidden.includes(name)} onChange={() => toggle(name)} />{name}</label>)}<button type="button" className="btn-row" onClick={reset}>Reset columns</button></div></details>;
+  return <details className="column-menu"><summary>Columns</summary><div className="column-options">{options.map(name => <label key={name}><input type="checkbox" checked={!hidden.includes(name)&&!groups.some(g=>g.members.includes(name)&&collapsed.includes(g.key))} onChange={e => toggle(name,e.target.checked)} />{name}</label>)}<button type="button" className="btn-row" onClick={e=>{reset();const menu=e.currentTarget.closest("details");if(menu)menu.open=false;}}>Reset columns</button></div></details>;
 }

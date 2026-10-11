@@ -10,12 +10,13 @@ export type WorkItem = {
   revision: number; id: string; entityId: string; entity: "record" | "call"; who: string; phone: string | null;
   context: { city: string | null; area: string | null; rent: string | null }; ai: string | null; aiCount: number; brief: string | null;
   assignedBy: string; assignedByName: string | null; assignedAt: string;
+  closureReason:string|null; disposition:string|null; nextDueAt:string|null;
   state: string; outcome: string | null; remarks: string | null; addedToDb: boolean; whId: string | null;
 };
 export type WorkPage = { rows: WorkItem[]; total: number; page: number; pages: number };
 export type WorkTotals = { record: { open: number; done: number }; call: { open: number; done: number } };
 function criteria(filters: WorkFilters) {
-  return { q: filters.q, city: filters.city, assigned_by: filters.assigned_by, outcome: filters.outcome, added_to_db: filters.added_to_db };
+  return { follow_up:filters.follow_up,q: filters.q, city: filters.city, assigned_by: filters.assigned_by, outcome: filters.outcome, added_to_db: filters.added_to_db };
 }
 export async function personalTotals(email: string, filters: WorkFilters = {}): Promise<WorkTotals> {
   const rows = hasWorkCriteria(filters)
@@ -41,8 +42,9 @@ export async function personalWork(user: Viewer, entity: "call" | "record", filt
         area: c?.carpet_area_sqft ? `${area(c.carpet_area_sqft)} carpet` : c?.built_up_area_sqft ? `${area(c.built_up_area_sqft)} built-up` : area(r?.area_sqft || c?.raw_area_sqft || null),
         rent: rent(r?.rent || c?.expected_rent || null),
       },
-      ai: r?.last_availability || c?.availability || null, aiCount: Number(r?.call_count || (c ? 1 : 0)), brief: a.note,
+      ai: r?.last_availability || c?.availability || null, aiCount: Number(r?.ai_attempt_count || c?.ai_attempt_count || 0), brief: a.note,
       assignedBy: a.assigned_by, assignedByName: a.assigned_by_name, assignedAt: a.assigned_at,
+      closureReason:a.closure_reason,disposition:a.disposition,nextDueAt:a.next_due_at,
       state: a.state, outcome: a.outcome, remarks: a.remarks, addedToDb: a.added_to_db, whId: a.wh_id,
     };
   });

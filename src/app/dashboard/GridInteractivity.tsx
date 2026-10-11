@@ -34,7 +34,7 @@ export function GridInteractivity() {
       const row=selected.parentElement as HTMLTableRowElement;
       let next: HTMLTableCellElement | undefined;
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { const cells=[...row.cells].filter(visible); next=cells[cells.indexOf(selected)+(e.key === 'ArrowRight'?1:-1)]; }
-      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { const rows=[...row.closest('tbody')!.rows]; const nextRow=rows[rows.indexOf(row)+(e.key === 'ArrowDown'?1:-1)]; next=nextRow?.cells[selected.cellIndex]; }
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { const rows=[...row.closest('tbody')!.rows].filter(r=>!r.classList.contains('ai-history-row')); const nextRow=rows[rows.indexOf(row)+(e.key === 'ArrowDown'?1:-1)]; next=nextRow?.cells[selected.cellIndex]; }
       if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) {e.preventDefault();if(next&&visible(next))select(next);}
     };
     element.addEventListener('click',click); element.addEventListener('focusin',focus); element.addEventListener('keydown',key);
