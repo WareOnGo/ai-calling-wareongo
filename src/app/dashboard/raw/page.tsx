@@ -119,11 +119,11 @@ export default async function RawDataset({
             <input className="num-filter" type="number" aria-label="Minimum square feet" min="0" name="min_area" defaultValue={firstValue(sp.min_area)||""} placeholder="min sqft"/>
             <input className="num-filter" type="number" aria-label="Maximum square feet" min="0" name="max_area" defaultValue={firstValue(sp.max_area)||""} placeholder="max sqft"/>
             <div className="chip"><select name="onboarded" aria-label="Onboarded" defaultValue={firstValue(sp.onboarded)||""}><option value="">Any onboarding</option><option value="yes">Onboarded with WH ID</option><option value="no">Not onboarded</option></select></div>
-            <div className="chip"><select name="assignment_state" aria-label="Ownership" defaultValue={firstValue(sp.assignment_state)||""}><option value="">Any ownership</option><option value="unassigned">Unassigned now</option><option value="open">Open assignment</option><option value="done">Completed history</option><option value="never">Never assigned</option></select></div>
+            <div className="chip"><select name="assignment_state" aria-label="Ownership" defaultValue={firstValue(sp.assignment_state)||""}><option value="">Any ownership</option><option value="unassigned">Unassigned — excludes completed</option><option value="open">Open assignment</option><option value="done">Completed history</option><option value="never">Never assigned</option></select></div>
             <MultiSelect name="warehouse_type" label="Warehouse type" value={sp.warehouse_type} options={opts.warehouseTypes}/>
             <div className="chip"><select aria-label="Called" name="called" defaultValue={firstValue(sp.called)||""}><option value="">Called?</option><option value="no">Not called</option><option value="yes">Already called</option></select></div>
             <label className="toggle"><input type="checkbox" name="has_phone" value="1" defaultChecked={sp.has_phone==="1"}/>Has phone</label>
-            <MultiSelect name="assignee" label="Assigned to" value={sp.assignee} options={[{value:"none",label:"Unassigned now"},...assignees.map(a=>({value:a.email,label:a.name||a.email}))]}/>
+            <MultiSelect name="assignee" label="Assigned to" value={sp.assignee} options={[{value:"none",label:"Unassigned — excludes completed"},...assignees.map(a=>({value:a.email,label:a.name||a.email}))]}/>
         </div>
       </FilterForm>
 

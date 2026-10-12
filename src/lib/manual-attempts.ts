@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { query,transaction } from "./db";
 import { ApiError,uuid,revision } from "./api";
-import { DISPOSITIONS,RETRY_DISPOSITIONS } from "./manual-dispositions";
+import { CLOSURE_REASONS,DISPOSITIONS,RETRY_DISPOSITIONS } from "./manual-dispositions";
 import { allocationHash } from "./assignment-allocation";
 import type { Viewer,EntityType } from "./scope";
 export const manualAttemptSchema=z.object({
@@ -9,6 +9,14 @@ export const manualAttemptSchema=z.object({
   outcome:z.enum(["Available","Unavailable","Unclear"]).nullable().optional(),
   notes:z.string().trim().max(10000).optional(),next_due_at:z.string().datetime({offset:true}).nullable().optional(),
   duration_seconds:z.number().int().min(0).max(86400).nullable().optional(),corrects_id:uuid.optional(),
+  // The caller can record a conversation and finish its task in one transaction.
+  // Omission keeps the task open and leaves its verification fields unchanged.
+  completion:z.object({
+    wh_id:z.string().trim().max(100).nullable().optional(),
+    added_to_db:z.boolean().optional(),
+    remarks:z.string().trim().max(10000).nullable().optional(),
+    closure_reason:z.enum(CLOSURE_REASONS).nullable().optional(),
+  }).strict().optional(),
 }).strict().refine(v=>!["callback","awaiting_confirmation"].includes(v.disposition)||!!v.next_due_at,"Choose a follow-up time for callback or awaiting confirmation")
  .refine(v=>!v.next_due_at||RETRY_DISPOSITIONS.includes(v.disposition),"Choose a retry or callback disposition when scheduling follow-up")
  .refine(v=>!v.next_due_at||Date.parse(v.next_due_at)>=Date.parse(v.occurred_at),"Follow-up time cannot precede the attempt");
@@ -46,9 +54,20 @@ export async function recordManualAttempt(assignmentId:string,user:Viewer,input:
         || (assignment.outcome===null || assignment.outcome_attempt_id!==null) && latest.id===body.id && !!body.outcome));
     const outcome=replaceResult ? effectiveResult?.outcome ?? null : assignment.outcome;
     const outcomeAttemptId=replaceResult ? effectiveResult?.id ?? null : assignment.outcome_attempt_id;
+    const state=body.completion?'done':'open';
+    const whId=body.completion && 'wh_id' in body.completion ? body.completion.wh_id || null : assignment.wh_id;
+    const remarks=body.completion && 'remarks' in body.completion ? body.completion.remarks || null : assignment.remarks;
+    const closureReason=body.completion?.closure_reason??null;
+    if(body.completion){
+      const issue=(await client.query("select bolna_completion_issue($1,$2,$3,$4,$5,$6) issue",
+        [assignmentId,state,outcome,whId,remarks,closureReason])).rows[0].issue;
+      if(issue)throw new ApiError(422,issue.message,issue.code,issue.field);
+    }
     await client.query(`update bolna_assignments set disposition=$2,last_attempt_at=$3,next_due_at=$4,
-      outcome=$5,outcome_attempt_id=$6,closure_reason=null,revision=revision+1 where id=$1`,
-      [assignmentId,latest.disposition,latest.occurred_at,RETRY_DISPOSITIONS.includes(latest.disposition)?latest.next_due_at:null,outcome,outcomeAttemptId]);
+      outcome=$5,outcome_attempt_id=$6,state=$7,wh_id=$8,remarks=$9,closure_reason=$10,added_to_db=$11,
+      completed_at=case when $7='done' then now() else null end,revision=revision+1 where id=$1`,
+      [assignmentId,latest.disposition,latest.occurred_at,RETRY_DISPOSITIONS.includes(latest.disposition)?latest.next_due_at:null,
+        outcome,outcomeAttemptId,state,whId,remarks,closureReason,body.completion?.added_to_db??assignment.added_to_db]);
     return {id:body.id,replayed:false};
   });
 }

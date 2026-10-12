@@ -2,6 +2,7 @@ import Link from 'next/link';
 import {TEAM_METRICS,teamDates,teamSummary,teamDetails,type TeamFilters,type TeamMetric} from '@/lib/team-report';
 import type {Viewer} from '@/lib/scope';
 import {dateTime} from '@/lib/display';
+import {manualEvidenceLabel} from '@/lib/manual-dispositions';
 import {RecordDetails} from '../RecordDetails';
 import {PageJump} from '../PageJump';
 
@@ -39,7 +40,7 @@ export async function TeamReport({viewer,filters,showEvidence=false}:{viewer:Vie
   {data&&<><h3>{TEAM_METRICS[filters.metric]}{filters.caller?` · ${filters.caller}`:' · All callers'}</h3>
   <div className="team-range"><span>{data.total} evidence rows</span><a href={'/api/team/export?'+new URLSearchParams({date_from:filters.date_from,date_to:filters.date_to,metric:filters.metric,...(filters.caller?{caller:filters.caller}:{})})}>Export these rows</a><Link href={href(undefined,filters.metric)}>All callers</Link></div>
   <div className="team-report-grid" tabIndex={0} aria-label="Metric evidence table"><table className="sheet"><thead><tr><th>Caller</th><th>Target</th><th>Evidence time (IST)</th><th>Evidence</th><th>Reported seconds</th><th>Current task state</th></tr></thead><tbody>
-   {data.rows.map((r,i)=><tr key={`${r.event_id}:${i}`}><td>{r.assignee}</td><td>{r.subject} <RecordDetails entity={r.entity_type} id={r.entity_id}/></td><td>{r.occurred_at?dateTime(r.occurred_at):'Current / date unknown'}</td><td>{r.detail}</td><td>{r.duration_seconds??'Unknown'}</td><td>{r.current_state}</td></tr>)}
+   {data.rows.map((r,i)=><tr key={`${r.event_id}:${i}`}><td>{r.assignee}</td><td>{r.subject} <RecordDetails entity={r.entity_type} id={r.entity_id}/></td><td>{r.occurred_at?dateTime(r.occurred_at):'Current / date unknown'}</td><td>{manualEvidenceLabel(r.detail)}</td><td>{r.duration_seconds??'Unknown'}</td><td>{r.current_state}</td></tr>)}
    {!data.rows.length&&<tr><td colSpan={6}>No evidence rows for this selection.</td></tr>}
   </tbody></table></div>
   <div className="pager"><span>Page {data.page} of {data.pages}</span><PageJump key={`${filters.metric}:${filters.caller}:${data.page}`} page={data.page} pages={data.pages}/></div>

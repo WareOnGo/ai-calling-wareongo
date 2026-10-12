@@ -39,16 +39,14 @@ test('retryable attempts remain open, appear in due work and retain manual histo
   await patch(page,()=>row.getByLabel('Result of the call').selectOption('Unavailable'));
   await row.getByRole('button',{name:'Log manual call'}).click();
   const dialog=page.getByRole('dialog');await dialog.getByLabel('What happened?').selectOption('busy');
-  await dialog.getByLabel('Reported duration').fill('8');await dialog.getByRole('button',{name:'Record attempt'}).click();
+  await expect(dialog.getByLabel('Reported duration')).toHaveCount(0);await dialog.getByRole('button',{name:/^Record (attempt|call — keep open)$/}).click();
   await expect(dialog).toHaveCount(0);await expect(work(page)).toContainText('Busy');
-  await patch(page,()=>work(page).getByRole('button',{name:'Mark done'}).click(),422);
-  await expect(work(page)).toContainText('Follow-up is still required');
-  // Discard the failed completion draft before navigating to its queue.
-  await page.locator('.sheet-save-status').getByRole('button',{name:/Discard/}).click();
-  await page.getByRole('dialog').getByRole('button',{name:'Discard changes',exact:true}).click();
+  await work(page).getByRole('button',{name:'Mark done'}).click();
+  await expect(page.getByRole('dialog')).toContainText('Last logged call: Busy');
+  await page.getByRole('dialog').getByRole('button',{name:'Cancel',exact:true}).click();
   await page.goto('/dashboard/my?follow_up=due');await expect(work(page)).toBeVisible();
   await adminPage.goto('/dashboard/raw?q=Raghav');await adminPage.getByRole('button',{name:'Manual calls for record'}).click();
-  await expect(adminPage.getByRole('dialog')).toContainText('Reported duration: 8s');
+  await expect(adminPage.getByRole('dialog')).toContainText('Busy');await expect(adminPage.getByRole('dialog')).not.toContainText('Reported duration:');
   const response=await adminPage.request.get(`/api/details/record/${raw}`);const data=await response.json();
   expect(data.manual.total).toBe(1);expect(data.manual.rows[0].assignee).toBe('priya@eval.test');
 });
@@ -56,12 +54,12 @@ test('retryable attempts remain open, appear in due work and retain manual histo
 test('corrections preserve the first event and new connection permits completion',async({employeePage:page})=>{
   await page.goto('/dashboard/my');await work(page).getByRole('button',{name:'Log manual call'}).click();
   let dialog=page.getByRole('dialog');await dialog.getByLabel('What happened?').selectOption('no_answer');
-  await dialog.getByRole('button',{name:'Record attempt'}).click();await expect(dialog).toHaveCount(0);
+  await dialog.getByRole('button',{name:/^Record (attempt|call — keep open)$/}).click();await expect(dialog).toHaveCount(0);
   await expect(work(page)).toContainText('No answer / RNR');
   await work(page).getByRole('button',{name:'Log manual call'}).click();dialog=page.getByRole('dialog');
-  await expect(dialog.getByRole('combobox',{name:'Event',exact:true})).toBeVisible();
-  const option=await dialog.getByRole('combobox',{name:'Event',exact:true}).locator('option').nth(1).getAttribute('value');
-  await dialog.getByRole('combobox',{name:'Event',exact:true}).selectOption(option!);await dialog.getByLabel('What happened?').selectOption('connected');
+  await dialog.getByRole('button',{name:'Correct an earlier call'}).click();await expect(dialog.getByRole('combobox',{name:'Call to correct',exact:true})).toBeVisible();
+  const option=await dialog.getByRole('combobox',{name:'Call to correct',exact:true}).locator('option').nth(1).getAttribute('value');
+  await dialog.getByRole('combobox',{name:'Call to correct',exact:true}).selectOption(option!);await dialog.getByLabel('What happened?').selectOption('connected');
   await dialog.getByRole('combobox',{name:'Manual result',exact:true}).selectOption('Unavailable');
   await dialog.getByLabel('Why is this correction needed?').fill('Selected no answer by mistake; owner confirmed no space');
   await dialog.getByRole('button',{name:'Save correction'}).click();await expect(dialog).toHaveCount(0);

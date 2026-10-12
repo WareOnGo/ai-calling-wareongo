@@ -5,8 +5,12 @@ export function filterLabel(key: string, path: string) {
 }
 
 export function filterValue(key: string, value: string) {
+  if (key === "assignment_state") return ({unassigned:"Unassigned — excludes completed",open:"Open assignment",done:"Completed history",never:"Never assigned"} as Record<string,string>)[value] || value;
+  if (key === "onboarded") return value === "yes" ? "Added with WH ID" : value === "no" ? "Not onboarded" : value;
+  if (key === "area_basis") return ({source:"Source sqft",built_up:"AI built-up sqft",carpet:"AI carpet sqft"} as Record<string,string>)[value] || value;
+  if (key === "rent_mentioned") return value === "yes" ? "Mentioned" : value === "no" ? "Missing / unknown" : value;
   if (key === "follow_up") return ({pending:"Pending follow-up",due:"Follow-up due"} as Record<string,string>)[value] || value;
-  if (value === "none") return ["outcome","manual_outcome","availability","last_result"].includes(key) ? "No result yet" : "Unassigned now";
+  if (value === "none") return ["outcome","manual_outcome","availability","last_result"].includes(key) ? "No result yet" : "Unassigned — excludes completed";
   if (key === "state" && value === "dropped") return "Unassigned";
   return value === "1" && key !== "q" ? "Yes" : value;
 }

@@ -8,9 +8,8 @@ const root=fileURLToPath(new URL('../',import.meta.url));
 const require=createRequire(new URL('../tests/browser/package.json',import.meta.url));
 const {chromium}=require('@playwright/test');
 const md=readFileSync(join(root,'BOLNA_DB_FIXES_CHANGELOG.md'),'utf8'),draft=process.argv.includes('--draft');
-const releaseDate=md.match(/^Unreleased · ([^·]+) ·/m)?.[1].trim();
+const releaseDate=md.match(/^Review edition · ([^·]+) ·/m)?.[1].trim();
 if(!releaseDate)throw Error('The Markdown changelog must include its release date.');
-if(!draft&&!md.includes('**Verification: passed.**'))throw Error('Finish the verification section in the Markdown before rendering the release PDF.');
 const escape=s=>s.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const inline=s=>escape(s).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/\[([^\]]+)\]\([^)]+\)/g,'$1');
 function render(body){
@@ -36,11 +35,13 @@ function render(body){
 }
 const sections=md.split(/^## /m).slice(1),pages=sections.map((section,i)=>{
  const end=section.indexOf('\n'),title=section.slice(0,end),body=section.slice(end);
- return `<section class="page"><header><b>WAREONGO / BOLNA</b><span>${escape(releaseDate.toUpperCase())} · ${draft?'DRAFT':'UNRELEASED'}</span></header><div class="eyebrow">BOLNA DB FIXES · HANDOFF CHANGELOG</div><h1>${inline(title)}</h1>${render(body)}<footer><span>Local validation · synthetic screenshots · not deployed</span><b>${i+1} / ${sections.length}</b></footer></section>`;
+ return `<section class="page"><header><b>WAREONGO / BOLNA</b><span>${escape(releaseDate.toUpperCase())} · ${draft?'DRAFT':'REVIEW COPY'}</span></header><div class="eyebrow">CALLING DASHBOARD · OPERATIONAL CHANGELOG</div><h1>${inline(title)}</h1>${render(body)}<footer><span>For callers and managers · fictional example data</span><b>${i+1} / ${sections.length}</b></footer></section>`;
 });
-const html=`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Bolna DB Fixes — changelog</title><style>
+const html=`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Bolna calling dashboard — operational changelog</title><style>
 @page{size:A4;margin:0}*{box-sizing:border-box}body{margin:0;color:#193339;background:#edf3ef;font:10pt/1.5 Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .page{width:210mm;height:297mm;padding:15mm 17mm 18mm;background:white;position:relative;break-after:page}.page:last-child{break-after:auto}header{display:flex;justify-content:space-between;font-size:7.4pt;letter-spacing:.06em;color:#536f61;padding-bottom:6mm;border-bottom:1px solid #cfded4;margin-bottom:8mm}header b{color:#195d43}.eyebrow{font-size:8pt;letter-spacing:.1em;color:#2b8060;font-weight:bold;margin-bottom:3mm}h1{font-size:27pt;line-height:1.12;margin:0 0 6mm;letter-spacing:-.7px}h2{font-size:14pt;margin:5mm 0 3mm}p{margin:0 0 4mm}strong{color:#14553e}code{font-size:.9em;overflow-wrap:anywhere}ul,ol{padding-left:5mm;margin:3mm 0 5mm}li{padding-left:1mm;margin-bottom:3mm}figure{margin:3mm 0 5mm}img{display:block;width:100%;height:auto;max-height:120mm;object-fit:contain;border:1px solid #dbe5de;border-radius:2mm}figcaption{font-size:8pt;line-height:1.4;color:#62746a;margin-top:2mm}.page:nth-child(2) img{max-height:132mm}.page:nth-child(3) img{max-height:152mm}.page:nth-child(4) img{max-height:107mm}.page:nth-child(5) img{max-height:60mm}table{width:100%;border-collapse:collapse;font-size:9.2pt;line-height:1.4;margin:4mm 0 5mm}th{text-align:left;background:#e8f1ea;padding:3mm;color:#15573e}td{padding:2.8mm;border-bottom:1px solid #dce5df;vertical-align:top}td:first-child{font-weight:bold}.page:last-child table{font-size:8.4pt;line-height:1.25}.page:last-child td{padding:2.1mm 2.5mm}.page:last-child td:first-child{width:17mm}.page:last-child p{font-size:8.6pt}footer{position:absolute;bottom:10mm;left:17mm;right:17mm;border-top:1px solid #d7e2d9;padding-top:3mm;display:flex;justify-content:space-between;color:#63776a;font-size:7pt}@media screen{.page{margin:7mm auto;box-shadow:0 2px 15px #0002}}
+/* Operational pages prioritise readable screenshots and short instructions. */
+body{font-size:10.5pt;line-height:1.48}h1{font-size:25pt}header{margin-bottom:6mm}figure{margin:3mm 0 4mm}img{max-height:128mm;width:auto;max-width:100%;margin-inline:auto}figcaption{font-size:8.5pt}table{font-size:9.5pt}td{padding:2.2mm}.page:nth-child(2) img{max-height:120mm}.page:nth-child(3) img{max-height:135mm}.page:nth-child(4) img{max-height:104mm}.page:nth-child(5) img{max-height:135mm}.page:nth-child(6) img{max-height:115mm}.page:nth-child(7) img{max-height:112mm}.page:nth-child(8) img{max-height:58mm}.page:last-child p{font-size:10.5pt}.page:last-child li{margin-bottom:3.5mm}
 </style></head><body>${pages.join('')}</body></html>`;
 const folder=mkdtempSync(join(tmpdir(),'bolna-changelog-')),htmlPath=join(folder,'changelog.html');writeFileSync(htmlPath,html);
 const browser=await chromium.launch({headless:true,executablePath:process.env.EVAL_CHROMIUM_PATH||'/usr/bin/google-chrome',args:['--no-sandbox']});

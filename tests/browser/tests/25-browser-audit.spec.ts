@@ -41,33 +41,33 @@ test('manual call dialog keeps its header and save controls reachable on short m
   await page.setViewportSize({width: 320, height: 568});
   const narrow = await dialog.evaluate(el => ({bottom: el.querySelector('.modal-foot')!.getBoundingClientRect().bottom, viewport: innerHeight}));
   await shot(page, 'audit-manual-dialog-320');expect.soft(narrow.bottom).toBeLessThanOrEqual(narrow.viewport);
-  await dialog.getByLabel('Attempt notes').fill('Mobile calling notes stay accessible.');
-  await page.keyboard.press('Escape');await expect(dialog).toHaveCount(0);await expect(trigger).toBeFocused();
+  await dialog.getByLabel('Call notes (optional)').fill('Mobile calling notes stay accessible.');
+  await page.keyboard.press('Escape');await expect(dialog).toContainText('Your call has not been saved');await dialog.getByRole('button',{name:'Discard call',exact:true}).click();await expect(dialog).toHaveCount(0);await expect(trigger).toBeFocused();
   await page.getByRole('button', {name: 'Toggle dark mode'}).click();await trigger.click();
-  const notes = dialog.getByLabel('Attempt notes');await notes.fill('Readable notes in the dark theme.');await shot(page, 'audit-manual-dialog-320-dark');
+  const notes = dialog.getByLabel('Call notes (optional)');await notes.fill('Readable notes in the dark theme.');await shot(page, 'audit-manual-dialog-320-dark');
   expect(await notes.evaluate(el => getComputedStyle(el).color)).toBe(await dialog.evaluate(el => getComputedStyle(el).color));
-  await dialog.getByRole('button', {name: 'Record attempt'}).click();await expect(dialog).toHaveCount(0);
+  await dialog.getByRole('button', {name: /^Record (attempt|call — keep open)$/}).click();await expect(dialog).toHaveCount(0);
 });
 
 test('a new manual attempt does not inherit a previous call or correction values', async ({employeePage: page, shot}) => {
   await page.goto('/dashboard/my');await work(page).getByRole('button', {name: 'Log manual call'}).click();
-  let dialog = page.getByRole('dialog');await dialog.getByLabel('What happened?').selectOption('no_answer');
+  let dialog = page.getByRole('dialog');await dialog.getByLabel('What happened?').selectOption('callback');
   await dialog.getByLabel('Reported duration').fill('17');await dialog.getByRole('combobox', {name: 'Manual result', exact: true}).selectOption('Unavailable');
   await dialog.getByLabel('Next follow-up').fill(new Date(Date.now() + 86400000).toLocaleString('sv-SE', {timeZone: 'Asia/Kolkata'}).replace(' ', 'T').slice(0, 16));
-  await dialog.getByLabel('Attempt notes').fill('An earlier attempt for correction.');await dialog.getByRole('button', {name: 'Record attempt'}).click();await expect(dialog).toHaveCount(0);
+  await dialog.getByLabel('Call notes (optional)').fill('An earlier attempt for correction.');await dialog.getByRole('button', {name: /^Record (attempt|call — keep open)$/}).click();await expect(dialog).toHaveCount(0);
   await work(page).getByRole('button', {name: 'Log manual call'}).click();dialog = page.getByRole('dialog');
   await expect.soft(dialog.getByLabel('What happened?')).toHaveValue('connected');
-  const event = dialog.getByRole('combobox', {name: 'Event', exact: true});await expect(event.locator('option')).toHaveCount(2);
+  await dialog.getByRole('button',{name:'Correct an earlier call'}).click();const event = dialog.getByRole('combobox', {name: 'Call to correct', exact: true});await expect(event.locator('option')).toHaveCount(2);
   await event.selectOption({index: 1});await expect(dialog.getByLabel('Reported duration')).toHaveValue('17');
   await dialog.getByLabel('Why is this correction needed?').fill('The earlier attempt needs an amended result.');
-  await event.selectOption('');await shot(page, 'audit-manual-new-after-correction');
+  await dialog.getByRole('button',{name:'Log a new call instead'}).click();await shot(page, 'audit-manual-new-after-correction');
   await expect.soft(dialog.getByLabel('What happened?')).toHaveValue('connected');
   await expect.soft(dialog.getByRole('combobox', {name: 'Manual result', exact: true})).toHaveValue('');
   await expect.soft(dialog.getByLabel('Reported duration')).toHaveValue('');
-  await expect.soft(dialog.getByLabel('Attempt notes')).toHaveValue('');
-  await expect(dialog.getByLabel('Next follow-up')).toHaveValue('');
+  await expect.soft(dialog.getByLabel('Call notes (optional)')).toHaveValue('');
+  await expect(dialog.getByLabel('Next follow-up')).toHaveCount(0);
   const sent = page.waitForRequest(r => r.url().endsWith('/api/assignments/1/attempts') && r.method() === 'POST');
-  await dialog.getByRole('button', {name: 'Record attempt'}).click();const payload = (await sent).postDataJSON();await expect(dialog).toHaveCount(0);
+  await dialog.getByRole('button', {name: /^Record (attempt|call — keep open)$/}).click();const payload = (await sent).postDataJSON();await expect(dialog).toHaveCount(0);
   expect(payload).toMatchObject({disposition: 'connected', duration_seconds: null, notes: '', next_due_at: null});expect(payload.corrects_id).toBeUndefined();expect(payload.outcome).toBeUndefined();
   const history = await (await page.request.get('/api/assignments/1/attempts')).json();expect(history.rows).toHaveLength(2);
   expect(history.rows.filter((e: any) => e.duration_seconds === 17)).toHaveLength(1);
@@ -78,12 +78,12 @@ test('manual history failures are visible and retry preserves a new attempt draf
   await page.goto('/dashboard/my');let failed = true;
   await page.route('**/api/assignments/1/attempts', route => route.request().method() === 'GET' && failed ? route.fulfill({status: 503, json: {error: 'History temporarily unavailable'}}) : route.continue());
   await work(page).getByRole('button', {name: 'Log manual call'}).click();const dialog = page.getByRole('dialog');
-  await dialog.getByLabel('Attempt notes').fill('Keep this draft while history recovers.');
-  await expect(dialog.getByRole('alert')).toContainText(/history/i);
+  await dialog.getByLabel('Call notes (optional)').fill('Keep this draft while history recovers.');
+  await expect(dialog.getByRole('alert')).toContainText(/previous calls/i);
   await shot(page, 'audit-manual-history-error');
   failed = false;await dialog.getByRole('button', {name: 'Retry history'}).click();
-  await expect(dialog.getByRole('alert')).toHaveCount(0);await expect(dialog.getByLabel('Attempt notes')).toHaveValue('Keep this draft while history recovers.');
-  await expect(dialog.getByRole('combobox', {name: 'Event', exact: true}).locator('option')).toHaveCount(2);
+  await expect(dialog.getByRole('alert')).toHaveCount(0);await expect(dialog.getByLabel('Call notes (optional)')).toHaveValue('Keep this draft while history recovers.');
+  await expect(dialog.getByRole('button',{name:'Correct an earlier call'})).toBeVisible();
 });
 
 test('retrying a manual call after a lost success response records exactly one attempt', async ({employeePage: page}) => {
@@ -98,15 +98,15 @@ test('retrying a manual call after a lost success response records exactly one a
     await route.fulfill({status: 503, json: {error: 'Response interrupted. Retry the same attempt.'}});
   });
   await work(page).getByRole('button', {name: 'Log manual call'}).click();const dialog = page.getByRole('dialog');
-  await dialog.getByLabel('Attempt notes').fill('One real call despite a lost response.');await dialog.getByLabel('Reported duration').fill('31');
-  await dialog.getByRole('button', {name: 'Record attempt'}).click();
+  await dialog.getByLabel('Call notes (optional)').fill('One real call despite a lost response.');await dialog.getByLabel('Reported duration').fill('31');
+  await dialog.getByRole('button', {name: /^Record (attempt|call — keep open)$/}).click();
   try {
-    await expect(dialog.getByRole('button', {name: 'Saving…'})).toBeDisabled();await expect(dialog.getByLabel('Attempt notes')).toBeDisabled();
+    await expect(dialog.getByRole('button', {name: 'Saving…'})).toBeDisabled();await expect(dialog.getByLabel('Call notes (optional)')).toBeDisabled();
     await expect(dialog.getByRole('button', {name: 'Close', exact: true})).toBeDisabled();await page.keyboard.press('Escape');await expect(dialog).toBeVisible();
   } finally {release();}
   await expect(dialog.getByRole('alert')).toContainText(/couldn't confirm|could not confirm/i);
-  await expect(dialog.getByLabel('Attempt notes')).toHaveValue('One real call despite a lost response.');await expect(dialog.getByLabel('Reported duration')).toHaveValue('31');
-  await dialog.getByRole('button', {name: 'Record attempt'}).click();await expect(dialog).toHaveCount(0);
+  await expect(dialog.getByLabel('Call notes (optional)')).toHaveValue('One real call despite a lost response.');await expect(dialog.getByLabel('Reported duration')).toHaveValue('31');
+  await dialog.getByRole('button', {name: /^Record (attempt|call — keep open)$/}).click();await expect(dialog).toHaveCount(0);
   expect(ids).toHaveLength(2);expect(ids[0]).toBe(ids[1]);
   const history = await (await page.request.get('/api/assignments/1/attempts')).json();expect(history.rows).toHaveLength(1);expect(history.rows[0].duration_seconds).toBe(31);
 });
@@ -123,11 +123,11 @@ test('closing and reopening manual history ignores the older delayed response', 
   const trigger = work(page).getByRole('button', {name: 'Log manual call'});await trigger.click();await arrived;
   try {
     await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);await trigger.click();
-    await expect(page.getByRole('dialog').getByRole('combobox', {name: 'Event', exact: true}).locator('option')).toHaveCount(2);
-    await page.getByRole('dialog').getByLabel('Attempt notes').fill('The reopened draft remains current.');
+    await expect(page.getByRole('dialog').getByRole('button', {name: 'Correct an earlier call'})).toBeVisible();
+    await page.getByRole('dialog').getByLabel('Call notes (optional)').fill('The reopened draft remains current.');
   } finally {release();}
-  await done;await expect(page.getByRole('dialog').getByRole('combobox', {name: 'Event', exact: true}).locator('option')).toHaveCount(2);
-  await expect(page.getByRole('dialog').getByLabel('Attempt notes')).toHaveValue('The reopened draft remains current.');
+  await done;await expect(page.getByRole('dialog').getByRole('button', {name: 'Correct an earlier call'})).toBeVisible();
+  await expect(page.getByRole('dialog').getByLabel('Call notes (optional)')).toHaveValue('The reopened draft remains current.');
 });
 
 test('open multi-select menus fit the mobile viewport and support keyboard dismissal', async ({adminPage: page, shot}) => {
@@ -156,7 +156,7 @@ test('primary action text remains readable in both themes before and during hove
   for (const dark of [false, true]) {
     if (dark) await page.getByRole('button', {name: 'Toggle dark mode'}).click();
     await work(page).getByRole('button', {name: 'Log manual call'}).click();
-    const button = page.getByRole('dialog').getByRole('button', {name: 'Record attempt'});
+    const button = page.getByRole('dialog').getByRole('button', {name: /^Record (attempt|call — keep open)$/});
     for (const hover of [false, true]) {
       if (hover) await button.hover();else await page.mouse.move(0, 0);
       const contrast = await button.evaluate(el => {

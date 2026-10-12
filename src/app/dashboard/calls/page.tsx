@@ -156,10 +156,10 @@ export default async function Dashboard({
             <input className="num-filter" type="number" aria-label="Maximum square feet" min="0" name="max_area" defaultValue={firstValue(sp.max_area)||""} placeholder="max sqft"/>
             <div className="chip"><select name="rent_mentioned" aria-label="Rent mentioned" defaultValue={firstValue(sp.rent_mentioned)||""}><option value="">Any rent</option><option value="yes">Rent mentioned</option><option value="no">Rent missing / unknown</option></select></div>
             <div className="chip"><select name="onboarded" aria-label="Onboarded" defaultValue={firstValue(sp.onboarded)||""}><option value="">Any onboarding</option><option value="yes">Onboarded with WH ID</option><option value="no">Not onboarded</option></select></div>
-            <div className="chip"><select name="assignment_state" aria-label="Ownership" defaultValue={firstValue(sp.assignment_state)||""}><option value="">Any ownership</option><option value="unassigned">Unassigned now</option><option value="open">Open assignment</option><option value="done">Completed history</option><option value="never">Never assigned</option></select></div>
+            <div className="chip"><select name="assignment_state" aria-label="Ownership" defaultValue={firstValue(sp.assignment_state)||""}><option value="">Any ownership</option><option value="unassigned">Unassigned — excludes completed</option><option value="open">Open assignment</option><option value="done">Completed history</option><option value="never">Never assigned</option></select></div>
             <div className="chip"><select name="area_basis" aria-label="Square feet basis" defaultValue={firstValue(sp.area_basis)||"source"}><option value="source">Source sqft</option><option value="built_up">AI built-up sqft</option><option value="carpet">AI carpet sqft</option></select></div>
             <label className="toggle"><input type="checkbox" name="needs_review" value="1" defaultChecked={sp.needs_review==="1"}/>Needs AI review</label>
-            {user.isAdmin && <MultiSelect name="assignee" label="Assigned to" value={sp.assignee} options={[{value:"none",label:"Unassigned now"},...assignees.map(a=>({value:a.email,label:a.name||a.email}))]}/>}
+            {user.isAdmin && <MultiSelect name="assignee" label="Assigned to" value={sp.assignee} options={[{value:"none",label:"Unassigned — excludes completed"},...assignees.map(a=>({value:a.email,label:a.name||a.email}))]}/>}
         </div>
       </FilterForm>
 

@@ -1,8 +1,16 @@
 # Handoff verification audit
 
-Scope: all 22 original handoff items, three review rounds and two subsequent completeness audits. The original DOCX was reread and its SHA-256 matched the checklist. The [changelog verification table](../BOLNA_DB_FIXES_CHANGELOG.md) holds the current complete-run results. The [checklist](../BOLNA_DB_FIXES_PLAN.md) retains external acceptance work.
+Scope: all 22 original handoff items, three review rounds and two subsequent completeness audits. The original DOCX was reread and its SHA-256 matched the checklist. The technical verification record is maintained here; the [operational changelog](../BOLNA_DB_FIXES_CHANGELOG.md) explains the workflows for callers and managers. The [checklist](../BOLNA_DB_FIXES_PLAN.md) retains external acceptance work.
 
 Both completeness audits found and fixed further correctness gaps. The second pass deliberately tested event ordering and partial metadata, rather than relying only on existing passing scenarios. Deployment acceptance and the design tradeoffs below remain explicit.
+
+## Usability follow-up — 12 October 2026
+
+The reported sequence was a saved RNR attempt followed by an Available dropdown edit and WH ID. The completion gate correctly required another call, but exposed only a generic error, while the call form offered a technical Event selector and irrelevant fields. The UI now explains the saved-result / last-call distinction and opens a guided call form from Mark done. A new connected call, its reference and completion can save in one transaction; failure rolls back both operations. Existing call requirements, Done-edit validation and the agreed Exhausted policy remain intact.
+
+Corrections are a separate action. RNR, busy and unreachable calls hide result and conversation-duration inputs; callbacks require scheduling. Hidden draft values are cleared when the disposition changes. Edited call forms ask before closing without saving. Assignment actions, ownership filter chips and Team evidence/CSV use readable labels.
+
+The complete browser and usability verification results are recorded below once the final run has finished. Earlier audit counts below describe their own release snapshots.
 
 ## Reproduce the checks
 
@@ -47,7 +55,7 @@ Two additional correctness gaps were reproduced through the real write paths:
 | Correcting a mistaken Available attempt left Team credit behind. | Assignment audit snapshots copied the attempt's result and were counted as independent discoveries. | Available snapshots with an attempt source are excluded; effective corrected attempts supply their evidence. Integration and browser checks cover summary, evidence and CSV; independent dropdown discoveries remain supported. |
 | Sparse terminal webhooks erased call-log facts, or were ignored on later retries. | The worker inbox used the sparse delivery directly, losing known fields and interpreting a missing retry count as zero. | The inbox reuses the accepted merge for the exact provider dial. Regression checks cover retry 0 and 2, earlier ringing metadata, recording changes, and isolation between separate retries. |
 
-The initial reproduction run had three failures and 41 passes. After the fixes, the focused run passed all 45 cases. Final full-suite results are recorded in the changelog; focused passes alone are not treated as release evidence.
+The initial reproduction run had three failures and 41 passes. After the fixes, the focused run passed all 45 cases. The complete-run record above supersedes these intermediate failures; focused passes alone are not treated as release evidence.
 
 The first audit browser run had 211 passes, one failure and two intentional volume skips. The new correction test expected one Available discovery in a period containing another seeded discovery. Its reporting date was isolated before a focused verification and clean complete rerun; no application change was needed for that fixture error.
 
@@ -102,4 +110,4 @@ These are point-in-time counts, not a deployment-volume rehearsal. No credential
 
 The local benchmark is synthetic. Representative staging migration/restore, provider timezone confirmation against a known call, real retry-chain/agent checks and production traffic measurements remain operator acceptance. External WH existence and overwritten/unlogged history cannot be verified by this app. There are no down migrations; follow the [runbook](DEPLOYMENT.md).
 
-The eight-page PDF is generated from the Markdown changelog. Selected screenshots use synthetic data. Image loading and page-bound checks passed; all eight rendered pages and all eight selected screenshots were visually inspected for readable text, complete images and clipping.
+The operational PDF is generated from the Markdown changelog. Selected screenshots use synthetic data. Rendering checks image loading and page bounds; visual review of the final edition is recorded with the usability verification above.

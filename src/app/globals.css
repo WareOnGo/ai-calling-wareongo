@@ -1207,3 +1207,8 @@ table.sheet.resizable .ai-history-row > td { white-space: normal; overflow: visi
 .ai-history-panel input, .ai-history-panel select { max-width: 100%; box-sizing: border-box; }
 
 .legacy-reference { display: block; white-space: normal; overflow-wrap: anywhere; color: var(--muted); }
+
+.call-guidance { padding: 10px 12px; border-left: 3px solid var(--green); background: var(--gutter-bg); border-radius: 4px; font-size: 13px; }
+.call-complete { margin-block: 12px; font-weight: 600; }
+.completion-hint { display: block; margin-top: 6px; color: var(--muted); white-space: normal; }
+.manual-attempt-form .assign-field small { color: var(--muted); font-weight: normal; line-height: 1.4; }

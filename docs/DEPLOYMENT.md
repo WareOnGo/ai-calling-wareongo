@@ -1,6 +1,18 @@
 # Deployment runbook
 
-This release awaits deployment. Local synthetic checks do not certify production migration volume. Verify a restorable backup and rehearse the entire pending sequence on representative staging data.
+The core release is deployed. Production migrations 006–008 were applied on 12 October 2026 after explicit authorization; the latest calling-form usability changes remain local and need an app deployment only. Applied migration files must not be edited.
+
+## Production catch-up — 12 October 2026
+
+- Verified that the production deployment matched commit `8fb7597` and that the database ledger/checksums matched baseline through 005 before starting.
+- Saved a private, application-table PostgreSQL archive (35,089,808 bytes) and verified its archive listing. A restore was not rehearsed.
+- Applied 006 schema, 007 retained-history recovery and 008 online search indexes successfully. Recovery processed 15,329 retained call rows and 15,329 webhook rows; overlapping deliveries merge into 7,281 identifiable dials.
+- A pinned read-only transaction verified the final migration checksums, all four valid indexes, and actual application readers for Assignments, My Work, Raw, Calls, Batches and Team. No customer row contents were printed.
+- This was a live schema catch-up after the app deployment. The read-only checks establish that those queries succeed; they are not an authenticated production-browser or live-calling acceptance test.
+
+The initial verification helper's connection option did not enforce read-only mode through the pooler. It stopped before page queries; verification was then completed inside an explicitly pinned `BEGIN READ ONLY` transaction.
+
+The general rollout procedure below remains the guide for future deployments. Local synthetic checks do not certify production migration or restore performance.
 
 ## Before rollout
 

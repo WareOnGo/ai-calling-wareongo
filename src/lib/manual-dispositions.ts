@@ -7,4 +7,10 @@ export const CLOSURE_REASONS=["resolved","escalated","invalid_number_verified","
 
 export const dispositionLabel=(value:string|null|undefined)=>value ? DISPOSITION_LABELS[value as Disposition]||value : "No call logged";
 
+/** Evidence includes a disposition followed by result/actor context. */
+export function manualEvidenceLabel(value:string){
+  const [disposition,...context]=value.split(" · ");
+  return [dispositionLabel(disposition),...context].join(" · ");
+}
+
 export const allocationLabel=(value:string|null|undefined)=>value ? ({assign:"Assigned",reassign:"Reassigned",owned:"Already owned",duplicate:"Duplicate contact",missing_phone:"No usable phone",legacy:"Legacy assignment"} as Record<string,string>)[value]||value : "Not allocated";

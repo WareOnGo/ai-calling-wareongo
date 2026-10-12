@@ -31,6 +31,51 @@ const event=(disposition:Disposition='connected',revision=0)=>({id:randomUUID(),
 const row=async()=>(await query('select * from bolna_assignments where id=$1',[id])).rows[0];
 
 describe('handoff C: completion gates and event history',()=>{
+  it('records the next connected call, WH ID and completion atomically after RNR',async()=>{
+    await recordManualAttempt(id,a,event('no_answer'));
+    await updateAssignment(id,a,{revision:1,outcome:'Available'});
+    const body={...event('connected',2),completion:{wh_id:' 12345 ',added_to_db:true}};
+    const send=()=>attemptPost(new NextRequest('http://localhost',{method:'POST',body:JSON.stringify(body)}),{params:Promise.resolve({id})});
+    expect((await send()).status).toBe(200);
+    const done=await row();expect(done).toMatchObject({state:'done',disposition:'connected',outcome:'Available',wh_id:'12345',added_to_db:true,revision:3,next_due_at:null});
+    expect(done.completed_at).not.toBeNull();
+    // A lost success response must not create another call or completion.
+    expect((await send()).status).toBe(200);
+    expect((await query('select count(*)::int n from bolna_manual_attempts')).rows[0].n).toBe(2);
+    expect((await row()).revision).toBe(3);expect((await row()).completed_at).toEqual(done.completed_at);
+  });
+  it.each([null,'','0','WH-123'])('invalid Available completion with %s rolls back the call too',async wh_id=>{
+    const body={...event(),outcome:'Available',completion:{wh_id}};
+    const response=await attemptPost(new NextRequest('http://localhost',{method:'POST',body:JSON.stringify(body)}),{params:Promise.resolve({id})});
+    expect(response.status).toBe(422);expect(await response.json()).toMatchObject({field:'wh_id'});
+    expect((await row()).revision).toBe(0);expect((await row()).state).toBe('open');
+    expect((await query('select count(*)::int n from bolna_manual_attempts')).rows[0].n).toBe(0);
+  });
+  it.each(RETRY_DISPOSITIONS)('combined completion cannot close an ordinary %s call',async disposition=>{
+    await expect(recordManualAttempt(id,a,{...event(disposition as Disposition),outcome:'Unavailable',completion:{}})).rejects.toMatchObject({code:'FOLLOW_UP_REQUIRED'});
+    expect((await row()).revision).toBe(0);
+    expect((await manualHistory(a,'record',entityId)).total).toBe(0);
+  });
+  it('requires substantive explanations for Unclear and invalid-number combined completion',async()=>{
+    const body={...event(),outcome:'Unclear' as const,completion:{closure_reason:'escalated' as const,remarks:'call back later'}};
+    await expect(recordManualAttempt(id,a,body)).rejects.toMatchObject({code:'CLOSURE_EXPLANATION_REQUIRED'});
+    await recordManualAttempt(id,a,{...body,completion:{closure_reason:'escalated',remarks:'The two owners disagree about the remaining warehouse area'}});
+    expect((await row()).state).toBe('done');
+    await updateAssignment(id,a,{revision:1,state:'open'});
+    await expect(recordManualAttempt(id,a,{...event('invalid_number',2),completion:{}})).rejects.toMatchObject({status:422});
+    await recordManualAttempt(id,a,{...event('invalid_number',2),completion:{closure_reason:'invalid_number_verified',remarks:'The network operator confirms this number does not exist'}});
+    expect((await row()).state).toBe('done');
+  });
+  it('combined completion cannot use an old connected call to bypass a newer retry',async()=>{
+    await recordManualAttempt(id,a,event('no_answer'));
+    await expect(recordManualAttempt(id,a,{...event('connected',1),occurred_at:new Date(Date.now()-60000).toISOString(),outcome:'Unavailable',completion:{}})).rejects.toMatchObject({code:'FOLLOW_UP_REQUIRED'});
+    expect((await row()).state).toBe('open');expect((await manualHistory(a,'record',entityId)).total).toBe(1);
+  });
+  it('combined completion retains scope and revision checks',async()=>{
+    await expect(recordManualAttempt(id,b,{...event(),outcome:'Unavailable',completion:{}})).rejects.toMatchObject({status:409});
+    await expect(recordManualAttempt(id,a,{...event('connected',99),outcome:'Unavailable',completion:{}})).rejects.toMatchObject({status:409});
+    expect((await manualHistory(a,'record',entityId)).total).toBe(0);
+  });
   it.each([null,'','   ','N/A','unknown','-','x'.repeat(101)])('Available cannot finish with Warehouse ID %s',async wh_id=>{
     const response=await patch({revision:0,state:'done',outcome:'Available',wh_id});expect(response.status).toBe(422);
     expect((await row()).state).toBe('open');expect((await row()).revision).toBe(0);

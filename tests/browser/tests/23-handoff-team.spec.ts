@@ -10,8 +10,9 @@ test('team date range reconciles rates, duration coverage, drill-downs and CSV',
  seedAttempts();await page.goto('/dashboard/team');await page.getByLabel('Report from').and(page.locator(':visible')).fill('2026-08-02');await page.getByLabel('Report to').and(page.locator(':visible')).fill('2026-08-02');await page.getByRole('button',{name:'Apply dates'}).click();
  await expect(page).toHaveURL(/date_from=2026-08-02/);
  const row=page.getByLabel('Team metrics table').and(page.locator(':visible')).locator('tbody tr').filter({hasText:'priya@eval.test'});await expect(row).toContainText('50%');await expect(row).toContainText('30.0s');
+ await page.setViewportSize({width:900,height:1000});await page.getByLabel('Team metrics table').screenshot({path:'shots/operations-team.png',animations:'disabled'});await page.setViewportSize({width:1600,height:1000});
  await row.getByRole('link',{name:'Recorded attempts for priya@eval.test: 2',exact:true}).first().click();await expect(page).toHaveURL(/metric=attempts/);
- await expect(page.getByLabel('Metric evidence table').and(page.locator(':visible')).locator('tbody tr')).toHaveCount(2);await expect(page.getByLabel('Metric evidence table').and(page.locator(':visible'))).toContainText('no_answer');
+ await expect(page.getByLabel('Metric evidence table').and(page.locator(':visible')).locator('tbody tr')).toHaveCount(2);await expect(page.getByLabel('Metric evidence table').and(page.locator(':visible'))).toContainText('No answer / RNR');
  const csv=await page.request.get('/api/team/export?date_from=2026-08-02&date_to=2026-08-02&caller=priya%40eval.test&metric=attempts');expect(csv.status()).toBe(200);expect(csv.headers()['x-export-row-count']).toBe('2');expect(await csv.text()).toContain('no_answer');
  await page.getByText('Metric definitions and historical coverage',{exact:true}).click();await expect(page.getByText(/Zero recorded attempts does not prove/)).toBeVisible();
  await page.setViewportSize({width:390,height:844});expect(await bodyOverflowsX(page)).toBe(false);await shot(page,'handoff-h-team-mobile');

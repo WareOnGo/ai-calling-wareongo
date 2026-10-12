@@ -6,7 +6,7 @@ test('old Result and RNR notes cannot close a task without a logged call',async(
  await page.goto('/dashboard/my');const row=page.locator('[data-entity="record"] tbody tr').filter({hasText:'Raghav'});
  await row.getByLabel('Result of the call').selectOption('Unavailable');await expect(row.locator('.save-status')).toHaveText('Saved');
  await row.getByLabel('Your notes').fill('RNR; call back later');await row.getByLabel('Your notes').blur();await expect(row.locator('.save-status')).toHaveText('Saved');
- await row.getByRole('button',{name:'Mark done'}).click();await expect(row).toContainText('Log an actual manual call');await expect(row.getByRole('button',{name:'Mark done'})).toHaveAttribute('aria-pressed','false');
+ await row.getByRole('button',{name:'Mark done'}).click();await expect(page.getByRole('dialog')).toContainText('No manual call has been logged yet');await expect(page.getByRole('dialog').getByLabel('What happened?')).toHaveValue('');await expect(row.getByRole('button',{name:'Mark done'})).toHaveAttribute('aria-pressed','false');
 });
 test('Calls onboarding writes the assignment and reconciles with the Onboarded filter',async({adminPage:page})=>{
  await page.goto('/dashboard/calls');const row=page.locator('tbody tr').filter({has:page.getByLabel('Manual follow-up notes').and(page.locator(':enabled'))});

@@ -8,7 +8,7 @@ import { useSelection } from "./Selection";
 import { useDashboardUI } from "./DashboardUI";
 import { requestJson } from "./requests";
 import { dateTime } from "@/lib/display";
-import { DISPOSITION_LABELS, type Disposition } from "@/lib/manual-dispositions";
+import { allocationLabel, DISPOSITION_LABELS, type Disposition } from "@/lib/manual-dispositions";
 const dispositionLabel=(value:string|null)=>value?(DISPOSITION_LABELS[value as Disposition]||value):"No recorded disposition";
 export type Assignee = { email: string; name: string | null };
 type Preview = AllocationPreview & { workloads: AssigneeWorkload[] };
@@ -86,7 +86,7 @@ export function AssignButton({ entity, total, assignees }: { entity: "record" | 
             <p>{preview.completedHistory} with completed history. AI history: {Object.entries(preview.aiResults).map(([result, n]) => `${result}: ${n}`).join("; ") || "none"}. These sets can overlap.</p>
             <p>AI connection status: {Object.entries(preview.aiStatuses).map(([status,n])=>`${status}: ${n}`).join("; ")||"No execution records"}. Counts refer to selected rows with execution history, not confirmed dials.</p>
             {Object.entries(preview.ownerCounts).map(([email, n]) => <p key={email}>Currently owned by {email}: {n} selected rows</p>)}
-            {Object.entries(preview.completedOwners).map(([email,n]) => <p key={`completed-${email}`}>Completed episodes by {email}: {n}</p>)}
+            {Object.entries(preview.completedOwners).map(([email,n]) => <p key={`completed-${email}`}>Completed tasks by {email}: {n}</p>)}
             {Object.entries(preview.perCaller).map(([email, n]) => <p key={email}>New work for {email}: <strong>{n}</strong></p>)}
             {preview.capped && <p role="status">Preview limited to 20,000 rows. Narrow your filters.</p>}
             <details open><summary>Inspect selected records and planned actions</summary>
@@ -94,7 +94,7 @@ export function AssignButton({ entity, total, assignees }: { entity: "record" | 
                 {preview.items.slice(previewPage * 50, previewPage * 50 + 50).map(item => <tr key={item.id}>
                   <td>{item.id.slice(0, 8)}<br />{item.phones.join(", ") || "No valid phone"}</td>
                   <td>{item.owners.length?item.owners.map(owner=><p key={owner.id}>{owner.assignee} · {owner.state}<br/>{owner.outcome||"No manual result"} · {dispositionLabel(owner.disposition)}{owner.next_due_at&&<><br/>Due {dateTime(owner.next_due_at)}</>}</p>):"Unassigned"}</td>
-                  <td>{item.disposition}{item.assignee && <><br />{item.assignee}</>}</td>
+                  <td>{allocationLabel(item.disposition)}{item.assignee && <><br />{item.assignee}</>}</td>
                   <td>{item.ai?<>{item.ai.status||"Unknown status"} · {item.ai.result||"No AI result"}<br/>{item.ai.known_attempts} known provider attempts<br/>{item.ai.scope==='execution'?'Selected execution':'Latest contact context — may describe another property'}{item.ai.recorded_at&&<><br/>Execution recorded {dateTime(item.ai.recorded_at)}</>}</>:"No AI execution history"}</td>
                   <td>{item.completed_by.length?item.completed_by.map((owner,i)=><p key={i}>{owner.assignee} · {owner.count} done<br/>{owner.outcome||"No manual result"} · {dispositionLabel(owner.disposition)}</p>):"No completed history"}</td>
                 </tr>)}

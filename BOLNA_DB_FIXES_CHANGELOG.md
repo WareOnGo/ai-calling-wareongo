@@ -1,135 +1,151 @@
-# Bolna DB Fixes — changelog
+# Bolna calling dashboard — operational changelog
 
-Unreleased · 12 October 2026 · 22-item handoff, three reviews and two completeness audits
+Review edition · 12 October 2026 · For callers and team managers
 
-## Release overview
+## A clearer daily calling workflow
 
-Calling ownership, manual follow-ups, AI history and Team reporting implement the handoff's agreed rules. This release includes the review and audit corrections below and awaits deployment.
+This update helps the team assign contacts, record calls, organise follow-ups and review progress with fewer conflicting signals.
 
-- **Completion stays valid:** editing Done work rechecks its result, warehouse reference and explanation. Available always needs an integer WH ID, including Exhausted closures.
-- **Legacy edits stay possible:** an already-Done row does not need an invented call. Invalid completion data must be repaired, or the row reopened, before saving relevant edits.
-- **Consistent times:** timestamps are stored as UTC and displayed in IST. Timezone-less provider values are interpreted as UTC; explicit offsets are respected.
-- **Recovery resumes:** reconciliation commits its cursor with each page and yields after 1,000 executions. An interrupted run resumes the same snapshot.
-- **Simpler rollout:** fourteen unshipped migrations are consolidated into three stages. Online indexes can wait beyond two seconds, subject to the overall statement timeout.
+**Please review the workflows in this guide.** Focus on whether the screens match how your team works, the labels are understandable, and the counts match the work you record. The last page gives a practical review checklist.
 
-Corrections preserve an existing manual result, batch cards recognize every final provider status, completed-contact filters include shared numbers, and Team supports only the five requested measures.
+### What changes for the team
 
-Validation used local fixtures; no production migration or live calling was performed. See the [deployment runbook](docs/DEPLOYMENT.md) and [verification audit](docs/HANDOFF_COMPLETENESS_AUDIT.md).
+- **Clearer ownership:** see who already has a contact before assigning work or preparing AI calls. Shared phone numbers are checked together.
+- **A call form that fits the call:** unanswered calls need fewer fields; callbacks ask when to try again; connected calls can be recorded and completed together.
+- **Clearer completion:** Available work needs a warehouse ID. Unclear work needs an explanation. An unanswered call stays open until it is followed up or deliberately closed as Exhausted.
+- **Better context:** manual results, AI results and call history are shown separately. Call times display in IST.
+- **Simpler daily reporting:** Team shows five measures, with links to the records behind the counts.
 
-## Caller workflow and completion
+### About this review copy
 
-![Manual call logging with disposition, result, follow-up and optional duration. Synthetic browser fixture.](docs/browser-audit/changelog-manual-dialog.png)
+**This is a feature review guide for the updated dashboard.** Use the checklist once the latest calling screens are available in your workspace. It covers daily operation; technical deployment and test records are kept separately.
 
-**Becoming Done requires a logged call.** RNR, busy, switched off, callbacks and awaiting confirmation remain open unless an assigned caller deliberately chooses **Exhausted** and provides a substantive reason. There is no additional attempt threshold or automatic cap.
+All screenshots use fictional example contacts in a test workspace. This guide contains no customer records, credentials or internal troubleshooting logs.
 
-**Done edits retain the same result-quality rules.** Available requires a positive integer WH ID; Unclear requires a closure reason and substantive explanation. Clearing those fields is rejected. This applies through both the API and database, including Exhausted work. Warehouse existence is not checked externally.
+## Assign work with ownership in view
 
-Legacy Done rows skip only the logged-call requirement. An invalid historical reference must be corrected before saving relevant changes. Reopening permits corrections before completing again.
+![Assignment preview: choose callers, see their workload, and inspect what will be assigned.](docs/browser-audit/operations-assignment.png)
 
-**Keep existing result** preserves a dropdown choice and survives corrections to its supplying attempt. An explicit correction to the latest call replaces a result inherited from an earlier attempt; independent dropdown choices stay intact. Notes edits do not count as calls; corrected events replace superseded events in reports.
+From **Raw Dataset** or **Calls**, select records and choose **Assign**. The dialog distinguishes the selected rows on the current page from every row matching your filters.
 
-## Ownership and assignment
+Choose one caller, or use **Round-robin across selected callers** to distribute new tasks. Existing work held by those callers stays with them. The preview shows open workloads, planned assignments, shared-number duplicates and missing phones before you confirm.
 
-![Queue preview shows human ownership and the eligible contacts used by both dispatch and CSV.](docs/browser-audit/changelog-queue-dialog.png)
+**Unassigned excludes completed work as well as open assignments.** A contact completed through another listing with the same phone is still excluded. Contacts whose assignments were only dropped can become eligible again. Use **Completed history** to find finished work, or **Never assigned** for contacts with no assignment history.
 
-Primary and alternate numbers are deduplicated together. Bolna push and Queue CSV exclude contacts with open human ownership and use the same eligibility rules. CSV downloads recheck eligibility; dispatch rechecks phones, owners and reservations before reserving calls.
+**Review:** Select a small group, inspect its owners and planned actions, and confirm that existing work stays with the right caller.
 
-Unassigned excludes contacts with open or completed assignments. Dropped-only contacts qualify. Never assigned and Completed history also match shared numbers across Raw and Calls, including caller filters.
+## Prepare AI calls with fewer overlaps
 
-Assignment previews take no allocation lock, so caller saves continue while an admin previews. Round-robin carries forward across batches and retains work already held by selected callers. Manual batch allocation labels are readable.
+![Queue preview: current callers, previous AI results and the contacts eligible for calling.](docs/browser-audit/changelog-queue-dialog.png)
 
-## AI history and provider recovery
+**Queue for calling** checks primary and alternate phone numbers together. Duplicate calling contacts are grouped, and contacts with open human assignments are held out of the AI queue.
 
-![AI history displays IST dial times and intervals in minutes, hours or days.](docs/browser-audit/changelog-provider-history.png)
+Review previous AI results and exclude categories you do not want to call again. The dialog also shows the available balance and language routing. Balance failures are visible; an unavailable balance is not shown as zero.
 
-Provider timestamps without a timezone are treated as UTC consistently with the Calls grid; all displayed times use IST. This is the chosen application convention, **not an independently verified provider guarantee**. Confirm it against a known call before production acceptance. Explicit offsets keep their actual instant.
+**Download CSV** applies the same ownership and calling eligibility checks as the queue. It checks again when you download, because ownership may have changed since the preview opened.
 
-Intervals compare dated attempts for the same phone and direction. They display readable units such as “1 minute 30 seconds” or “7 days.” Missing or invalid times remain unknown.
+Sending to Bolna has a separate confirmation that starts live calling. After sending, use **Batches** to review the result and any contacts held back.
 
-One merged row represents each identifiable dial. Sparse updates preserve known fields, nested retry metadata and inbound contact identity; separate dials stay separate. Confirmed conversations require completed status, positive conversation duration and caller speech, excluding voicemail. Missing IDs and overwritten retries cannot be reconstructed. Balance-low is excluded from Raw history and default Calls views.
+**Review:** Check that a contact already held by a caller is excluded from both the calling selection and the downloaded CSV.
 
-Webhooks and reconciliation accept optional duration/retry number, string and null variants. Reconciliation commits **250 executions and its cursor together**, processing at most **1,000 per invocation**. Reordered snapshots resume; changed snapshots restart idempotently. Leases recover after process exits and large batches yield to other cron work. Reservations remain until all pages and completion checks succeed.
+## Log what actually happened
 
-## Reporting and everyday use
+![An unanswered call: result and conversation-duration fields are hidden, and the save button says the task will stay open.](docs/browser-audit/operations-rnr.png)
 
-![Team shows recorded calls, connect rate, first Available targets, onboarding and average duration.](docs/browser-audit/changelog-team-table.png)
+Choose **Log manual call**, then **What happened?** The form changes to fit your answer.
 
-Team supports exactly the five requested measures, with IST date ranges, evidence on demand and matching CSV exports. The other nine metric branches and their URL selectors have been removed. Completion quality and follow-ups remain available in Assignments.
-
-Unlogged historical calls are unknown. Average duration uses optional self-reported seconds and shows coverage. Correcting a mistaken Available attempt removes its Team credit; independent dropdown discoveries remain. First Available and onboarding dates are not invented by later edits. Retained historical warehouse references remain visible.
-
-Calls' Added and WH ID edits save to the assignment used by filters and reporting. Safe legacy call-row verification is copied only to its exact existing assignment; unmatched or conflicting original values remain visible and exportable.
-
-Other changes include multi-select filters, size ranges, onboarding filters, Calls rent-mentioned filtering, column controls, page jump, source city and Needs review help. Legacy Called By is labelled, hidden by default and read-only. City matching covers 13 documented alias pairs and city/urban/district suffixes. Fuzzy Calls search uses identifying fields; exact transcript and note search remains available.
-
-Wallet balance uses a 60-second process cache with bounded timeout and visible errors. AI batch “No final result” cards now use the canonical final-status list, including call-disconnected.
-
-## Migration and deployment
-
-| Stage | Behavior |
+| What happened | What the form asks for |
 | --- | --- |
-| 006 — schema | Final ownership, manual lifecycle, per-dial history, completion rules and reconciliation cursor. Preserves safe legacy onboarding. |
-| 007 — recovery | Resumable retained-payload backfill in 250-row transactions. Schema is already committed and recorded; a retry resumes recovery. |
-| 008 — indexes | Concurrent search indexes outside a transaction. Lock timeout is disabled; the whole statement is limited to ten minutes by default. Invalid partial indexes are removed on retry. |
+| Connected | Manual result, optional conversation duration and notes. You can also complete the task here. |
+| No answer / RNR, Busy, or Switched off / unreachable | Optional notes and an optional next-call time. No new warehouse result or conversation duration is requested. |
+| Call back later / Will check and get back | A required follow-up time, with result, duration and notes available if relevant. |
+| Verified invalid number | Notes and, if completing, how you verified that the number is invalid. |
 
-Baseline and migrations 001–005 are unchanged. The retired, unshipped 006–019 sequence is replaced; obsolete claims, wallet cache and delivery-ledger tables are never created. Existing development databases with that retired history are explicitly refused and must be rebuilt or upgraded deliberately. Do not delete migration ledger rows to bypass this check.
+An unanswered call keeps the task open and preserves any earlier warehouse result. Without a follow-up date, it appears under **Due now / needs scheduling**. Dates and times are entered in **IST**.
 
-1. Verify a restorable backup and rehearse the pending sequence on representative staging data.
-2. Pause writes and workers, drain old requests and preserve incoming webhook replay.
-3. Run `npm run db:migrate` with the intended connection supplied explicitly.
-4. Deploy the app, resume ingestion and perform the runbook's smoke checks.
+**Review:** Switch between Connected and RNR. Confirm that irrelevant fields disappear and that the save button explains whether the task will stay open.
 
-**Compatibility:** Next.js 15 → 16.4.0, React 19 and Webpack flags are included. Verify the Node runtime and hosting adapter. Old call-row manual writes are retired. There are **no down migrations**; completed stages remain committed after a later failure.
+## Complete Available work without the guesswork
 
-The [deployment runbook](docs/DEPLOYMENT.md) covers recovery and acceptance. Production migration and restore performance have not been certified by the local synthetic tests.
+![A connected call can save the call, confirm the warehouse ID and mark the task done in one step.](docs/browser-audit/operations-complete.png)
 
-## Verification and limits
+**Available describes the warehouse. Connected describes the call. Done closes the task.** Changing Available or WH ID alone does not record a conversation.
 
-**Verification: passed.**
+If the last logged call was RNR and you later confirm availability, choose **Mark done**. The guided form shows the last call and the saved result. Record the later conversation, check **Also mark this task done**, and confirm the **Warehouse ID**. The call and completion save together.
 
-| Check | Result |
+If RNR was entered by mistake, choose **Correct an earlier call** instead. You do not need to invent an extra call to repair the entry.
+
+Available completion requires a **positive integer WH ID**, such as 12345. It checks the format, not whether that ID exists in your warehouse system. Tick **Warehouse has been added to the database** if onboarding is complete. This updates the grid’s **Added** checkbox and onboarding reports; entering a WH ID alone does not tick it.
+
+**Review:** Try RNR → Available → WH ID → Mark done. The screen should explain the missing call record and offer a clear way to finish.
+
+## Follow up, correct mistakes and reopen
+
+![Corrections are separate from new calls, with a clear explanation of what will change.](docs/browser-audit/operations-correction.png)
+
+**Corrections:** Use **Correct an earlier call**, choose the call, correct its details and explain the mistake. The original stays in history; the correction does not count as an additional attempt. “Keep recorded result” preserves that call's result. An independent result saved on the task is retained.
+
+**Unclear completion:** Choose a closure reason and explain why no further caller action is needed. “Call back later” is still pending work, not a completion explanation.
+
+**Exhausted follow-ups:** An assigned caller may deliberately stop further attempts after a recorded retry call, with a meaningful reason in the task notes. There is no automatic attempt cap or additional minimum. Available work still requires its WH ID.
+
+**Completed work:** Click **Done** to reopen a task. Existing Done rows can be edited without inventing past calls, but changes to the result, warehouse ID or completion explanation must remain valid.
+
+Closing an edited call form asks before discarding its unsaved input. A failed save keeps the input available so it can be corrected and retried.
+
+**Review:** Correct a mistaken RNR, complete the task, then reopen it. Check that the history remains understandable throughout.
+
+## Find the right records and read their history
+
+![AI history shows known calls, IST dial times and readable gaps between attempts.](docs/browser-audit/changelog-provider-history.png)
+
+Use multiple selections within categorical filters, plus city, warehouse size and onboarding filters. **Calls** also supports rent-mentioned filtering. Common city aliases such as Bangalore / Bengaluru match together; distinct cities such as Mumbai / Navi Mumbai stay separate.
+
+**AI result and Manual result are separate.** Needs AI review identifies an inference to check against its transcript or recording. Legacy Called By is read-only and hidden by default; manual call history identifies the person who recorded the work.
+
+Expand **Show AI attempts** to see known dial times and gaps in minutes, hours or days. Inbound and outbound calls are counted separately. Balance-blocked activity is excluded from ordinary calling views; Calls has an option to include it for investigation.
+
+Choose visible columns, save useful views and jump directly to a page. Source city remains available alongside AI-derived details.
+
+**Review:** Find a contact using filters, compare AI and manual results, then open its call history. Known timestamps display in IST; older calls with missing history remain unknown.
+
+## Review progress using five Team measures
+
+![Team performance: five measures for an IST date range, with links to the supporting records.](docs/browser-audit/operations-team.png)
+
+Choose **Today**, **Yesterday**, **Last 7 days**, **This month**, or your own date range. Dates include full calendar days in India.
+
+| Measure | What it tells you |
 | --- | --- |
-| TypeScript and unit tests | Passed · 112/112 |
-| Database/API integration | Passed · 239/239 |
-| Migration rehearsals | Passed · 5/5 |
-| Production build | Passed |
-| Complete production browser run | Passed · 213; two volume cases run separately |
-| Synthetic benchmark workloads | Passed · 19 workloads in one test |
-| Separate volume browser | Passed · 2/2 |
+| Recorded attempts | Manual calls logged by the caller, after corrections. Editing notes does not add a call. |
+| Connect rate | The share of logged calls marked Connected, Call back later, or Will check and get back. |
+| First Available targets | Targets first recorded as Available by that caller. Reopening does not create another discovery. |
+| Onboarded references | Staff-recorded onboarding with a warehouse reference. Reused references are not counted repeatedly across callers. |
+| Average call duration | The average of reported conversation durations. The timed / connected count shows how much of the work has a duration. |
 
-Regression coverage includes API/direct-SQL completion rules, Exhausted/WH validation, correction provenance and Team credit, sparse inbound/retry metadata, final-status cards, UTC/IST parsing, shared-contact ownership, and reconciliation recovery/fairness.
+Click a count to inspect its supporting records and export them. Zero recorded calls does **not** prove that no calls happened: older unlogged manual activity cannot be reconstructed. Duration is optional and reported by the caller.
 
-Migration rehearsals cover fresh, legacy, through-005, interrupted recovery, and online indexes. The index rehearsal injects a statement timeout, retries the invalid index, holds a writer beyond two seconds, then verifies successful completion.
+**Batches** separately tracks AI calling batches and manual assignment groups. Click a batch card to inspect and export the matching records. Original assignment membership and current ownership are shown separately.
 
-Automated checks use disposable local databases, synthetic contacts and fake provider credentials. Earlier read-only audits printed aggregate counts only: 61 warehouse references among 1,700 assignments, zero non-integer IDs; no WH references among 15,328 call rows. No new production audit was needed for this review.
+**Review:** Log a connected call with a duration, then an unanswered call. Check the attempts, connection rate, duration coverage and linked records.
 
-Remaining acceptance: representative staging migration/restore, confirming provider time against a known call, real retry-chain/agent checks, and production traffic measurements. External warehouse existence, overwritten call history and the v2 analytics dashboard remain outside this delivery.
+## Please review these everyday tasks
 
-## Ticket coverage
+Use a few contacts approved for testing and review this list after the latest calling-screen update is available.
 
-| Item | Delivered behavior |
-| --- | --- |
-| H01 | Shared-phone deduplication in assignment, Bolna push and eligible CSV |
-| H02 | Raw manual call history |
-| H03 | Ownership, completed-contact history and AI preview context |
-| H04 | Multiple categorical filter selections |
-| H05 | Source city; larger dashboard explicitly deferred to v2 |
-| H06 | Known attempts, IST dial times and readable intervals |
-| H07 | Bounded reads, matching indexes and synthetic-volume checks |
-| H08 | Wallet balance, cache, timeout and visible failure states |
-| H09 | Separate AI and manual results |
-| H10 | Manual/AI batches, corrected cards, filters and exports |
-| H11 | Column visibility, narrower defaults and five-measure Team view |
-| H12 | Jump-to-page controls |
-| H13 | Balance blocks excluded from default calling activity |
-| H14 | Legacy Called By labelled, hidden and read-only |
-| H15 | Size, onboarding, city-alias and rent-mentioned filters |
-| H16 | Needs review explanation and filter |
-| H17 | Logged completion; retries stay open unless deliberately Exhausted |
-| H18 | Integer WH ID and Unclear explanation validated on Done edits too |
-| H19 | Completed history and ownership-checked reopening |
-| H20 | Workloads and continuing round-robin assignment |
-| H21 | IST dates, five measures and evidence/CSV on demand |
-| H22 | Unassigned excludes open/completed contacts across shared phones |
+1. **Assign work:** Check the selected scope, existing owners, duplicate contacts and each caller's new workload.
+2. **Prepare AI calls:** Confirm human-owned contacts are held out of the preview and CSV. Previewing or downloading does not start calls.
+3. **Record RNR:** Check that only relevant fields appear, the task stays open and follow-up filtering finds it.
+4. **Complete Available work:** Record the connected call, enter an integer WH ID and finish. Confirm whether Added should also be ticked for the warehouse.
+5. **Handle exceptions:** Schedule a callback, close justified Exhausted work, and explain an Unclear completion.
+6. **Repair a mistake:** Correct an earlier call, check that it counts once, and reopen completed work if another call is needed.
+7. **Check the report:** Compare a caller's logged work with the five Team measures and the exported supporting rows.
+8. **Check timing and readability:** Confirm one known call's IST time, try the screens on a phone, and flag any label that needs explanation.
 
-The [implementation checklist](BOLNA_DB_FIXES_PLAN.md) retains the external acceptance items. This Markdown is the authored changelog; the PDF is generated from it with the selected browser screenshots.
+### Send feedback in this format
+
+**Screen → what you tried → what you expected → what happened.** Include a screenshot with sensitive contact details hidden where useful.
+
+### What this update does not establish
+
+It does not verify warehouse IDs against an external warehouse system, reconstruct overwritten or unlogged call history, or deliver the larger v2 analytics dashboard. Provider timestamps without an explicit timezone are treated as UTC before display in IST; confirm a known call's time during acceptance.
