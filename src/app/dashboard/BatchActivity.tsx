@@ -60,7 +60,7 @@ export function BatchResolution({ batch, onResolved }: { batch: {id:string;bolna
     catch (e) { setError(e instanceof Error ? e.message : "Could not update batch"); }
     finally { setBusy(false); }
   }
-  return <div>
+  return <div className="batch-resolution">
     {batch.bolna_batch_id && <button type="button" className="btn-row" disabled={busy} onClick={() => act({ action: "reconcile" })}>Check Bolna status</button>}
     <button type="button" className="btn-row" disabled={busy} onClick={() => setOpen(v => !v)}>Resolve batch</button>
     {open && <fieldset disabled={busy}>

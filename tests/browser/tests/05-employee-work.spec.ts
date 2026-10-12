@@ -22,7 +22,7 @@ test.describe("employee recording outcomes @shot", () => {
     // legend + marked headers, so "what can I edit?" is answered by looking
     await expect(page.locator(".legend")).toContainText("read only");
     await expect(page.locator("th.mine")).toHaveCount(10);     // 5 per table, 2 tables
-    await expect(page.locator("th.mine-first").first()).toContainText("Result");
+    await expect(page.locator("th.mine-first").first()).toContainText("Manual result");
     // and the editable cells are visually distinct from the read-only ones
     const mine = await css(page, "td.edit-cell", "background-color");
     const sys = await css(page, "table.task-sheet td.who", "background-color");
@@ -108,7 +108,7 @@ test.describe("employee recording outcomes @shot", () => {
     await expect(row(page, "Raghav Sharma")).not.toHaveClass(/row-done/);
   });
 
-  test("a finished row stays usable — only the system columns dim",
+  test("a finished row stays readable, distinct and editable",
     async ({ employeePage: page }) => {
     await page.goto("/dashboard/my");
     // Meera Nair is 'done' in the seed. Dimming her editable cells too would make
@@ -118,8 +118,13 @@ test.describe("employee recording outcomes @shot", () => {
     const sysOpacity = await doneRow.locator("td.who").evaluate((e) => getComputedStyle(e).opacity);
     const editOpacity = await doneRow.locator("td.edit-cell").first()
       .evaluate((e) => getComputedStyle(e).opacity);
-    expect(Number(sysOpacity)).toBeLessThan(1);
+    // Completed work uses secondary text instead of opacity, which also faded
+    // every nested label and could make corrections look unavailable.
+    expect(Number(sysOpacity)).toBe(1);
     expect(Number(editOpacity)).toBe(1);
+    const nameColor = (name: string) => row(page, name).locator('.who-name').evaluate(e => getComputedStyle(e).color);
+    expect(await nameColor('Meera Nair')).not.toBe(await nameColor('Raghav Sharma'));
+    await expect(doneRow.locator('.btn-done')).toHaveAttribute('aria-pressed', 'true');
     await expect(doneRow.locator("select.field-select")).toBeEnabled();
   });
 

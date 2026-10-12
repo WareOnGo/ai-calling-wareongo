@@ -17,7 +17,7 @@ type Owner = { id: string; entity_type: string; entity_id: string; assignee: str
 type CompletedOwner = { assignee: string; state: 'done'; outcome: string | null; disposition: string | null; count: number };
 type PreviewAi = { execution_id: string; status: string | null; result: string | null; known_attempts: number; recorded_at: string | null; scope: 'execution' | 'contact' };
 export type AllocationItem = {
-  id: string; phones: string[]; disposition: "assign" | "reassign" | "owned" | "duplicate" | "missing_phone";
+  id: string; name: string | null; phones: string[]; disposition: "assign" | "reassign" | "owned" | "duplicate" | "missing_phone";
   assignee: string | null; owners: Owner[]; completed: number; completed_by: CompletedOwner[]; ai_result: string | null; ai: PreviewAi | null;
 };
 export type AssignSummary = {
@@ -48,8 +48,9 @@ async function plan(client: PoolClient, opts: AllocationOptions): Promise<Alloca
   const active = await client.query("select email from bolna_app_users where email=any($1::text[]) and active order by email",[callers]);
   if (active.rowCount !== callers.length) throw new ApiError(400,"Every assignee must be an active user");
   const table = opts.entity === "record" ? "raw_records" : "bolna_call_logs";
-  const found = await client.query(`select id from ${table} where id=any($1::uuid[]) order by id`,[ids]);
+  const found = await client.query<{id:string;name:string|null}>(`select id, ${opts.entity === "record" ? "owner_name" : "context_details->'recipient_data'->>'name'"} as name from ${table} where id=any($1::uuid[]) order by id`,[ids]);
   if (found.rowCount !== ids.length) throw new ApiError(409,"Some selected rows no longer exist. Refresh the selection.");
+  const names = new Map(found.rows.map(row => [row.id, row.name]));
   const contacts = (await client.query<{entity_id:string;phone_last10:string}>("select entity_id,phone_last10 from bolna_assignment_contacts where entity_type=$1 and entity_id=any($2::uuid[]) order by entity_id,phone_last10",[opts.entity,ids])).rows;
   const byId = new Map<string,string[]>();
   for (const row of contacts) byId.set(row.entity_id,[...(byId.get(row.entity_id)||[]),row.phone_last10]);
@@ -114,7 +115,7 @@ async function plan(client: PoolClient, opts: AllocationOptions): Promise<Alloca
     if(disposition==="assign" || disposition==="reassign") {
       cursor++; perCaller[assignee]=(perCaller[assignee]||0)+1; rowPhones.forEach(phone=>seen.add(phone));
     }
-    return {id,phones:rowPhones,disposition,assignee:disposition==="assign"||disposition==="reassign"?assignee:null,owners:overlapping,completed:completed.get(id)||0,completed_by:completedById.get(id)||[],ai_result,ai};
+    return {id,name:names.get(id) || null,phones:rowPhones,disposition,assignee:disposition==="assign"||disposition==="reassign"?assignee:null,owners:overlapping,completed:completed.get(id)||0,completed_by:completedById.get(id)||[],ai_result,ai};
   });
   const count=(disposition:string)=>items.filter(item=>item.disposition===disposition).length;
   return { previewHash:allocationHash({entity:opts.entity,callers,reassign:!!opts.reassign,items:items.map(({id,phones,disposition,assignee,owners})=>({id,phones,disposition,assignee,owners:owners.map(({id,assignee,phones})=>({id,assignee,phones}))}))}),

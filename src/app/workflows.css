@@ -1,0 +1,149 @@
+/* Secondary controls and evidence open in focused panels; the record list keeps
+   its space and scroll position. Shared tokens apply to both themes. */
+.filter-panel { width: min(600px, 100vw); }
+.filterbar:has(.filter-panel[open]) > .apply-button { visibility: hidden; }
+.filter-panel .modal-title { margin: 0; }
+.filter-categories { display: flex; flex: none; gap: 4px; padding: 12px 16px; overflow-x: auto; border-bottom: 1px solid var(--border); }
+.filter-categories button { display: flex; align-items: center; gap: 6px; flex: none; border: 0; border-radius: var(--radius-input); padding: 9px 10px; background: transparent; color: var(--muted); font-size: var(--text-support); }
+.filter-categories button[aria-selected="true"] { background: var(--accent-bg); color: var(--accent); }
+.filter-categories button span { font-size: var(--text-caption); }
+.filter-panel-body h3 { margin: 0 0 20px; font-size: var(--text-section); font-weight: 600; color: var(--heading); }
+.filter-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 20px 16px; }
+.filter-fields > * { min-width: 0; }
+.filter-fields > label:not(.toggle) { display: flex; flex-direction: column; align-items: stretch; gap: 7px; width: 100%; font-size: var(--text-support); color: var(--muted); }
+.filter-fields label > span { min-width: 0; font-size: var(--text-support); }
+.filter-fields :is(input:not([type="checkbox"]), select) { width: 100%; min-width: 0; height: 42px; padding: 9px 10px; margin: 0; color: var(--text); background: var(--field-bg); border: 1px solid var(--field-border); border-radius: var(--radius-input); }
+.filter-fields .chip::after { display: none; }
+.filter-fields select { appearance: auto; }
+.filter-fields .filter-multi { display: block; }
+.filter-fields .filter-multi > summary { padding: 10px 12px; min-height: 42px; border: 1px solid var(--border); border-radius: var(--radius-input); color: var(--text); font-size: var(--text-body); }
+.filter-fields .filter-multi[open] > summary { border-color: var(--accent-border); background: var(--accent-bg); color: var(--accent); }
+.filter-fields .multi-options { position: static; width: 100%; min-width: 0; max-width: 100%; max-height: 260px; margin-top: 6px; padding: 8px; box-shadow: none; }
+.filter-fields .multi-options label { padding: 8px 4px; white-space: normal; overflow-wrap: anywhere; }
+.filter-fields .multi-options input { flex: none; width: 16px; height: 16px; }
+.filter-fields .toggle { height: auto; min-height: 42px; padding: 10px 12px; border-radius: var(--radius-input); line-height: 1.5; }
+.filter-fields .datefld { height: auto; border: 0; padding: 0; }
+.chip:not(:has(select))::after { display: none; }
+
+.app-dialog.assignment-dialog { width: 640px; }
+.assignment-options { margin: 4px 0 20px; }
+.assignment-options > summary, .allocation-inspection > summary, .evidence-details > summary { cursor: pointer; color: var(--accent); padding: 10px 0; font-size: var(--text-support); }
+.assignment-options[open] > summary { margin-bottom: 8px; }
+.assignment-options .assign-check { margin-bottom: 12px; }
+.assignment-preview { border-top: 1px solid var(--border); padding-top: 20px; }
+.allocation-summary { font-size: var(--text-body); color: var(--muted); }
+.allocation-summary strong { display: inline-block; color: var(--heading); font-size: var(--text-title); font-weight: 600; margin-right: 5px; }
+.allocation-impact { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 8px 0; font-size: var(--text-support); color: var(--muted); }
+.allocation-impact:empty { display: none; }
+.allocation-recipient { margin: 12px 0; overflow-wrap: anywhere; }
+.allocation-inspection { border-top: 1px solid var(--border); margin-top: 18px; padding-top: 4px; }
+.allocation-records { display: grid; gap: 12px; margin-top: 12px; }
+.allocation-record { padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-panel); background: var(--surface-subtle); overflow-wrap: anywhere; }
+.allocation-record-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; color: var(--heading); }
+.allocation-record-heading .pill { flex: none; }
+.allocation-contact, .allocation-current { font-size: var(--text-support); }
+.allocation-record p { margin: 6px 0; }
+.allocation-current { color: var(--muted); }
+.allocation-pagination { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-top: 16px; font-size: var(--text-support); }
+.evidence-details { border-top: 1px solid var(--border); margin-top: 12px; font-size: var(--text-support); }
+.evidence-details dl { margin: 4px 0; display: grid; gap: 14px; }
+.evidence-details dt { margin-bottom: 4px; color: var(--muted); font-size: var(--text-caption); }
+.evidence-details dd { margin: 0; overflow-wrap: anywhere; }
+.allocation-audit p { font-size: var(--text-support); color: var(--muted); }
+
+.ai-history-panel .ai-timeline > h3 { display: none; }
+.history-record-name { margin: 0 0 20px; font-size: var(--text-section); font-weight: 600; color: var(--heading); }
+.history-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin-bottom: 20px; }
+.history-filters label { display: grid; flex: 1 1 180px; gap: 6px; font-size: var(--text-support); color: var(--muted); }
+.history-filters :is(input, select) { width: 100%; margin: 0; height: 40px; }
+.history-filters > button { min-height: 40px; }
+.history-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 16px; background: var(--surface-subtle); border: 1px solid var(--border); border-radius: var(--radius-panel); font-size: var(--text-caption); color: var(--muted); }
+.history-summary strong { display: block; font-size: var(--text-title); font-weight: 500; color: var(--heading); }
+.history-scope, .history-note { font-size: var(--text-support); color: var(--muted); margin: 12px 0; }
+.attempt-list { display: grid; gap: 16px; margin-top: 20px; }
+.attempt-card { padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-panel); }
+.attempt-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; justify-content: space-between; color: var(--heading); }
+.attempt-heading strong { font-weight: 500; }
+.attempt-contact, .attempt-interval { font-size: var(--text-support); color: var(--muted); }
+.attempt-outcome { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: var(--text-support); }
+.attempt-card .evidence-details { overflow-wrap: anywhere; }
+.history-empty { padding: 24px 16px; background: var(--surface-subtle); border-radius: var(--radius-panel); color: var(--muted); }
+.history-about { margin-top: 24px; }
+
+/* Preview long text instead of allowing a transcript to set the row height.
+   Full evidence remains in Details; optional columns keep the same preview. */
+table.sheet:not(.task-sheet):not(.assignment-sheet) tbody td { padding-block: 8px; }
+table.sheet .record-preview { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+table.sheet .record-history { line-height: 1.5; }
+table.sheet .record-history .btn-row { white-space: nowrap; padding: 3px 8px; font-size: var(--text-caption); margin-top: 4px; }
+table.sheet .record-history small { font-size: var(--text-caption); }
+table.sheet .record-history > br { display: none; }
+table.sheet .record-history .inline-ai-history { display: block; }
+table.sheet:not(.task-sheet) .identity-owner .details-trigger { margin-top: 4px; padding: 2px 8px; }
+.wallet-balance { grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; padding-block: 6px; min-height: 42px; }
+.wallet-balance .wallet-meta { grid-column: 2; grid-row: 1; justify-self: end; font-size: var(--text-caption); }
+.wallet-balance > button { grid-column: 3; grid-row: 1; }
+.records-pagination { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 8px 20px; padding: 8px 14px; border-top: 1px solid var(--border); background: var(--surface); }
+.records-pagination .pager { flex: 1; border: 0; padding: 0; }
+.records-pagination .page-jump { margin: 0; font-size: var(--text-support); }
+.records-pagination .page-jump input { width: 55px; padding: 4px 6px; }
+.records-pagination .page-jump [role="alert"] { flex-basis: 100%; }
+.multi-caption, .multi-control-value { display: none; }
+.filter-choice { display: inline-flex; align-items: flex-start; min-width: 0; }
+.filter-fields .filter-choice { display: block; }
+.filter-fields .multi-caption { display: block; margin-bottom: 7px; font-size: var(--text-support); color: var(--muted); }
+.filter-fields .multi-control-label { display: none; }
+.filter-fields .multi-control-value { display: inline; }
+.filter-fields .filter-multi { border: 0; background: transparent; }
+.filter-fields .filter-multi > summary { border-color: var(--field-border); }
+.filter-fields > .filter-choice:has(input[name="warehouse_type"]) { grid-column: 1 / -1; }
+.search input, .chip select, .num-filter, .datefld, .filter-multi,
+.work-filter .field, .page-jump input, .team-range input { border-color: var(--field-border); }
+.modal-body { padding: var(--space-4); }
+.filter-fields { gap: var(--space-5) var(--space-4); }
+.attempt-list { gap: var(--space-4); margin-top: var(--space-5); }
+.attempt-card, .allocation-record { padding: var(--space-4); }
+.history-about { margin-top: var(--space-6); }
+/* Position hidden descriptive text within the scrolling table's bounds. */
+table.sheet { position: relative; }
+
+/* Calling assignments: keep the latest manual event with its result, and give
+   property facts and instructions a compact, consistent reading order. */
+.latest-manual-call { margin: 12px 0 8px; font-size: var(--text-support); line-height: 1.5; }
+.latest-manual-call > span:first-child { display: block; font-size: var(--text-caption); color: var(--muted); }
+.latest-manual-call strong { display: block; font-weight: 500; color: var(--heading); }
+.manual-call-due { display: block; margin-top: 4px; color: var(--muted); }
+.task-sheet .edit-first > .btn-row { margin-top: 8px; white-space: nowrap; }
+.task-sheet .notes-cell > select { margin-top: 8px; }
+@media (min-width: 761px) {
+  table.task-sheet tbody td { padding: 12px 10px; }
+  table.task-sheet tbody td.who { vertical-align: top; }
+  .work-content .work-context { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 8px; }
+  .work-content .work-fact { gap: 5px; }
+  .work-content .work-fact dt { min-width: 0; }
+  .work-content .work-assignment-note { padding: 6px 8px; margin-top: 8px; }
+  .work-content .work-assignment-note .work-note-label { font-weight: 500; }
+  .work-content .work-assignment-note .brief { margin-top: 2px; }
+  .work-content .work-assignment-note .brief-preview { -webkit-line-clamp: 2; }
+  .work-content .work-assigned-meta { margin-top: 6px; }
+  .work-content .work-ai { margin-top: 8px; gap: 6px; }
+  table.task-sheet .notes-field { min-height: 56px; }
+  table.task-sheet .notes-field:focus { min-height: 76px; }
+  table.task-sheet .edit-cell { background: var(--surface); }
+  table.task-sheet th.mine { background: var(--surface-subtle); color: var(--heading); }
+}
+
+@media (max-width: 600px) {
+  .wallet-balance { grid-template-columns: minmax(0, 1fr) auto; min-height: 0; }
+  .wallet-balance .wallet-meta { grid-column: 1 / -1; grid-row: 2; justify-self: start; }
+  .wallet-balance > button { grid-column: 2; }
+  .records-pagination { gap: 8px; padding: 8px; }
+  .records-pagination .pager { flex-basis: 100%; }
+  .records-pagination .page-jump { margin-left: auto; }
+  .filter-categories { padding-inline: 12px; }
+  .filter-fields { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .filter-fields :is(input:not([type="checkbox"]), select) { font-size: 16px; }
+  .allocation-record { padding: 12px; }
+  .allocation-record-heading { flex-direction: column; gap: 8px; }
+  .history-summary { gap: 8px; padding: 12px; }
+}

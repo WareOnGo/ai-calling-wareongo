@@ -134,7 +134,10 @@ test('open multi-select menus fit the mobile viewport and support keyboard dismi
   await page.setViewportSize({width: 390, height: 844});
   for (const path of ['/dashboard/raw', '/dashboard/calls', '/dashboard/assignments']) {
     await page.goto(path);await page.getByRole('button', {name: 'Toggle filters', exact: true}).click();
-    const menus = page.locator('details.filter-multi:visible');
+    const tabs=page.getByRole('tab');
+    for(let category=0;category<Math.max(1,await tabs.count());category++){
+    if(await tabs.count())await tabs.nth(category).click();
+    const menus = page.locator('.filter-panel details.filter-multi:visible');
     for (let i = 0; i < await menus.count(); i++) {
       const menu = menus.nth(i), summary = menu.locator('summary');await summary.click();
       const box = await menu.locator('fieldset').boundingBox();
@@ -145,8 +148,9 @@ test('open multi-select menus fit the mobile viewport and support keyboard dismi
       if (path === '/dashboard/calls' && i === 0) await shot(page, 'audit-open-filter-calls-result');
       await summary.click();
     }
+    }
   }
-  const summary = page.locator('details.filter-multi:visible').first().locator('summary');await summary.focus();await page.keyboard.press('Enter');
+  const summary = page.locator('.filter-panel details.filter-multi:visible').first().locator('summary');await summary.focus();await page.keyboard.press('Enter');
   await page.keyboard.press('Tab');await page.keyboard.press('Escape');
   await expect(page.locator('details.filter-multi[open]')).toHaveCount(0);await expect(summary).toBeFocused();
 });

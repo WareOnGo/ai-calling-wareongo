@@ -14,19 +14,19 @@ export async function TeamReport({viewer,filters,showEvidence=false}:{viewer:Vie
   <form action="/dashboard/team" className="team-range">
    <label>From <input aria-label="Report from" type="date" name="date_from" defaultValue={filters.date_from} required/></label>
    <label>To <input aria-label="Report to" type="date" name="date_to" defaultValue={filters.date_to} required/></label>
-   <button className="btn-primary" type="submit">Apply dates</button>
+   <button className="btn secondary" type="submit">Apply dates</button>
    {[['Today',dates.today,dates.today],['Yesterday',dates.yesterday,dates.yesterday],['Last 7 days',dates.week,dates.today],['This month',dates.month,dates.today]].map(([label,from,to])=><Link key={label} href={'/dashboard/team?'+new URLSearchParams({date_from:from,date_to:to})}>{label}</Link>)}
   </form>
   <p>Dates include full calendar days in India (IST). Call counts and connect rates cover logged manual calls only. Historical call counts are unknown; zero recorded calls does not mean no calls happened. Average duration uses optional self-reported seconds, with coverage shown below.</p>
   <p>Legacy references remain included when dated evidence exists. <Link href="/dashboard/assignments?quality_review=1">Review completion quality</Link></p>
   <div className="team-report-grid" tabIndex={0} aria-label="Team metrics table">
-   <table className="sheet"><thead><tr><th>Caller</th><th>Recorded attempts</th><th>Connect rate</th><th>First Available targets</th><th>Onboarded references</th><th>Average call duration</th></tr></thead>
+   <table className="sheet"><thead><tr><th>Caller</th><th>Recorded attempts</th><th>Connect rate</th><th>Average call duration</th><th>First Available targets</th><th>Onboarded references</th></tr></thead>
    <tbody>{people.map(p=>{const c=p.counts,attempts=c.attempts||0,connected=c.connected||0;return <tr key={p.email}>
     <td>{p.name||p.email}<small><br/>{p.email}{!p.active?' · Access removed':''}</small></td>
     <td>{cell(p.email,'attempts',c.attempts)}</td>
     <td>{attempts?`${Math.round(connected/attempts*100)}%`:'—'}<br/>{cell(p.email,'connected',connected)} / {cell(p.email,'attempts',attempts)}</td>
-    <td>{cell(p.email,'available',c.available)}</td><td>{cell(p.email,'onboarded',c.onboarded)}</td>
     <td>{p.average_seconds===null?'—':`${p.average_seconds.toFixed(1)}s`}<br/>{cell(p.email,'duration',p.duration_coverage)} / {cell(p.email,'connected',connected)} timed</td>
+    <td>{cell(p.email,'available',c.available)}</td><td>{cell(p.email,'onboarded',c.onboarded)}</td>
 
    </tr>})}</tbody></table>
   </div>

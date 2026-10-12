@@ -2,11 +2,11 @@ import Link from "next/link";
 
 // Share the notices with loading screens so the grid does not move on arrival.
 export function AiReviewNotice({ count }: { count: number | string }) {
-  return <p><Link href="/dashboard/calls?needs_review=1">Needs AI review: {count}</Link> — low-confidence inference; inspect the transcript or recording.</p>;
+  return <p className="page-notice"><Link href="/dashboard/calls?needs_review=1">Needs AI review: {count}</Link> — low-confidence inference; inspect the transcript or recording.</p>;
 }
 
 export function AssignmentNotices() {
-  return <p><Link href="/dashboard/assignments?quality_review=1">Review questionable completions</Link> · <Link href="/dashboard/assignments?follow_up=due">Follow-ups due</Link></p>;
+  return <p className="page-notice"><Link href="/dashboard/assignments?quality_review=1">Review questionable completions</Link> · <Link href="/dashboard/assignments?follow_up=due">Follow-ups due</Link></p>;
 }
 
 export function CallGridHint() {

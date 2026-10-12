@@ -180,13 +180,12 @@ test('filtered My Work loading uses the selected channel and real toolbar geomet
   try {
     await db.query('begin');await db.query('lock table bolna_assignments in access exclusive mode');
     await page.goto('/dashboard/my?type=call&city=Rajkot&outcome=none', {waitUntil: 'commit'});
-    await expect(page.locator('[data-loading-view="my"]')).toHaveCount(1);
-    await expect(page.locator('[data-loading-view="my"]')).toBeVisible();
+    await expect(page.locator('[data-loading-view="my"] .section-head:visible')).toHaveCount(1);
     await expect(page.locator('.worklist')).toHaveCount(1);
     // Hydration can replace the loading header after the locator resolves but
     // before boundingBox reads it. Measure a live header while the DB is locked.
     await expect.poll(async () => {
-      before = await page.locator('[data-loading-view="my"] .colheads').boundingBox();
+      before = await page.locator('[data-loading-view="my"] .section-head:visible').boundingBox();
       return before?.height ?? 0;
     }).toBeGreaterThan(0);
     await page.screenshot({path: 'shots/my-work-filtered-loading-390.png', animations: 'disabled'});
@@ -196,7 +195,7 @@ test('filtered My Work loading uses the selected channel and real toolbar geomet
   await expect(page.locator('.worklist')).toHaveCount(1);
   let after: {y:number;height:number}|null=null;
   await expect.poll(async () => {
-    after = await page.locator('.worklist .colheads').boundingBox();
+    after = await page.locator('.worklist .section-head:visible').boundingBox();
     return after?.height ?? 0;
   }).toBeGreaterThan(0);
   expect(Math.abs(after!.y - before!.y)).toBeLessThanOrEqual(2);

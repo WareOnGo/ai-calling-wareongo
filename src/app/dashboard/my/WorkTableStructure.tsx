@@ -4,16 +4,16 @@ import { hasWorkCriteria, workHref, WORK_SORT_LABELS, type WorkFilters } from "@
 
 export function WorkColumns() {
   return <colgroup>
-    <col style={{ width: 32 }} /><col style={{ width: "22%" }} />
-    <col style={{ width: 170 }} /><col style={{ width: 140 }} /><col />
-    <col style={{ width: 88 }} /><col style={{ width: 90 }} /><col style={{ width: 110 }} />
+    <col className="rowgutter" style={{ width: 32 }} /><col style={{ width: "22%" }} />
+    <col style={{ width: 170 }} /><col style={{ width: 162 }} /><col />
+    <col style={{ width: 88 }} /><col style={{ width: 90 }} /><col style={{ width: 116 }} />
   </colgroup>;
 }
 
 export function WorkHeaders() {
   return <thead><tr className="colheads">
     <th className="rowgutter" aria-label="Row" /><th>Who to call</th><th>Phone / AI status</th>
-    <th className="mine mine-first"><IconPencil size={12} />Result</th>
+    <th className="mine mine-first"><IconPencil size={12} />Manual result</th>
     <th className="mine">Your notes</th><th className="mine">In DB?</th>
     <th className="mine">WH ID</th><th className="mine">Finished?</th>
   </tr></thead>;

@@ -5,18 +5,18 @@ import { CONTAINER,BASE_URL } from '../lib/env.mjs';
 const sql = (statement: string) => execFileSync('podman', ['exec', '-i', CONTAINER, 'psql', '-U', 'postgres', '-v', 'ON_ERROR_STOP=1', '-q', '-c', statement]);
 const ownCall = 'c0000000-0000-4000-8000-000000000002';
 
-test('assignee and expandable follow-up notes lead the assignment table', async ({adminPage: page, shot}) => {
+test('contact identity leads assignments and follow-up notes remain expandable', async ({adminPage: page, shot}) => {
   sql("update bolna_assignments set remarks = repeat('Owner confirmed the warehouse is available. ', 12) || 'Final inspection booked.' where id = 1");
   await page.goto('/dashboard/assignments');
-  await expect(page.locator('.colheads th').nth(1)).toHaveText('Assignee');
-  await expect(page.locator('.colheads th').nth(2)).toHaveText('Notes');
+  await expect(page.locator('.colheads th').nth(1)).toHaveText('Who');
+  await expect(page.locator('.colheads th').nth(2)).toHaveText('Phone');
   await expect(page.locator('.filter-multi summary').filter({hasText:'Assignee'})).toBeVisible();
   await expect(page.locator('.filter-multi summary').filter({hasText:'Status'})).toBeVisible();
   const notes = page.locator('.assignment-notes').filter({hasText: 'Final inspection booked.'});
   await notes.getByRole('button', {name: 'Show more'}).click();
   await expect(notes.locator('.notes-preview')).toHaveCount(0);
   await expect(notes.getByRole('button', {name: 'Show less'})).toHaveAttribute('aria-expanded', 'true');
-  await shot(page, 'assignments-assignee-first');
+  await shot(page, 'assignments-contact-first');
   const person = page.locator('tbody .assignment-person').first();
   const left = (await person.boundingBox())!.x;
   await page.locator('.gridwrap').evaluate(el => el.scrollLeft = 650);
@@ -43,7 +43,7 @@ test('assignment search includes display names and original brief', async ({admi
   await expect(page.locator('tbody:visible')).toContainText('Suresh Kumar');
   await page.goto('/dashboard/assignments?q=follow%20up%20on%20rent');
   await expect(page.locator('tbody tr')).toHaveCount(1);
-  await expect(page.locator('tbody .pill-call')).toBeVisible();
+  await page.locator('details.column-menu:not(.views-menu) summary').click();await page.getByRole('checkbox',{name:'Channel',exact:true}).check();await expect(page.locator('tbody .pill-call')).toBeVisible();
 });
 
 test('admin employee view scopes pages and APIs and survives a reload', async ({adminPage: page, shot}) => {

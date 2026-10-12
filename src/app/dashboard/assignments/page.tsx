@@ -17,12 +17,12 @@ import { AssignmentNotes } from "./AssignmentNotes";
 import { ReopenAssignment } from "../ReopenAssignment";
 import { UnassignButton } from "../UnassignButton";
 import { CopyText } from "../CopyText";
-import { GridInteractivity } from "../GridInteractivity";
 import { IconClipboard } from "../icons";
 
 export const dynamic = "force-dynamic";
 
-// Keep the assignee and their follow-up notes first; history stays newest first.
+// Read each assignment as contact, ownership, results, then follow-up actions.
+// History stays newest first.
 
 // "2h ago" beats "4 Sept 2026, 12:24 am" in a log you scan top-down — and every row
 // carried the same long stamp. The exact time stays in the title attribute.
@@ -103,21 +103,22 @@ export default async function Assignments({
             {rows.map((r, i) => (
               <tr key={r.id} className={r.state === "dropped" ? "row-muted" : undefined}>
                 <td className="rownum">{startRow + i + 1}</td>
+                <td className="assignment-subject identity-owner">{r.subject ?? <span className="muted">—</span>} <RecordDetails id={r.entity_id} entity={r.entity_type} /></td>
+                <td><CopyText value={r.phone} label="phone number" /></td>
+                <td>{r.city ?? <span className="muted">—</span>}</td>
+                <td><span className={`pill pill-${r.entity_type}`}>{r.entity_type === "record" ? "manual" : "AI call"}</span></td>
                 <td className="assignment-person" title={r.assignee}>
                   <Link className="assignee-name" href={qs(sp, { assignee: r.assignee, page: undefined })} title={`Show assignments for ${r.assignee_name || r.assignee}`}>{r.assignee_name || r.assignee}</Link>
                   {r.assignee_name && <span className="assignee-email">{r.assignee}</span>}
                 </td>
-                <td className="assignment-note-cell"><AssignmentNotes text={r.remarks} /><p className="muted">{dispositionLabel(r.disposition)}{r.closure_reason==='exhausted'&&' · Exhausted'}{r.next_due_at&&<><br/>Due {fmt(r.next_due_at)}</>}</p></td>
-                <td><span className={`pill pill-${r.state}`}>{r.state === "dropped" ? "unassigned" : r.state}</span></td>
-                <td>{resultCell(r)}</td><td title={r.entity_type === "record" ? "AI context from a shared phone; may describe another property" : "AI result for this execution"}>{r.ai_availability||"No AI result"}{r.entity_type === "record" && r.ai_availability && <small> · contact context</small>}</td>
-                <td className="assignment-subject">{r.subject ?? <span className="muted">—</span>} <RecordDetails id={r.entity_id} entity={r.entity_type} /></td>
-                <td><CopyText value={r.phone} label="phone number" /></td>
-                <td>{r.city ?? <span className="muted">—</span>}</td>
-                <td><span className={`pill pill-${r.entity_type}`}>{r.entity_type === "record" ? "manual" : "AI call"}</span></td>
                 <td title={`${fmt(r.assigned_at)} · Assigned by ${r.assigned_by}`} className="assignment-date nowrap">{ago(r.assigned_at)}</td>
+                <td><span className={`pill pill-${r.state}`}>{r.state === "dropped" ? "unassigned" : r.state}</span></td>
+                <td className="assignment-brief">{r.note || <span className="muted">—</span>}</td>
+                <td title={r.entity_type === "record" ? "AI context from a shared phone; may describe another property" : "AI result for this execution"}>{r.ai_availability||"No AI result"}{r.entity_type === "record" && r.ai_availability && <small className="record-meta">contact context</small>}</td>
+                <td>{resultCell(r)}<span className="record-meta">{dispositionLabel(r.disposition)}{r.closure_reason==='exhausted'&&' · Exhausted'}{r.next_due_at&&<><br/>Due {fmt(r.next_due_at)}</>}</span></td>
+                <td className="assignment-note-cell"><AssignmentNotes text={r.remarks} /></td>
                 <td>{r.added_to_db ? <span className="pill pill-available">yes</span> : <span className="muted">no</span>}</td>
                 <td>{r.wh_id ?? <span className="muted">—</span>}</td>
-                <td className="assignment-brief">{r.note || <span className="muted">—</span>}</td>
                 <td className="actions">
                   {r.state === "done" && <ReopenAssignment id={r.id} revision={r.revision}/>}<RecordDetails id={r.entity_id} entity={r.entity_type} label="History"/>
                   {r.state === "open" && <UnassignButton id={r.id} who={r.assignee_name || r.assignee} />}
@@ -128,7 +129,7 @@ export default async function Assignments({
         </table>
       </div>
 
-      <div className="pager">
+      <div className="records-pagination"><div className="pager">
         <span className="muted">
           {total === 0 ? "No assignments"
             : `${(startRow + 1).toLocaleString()}–${Math.min(startRow + HISTORY_PAGE_SIZE, total).toLocaleString()} of ${total.toLocaleString()}`}
@@ -143,8 +144,8 @@ export default async function Assignments({
         </div>
       </div>
 
-      <PageJump key={page} page={page} pages={pages}/>
-      <GridInteractivity key={JSON.stringify(sp)} />
+      <PageJump key={page} page={page} pages={pages}/></div>
+
     </SelectionProvider>
   );
 }

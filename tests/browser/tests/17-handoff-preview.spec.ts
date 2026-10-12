@@ -9,15 +9,15 @@ test('handoff preview shows manual follow-up states, completed outcomes and exac
   await page.goto('/dashboard/raw');await page.getByRole('button',{name:'Assign',exact:true}).click();
   let modal=page.getByRole('dialog');await expect(modal).toContainText('AI connection status:');
   await modal.getByText('Inspect selected records and planned actions').click();
-  const current=modal.locator('tbody tr').filter({hasText:'9811100001'});
+  const current=modal.locator('.allocation-record').filter({hasText:'9811100001'});
   await expect(current).toContainText('priya@eval.test · open');await expect(current).toContainText('Call back later');
-  await expect(current).toContainText('Due');await expect(current.locator('td').nth(3)).toContainText('busy · No AI result');
+  await expect(current).toContainText('Due');await expect(current).toContainText('busy · No AI result');
   await expect(current).toContainText('Latest contact context');
-  const completed=modal.locator('tbody tr').filter({hasText:'9811100002'});await expect(completed.locator('td').nth(4)).toContainText('priya@eval.test · 1 done');await expect(completed.locator('td').nth(4)).toContainText('Available');
+  const completed=modal.locator('.allocation-record').filter({hasText:'9811100002'});await expect(completed).toContainText('priya@eval.test · 1 done');await expect(completed).toContainText('Available');
   await page.setViewportSize({width:390,height:844});expect(await bodyOverflowsX(page)).toBe(false);await shot(page,'handoff-reaudit-preview-status');
-  await page.goto('/dashboard/calls?availability=Available');await page.getByRole('button',{name:'Assign',exact:true}).click();
+  await modal.getByRole('button',{name:'Cancel',exact:true}).click();await page.goto('/dashboard/calls?availability=Available');await page.getByRole('button',{name:'Assign',exact:true}).click();
   modal=page.getByRole('dialog');await expect(modal).toContainText('AI connection status: completed: 1');await modal.getByText('Inspect selected records and planned actions').click();
-  await expect(modal.locator('tbody tr').first().locator('td').nth(3)).toContainText('completed · Available');await expect(modal).toContainText('Selected execution');
+  await expect(modal.locator('.allocation-record').first()).toContainText('completed · Available');await expect(modal).toContainText('Selected execution');
 });
 
 test('preview reconciles missing phones, active owners, AI history and round-robin allocation',async({adminPage:page,shot})=>{
@@ -28,12 +28,12 @@ test('preview reconciles missing phones, active owners, AI history and round-rob
   await expect(modal.getByRole('region',{name:'Assignment preview'})).toContainText('2 eligible of 6 rows');
   await expect(modal).toContainText('1 missing valid phone');
   await expect(modal.locator('select')).toContainText('done today');
-  await modal.getByLabel('Round-robin across selected callers').check();
+  await modal.getByText('Assignment options', {exact:true}).click();await modal.getByLabel('Round-robin across selected callers').check();
   await modal.getByLabel(/Raj Eval/).check();
   await expect(modal).toContainText('New work for priya@eval.test: 1');
   await expect(modal).toContainText('New work for raj@eval.test: 1');
   await modal.getByText('Inspect selected records and planned actions').click();
-  await expect(modal.locator('tbody tr')).toHaveCount(6);
+  await expect(modal.locator('.allocation-record')).toHaveCount(6);
   await shot(page,'handoff-b-preview');
   await modal.getByRole('button',{name:'Assign 2',exact:true}).click();
   await expect(modal.locator('.assign-done')).toContainText('Assigned 2');

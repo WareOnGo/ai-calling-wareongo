@@ -7,9 +7,7 @@ import { Dialog } from "./Dialog";
 import { useSelection } from "./Selection";
 import { useDashboardUI } from "./DashboardUI";
 import { requestJson } from "./requests";
-import { dateTime } from "@/lib/display";
-import { DISPOSITION_LABELS, type Disposition } from "@/lib/manual-dispositions";
-const dispositionLabel=(value:string|null)=>value?(DISPOSITION_LABELS[value as Disposition]||value):"No recorded disposition";
+import { AllocationRecords } from "./AllocationRecords";
 export type Assignee = { email: string; name: string | null };
 type Preview = AllocationPreview & { workloads: AssigneeWorkload[] };
 export function AssignButton({ entity, total, assignees }: { entity: "record" | "call"; total: number; assignees: Assignee[] }) {
@@ -53,7 +51,7 @@ export function AssignButton({ entity, total, assignees }: { entity: "record" | 
   }
   return <>
     <button type="button" className="btn-assign" onClick={openModal} disabled={!total || !assignees.length || pending} title={!assignees.length ? "No active users — add them under Team" : `Assign ${selection.count} ${label}(s)`}><IconUsers size={15} />Assign</button>
-    {open && <Dialog title={<><IconUsers size={16} />Assign {label}s</>} onClose={() => setOpen(false)} busy={busy}>
+    {open && <Dialog className="assignment-dialog" title={<><IconUsers size={16} />Assign {label}s</>} onClose={() => setOpen(false)} busy={busy}>
       {result ? <>
         <div className="modal-body"><p className="assign-done">Assigned <strong>{result.assigned.toLocaleString()}</strong> {label}(s){Object.keys(result.perCaller).length === 1 && <> to <strong>{Object.keys(result.perCaller)[0]}</strong></>}.</p>
           <ul className="assign-summary">
@@ -71,39 +69,35 @@ export function AssignButton({ entity, total, assignees }: { entity: "record" | 
             <label className={scope === "selected" ? "active" : undefined}><input type="radio" name="assign-scope" checked={scope === "selected"} disabled={!selIds.length} onChange={() => { change(); setScope("selected"); selection.setAllMatching(false); }} />{selIds.length} selected on this page</label>
             <label className={scope === "all" ? "active" : undefined}><input type="radio" name="assign-scope" checked={scope === "all"} onChange={() => { change(); setScope("all"); selection.setAllMatching(true); }} />All {total.toLocaleString()} matching the current filters</label>
           </div>
-          <label className="assign-distribution"><input type="checkbox" checked={roundRobin} onChange={e => { change(); setRoundRobin(e.target.checked); if (!callers.length) setCallers([assignee].filter(Boolean)); }} />Round-robin across selected callers</label>
+
           {roundRobin ? <fieldset><legend>Callers — distributes new tasks evenly</legend>{assignees.map(person => {
             const w = preview?.workloads.find(w => w.email === person.email);
             return <label className="assign-check" key={person.email}><input type="checkbox" checked={callers.includes(person.email)} onChange={e => { change(); setCallers(e.target.checked ? [...callers, person.email] : callers.filter(email => email !== person.email)); }} />{person.name || person.email}{w && ` · ${w.open} open · ${w.done_today} done today`}</label>;
           })}</fieldset> : <label className="assign-field"><span>Assign to</span><select value={assignee} onChange={e => { change(); setAssignee(e.target.value); }}><option value="">Choose someone…</option>{assignees.map(person => { const w = preview?.workloads.find(w => w.email === person.email); return <option key={person.email} value={person.email}>{person.name ? `${person.name} — ${person.email}` : person.email}{w ? ` · ${w.open} open · ${w.done_today} done today` : ""}</option>; })}</select></label>}
           <label className="assign-field"><span>Note (optional)</span><input value={note} onChange={e => { setNote(e.target.value); setIntentKey(crypto.randomUUID()); }} placeholder="e.g. verify area + rent before adding to DB" /></label>
-          <label className="assign-check"><input type="checkbox" checked={reassign} onChange={e => { change(); setReassign(e.target.checked); }} />Reassign rows already owned by someone else</label>
+          <details className="assignment-options"><summary>Assignment options</summary><label className="assign-distribution"><input type="checkbox" checked={roundRobin} onChange={e => { change(); setRoundRobin(e.target.checked); if (!callers.length) setCallers([assignee].filter(Boolean)); }} />Round-robin across selected callers</label><label className="assign-check"><input type="checkbox" checked={reassign} onChange={e => { change(); setReassign(e.target.checked); }} />Reassign rows already owned by someone else</label></details>
         </fieldset>
           {!preview && !error && people.length > 0 && <p role="status">Checking ownership and caller workloads…</p>}
           {preview && <section aria-label="Assignment preview" className="assignment-preview">
-            <p><strong>{preview.eligible} eligible</strong> of {preview.requested} rows · {preview.uniquePhones} unique phones · {preview.validPhones} rows with valid phones</p>
+            <div className="allocation-summary"><strong>{preview.eligible} eligible</strong> of {preview.requested} rows</div>
+            <div className="allocation-impact">{preview.owned > 0 && <span>{preview.owned} kept with current owners</span>}{preview.duplicateContacts > 0 && <span>{preview.duplicateContacts} duplicate targets</span>}{preview.missingPhone > 0 && <span>{preview.missingPhone} missing valid phone</span>}</div>
+            {Object.entries(preview.perCaller).map(([email, n]) => <p className="allocation-recipient" key={email}>New work for {email}: <strong>{n}</strong></p>)}
+            {preview.capped && <p role="status">Preview limited to 20,000 rows. Narrow your filters.</p>}
+            <details className="allocation-inspection"><summary>Inspect selected records and planned actions</summary>
+              <details className="evidence-details allocation-audit"><summary>AI and ownership breakdown</summary>
+            <p>{preview.uniquePhones} unique phones · {preview.validPhones} rows with valid phones</p>
             <p>{preview.owned} kept with current owners · {preview.duplicateContacts} duplicate targets · {preview.missingPhone} missing valid phone</p>
             <p>{preview.completedHistory} with completed history. AI history: {Object.entries(preview.aiResults).map(([result, n]) => `${result}: ${n}`).join("; ") || "none"}. These sets can overlap.</p>
             <p>AI connection status: {Object.entries(preview.aiStatuses).map(([status,n])=>`${status}: ${n}`).join("; ")||"No execution records"}. Counts refer to selected rows with execution history, not confirmed dials.</p>
             {Object.entries(preview.ownerCounts).map(([email, n]) => <p key={email}>Currently owned by {email}: {n} selected rows</p>)}
             {Object.entries(preview.completedOwners).map(([email,n]) => <p key={`completed-${email}`}>Completed episodes by {email}: {n}</p>)}
-            {Object.entries(preview.perCaller).map(([email, n]) => <p key={email}>New work for {email}: <strong>{n}</strong></p>)}
-            {preview.capped && <p role="status">Preview limited to 20,000 rows. Narrow your filters.</p>}
-            <details open><summary>Inspect selected records and planned actions</summary>
-              <div style={{ overflowX: "auto", maxHeight: 300 }}><table><thead><tr><th>Record / phone</th><th>Current owner / manual status</th><th>Action</th><th>AI status / result</th><th>Completed manual history</th></tr></thead><tbody>
-                {preview.items.slice(previewPage * 50, previewPage * 50 + 50).map(item => <tr key={item.id}>
-                  <td>{item.id.slice(0, 8)}<br />{item.phones.join(", ") || "No valid phone"}</td>
-                  <td>{item.owners.length?item.owners.map(owner=><p key={owner.id}>{owner.assignee} · {owner.state}<br/>{owner.outcome||"No manual result"} · {dispositionLabel(owner.disposition)}{owner.next_due_at&&<><br/>Due {dateTime(owner.next_due_at)}</>}</p>):"Unassigned"}</td>
-                  <td>{item.disposition}{item.assignee && <><br />{item.assignee}</>}</td>
-                  <td>{item.ai?<>{item.ai.status||"Unknown status"} · {item.ai.result||"No AI result"}<br/>{item.ai.known_attempts} known provider attempts<br/>{item.ai.scope==='execution'?'Selected execution':'Latest contact context — may describe another property'}{item.ai.recorded_at&&<><br/>Execution recorded {dateTime(item.ai.recorded_at)}</>}</>:"No AI execution history"}</td>
-                  <td>{item.completed_by.length?item.completed_by.map((owner,i)=><p key={i}>{owner.assignee} · {owner.count} done<br/>{owner.outcome||"No manual result"} · {dispositionLabel(owner.disposition)}</p>):"No completed history"}</td>
-                </tr>)}
-              </tbody></table></div>
-              <button type="button" disabled={previewPage === 0} onClick={() => setPreviewPage(p => p - 1)}>Previous records</button><span> Page {previewPage + 1} of {Math.max(1, Math.ceil(preview.items.length / 50))} </span><button type="button" disabled={(previewPage + 1) * 50 >= preview.items.length} onClick={() => setPreviewPage(p => p + 1)}>Next records</button>
+              </details>
+              <AllocationRecords items={preview.items.slice(previewPage * 50, previewPage * 50 + 50)} />
+              <div className="allocation-pagination">              <button type="button" disabled={previewPage === 0} onClick={() => setPreviewPage(p => p - 1)}>Previous records</button><span> Page {previewPage + 1} of {Math.max(1, Math.ceil(preview.items.length / 50))} </span><button type="button" disabled={(previewPage + 1) * 50 >= preview.items.length} onClick={() => setPreviewPage(p => p + 1)}>Next records</button></div>
             </details>
           </section>}
           {error && <p className="assign-error" role="alert">{error} <button type="button" disabled={busy} onClick={() => setRetry(n => n + 1)}>Refresh preview</button></p>}</div>
-        <div className="modal-foot"><span className="muted">{count.toLocaleString()} {label}(s)</span><span className="spacer" /><button type="button" className="btn-text" disabled={busy} onClick={() => setOpen(false)}>Cancel</button><button type="button" className="btn-primary" disabled={busy || !preview || !count || !people.length} onClick={submit}>{busy ? "Assigning…" : `Assign ${preview?.eligible ?? count}`}</button></div>
+        <div className="modal-foot"><span className="muted">{count.toLocaleString()} {label}(s)</span><span className="spacer" /><button type="button" className="btn-text" disabled={busy} onClick={() => setOpen(false)}>Cancel</button><button type="button" className="btn-primary" disabled={busy || !preview || !preview.eligible || !count || !people.length} onClick={submit}>{busy ? "Assigning…" : `Assign ${preview?.eligible ?? count}`}</button></div>
       </>}
     </Dialog>}
   </>;

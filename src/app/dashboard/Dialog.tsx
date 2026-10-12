@@ -3,8 +3,8 @@
 import { createPortal } from "react-dom";
 import { useEffect, useId, useRef } from "react";
 
-export function Dialog({ title, onClose, busy = false, wide = false, drawer = false, children }: {
-  title: React.ReactNode; onClose: () => void; busy?: boolean; wide?: boolean; drawer?: boolean; children: React.ReactNode;
+export function Dialog({ title, onClose, busy = false, wide = false, drawer = false, className = "", children }: {
+  title: React.ReactNode; onClose: () => void; busy?: boolean; wide?: boolean; drawer?: boolean; className?: string; children: React.ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const closeRef = useRef(onClose); closeRef.current = onClose;
@@ -15,7 +15,7 @@ export function Dialog({ title, onClose, busy = false, wide = false, drawer = fa
     dialog.showModal();
     return () => { dialog.close(); if (trigger?.isConnected) trigger.focus({ preventScroll: true }); };
   }, []);
-  return typeof document === "undefined" ? null : createPortal(<dialog ref={ref} tabIndex={-1} className={`app-dialog modal${wide ? "" : " confirm-modal"}${drawer ? " details-drawer" : ""}`} role="dialog" aria-modal="true" aria-labelledby={id} aria-busy={busy}
+  return typeof document === "undefined" ? null : createPortal(<dialog ref={ref} tabIndex={-1} className={`app-dialog modal${wide ? "" : " confirm-modal"}${drawer ? " details-drawer" : ""} ${className}`} role="dialog" aria-modal="true" aria-labelledby={id} aria-busy={busy}
     onKeyDown={e => {
       if (e.key !== 'Tab') return;
       const elements = [...e.currentTarget.querySelectorAll<HTMLElement>('button,input,select,textarea,a[href],audio[controls],[tabindex]')].filter(el => !el.matches(':disabled') && el.tabIndex >= 0 && el.getClientRects().length > 0);

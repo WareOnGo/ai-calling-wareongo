@@ -1,6 +1,7 @@
 "use client";
 
 import { FilterForm } from "../FilterForm";
+import { FilterPanel } from "../FilterPanel";
 import { FiltersToggle } from "../FiltersToggle";
 import { ApplyButton } from "../ApplyButton";
 import { IconFilter } from "../icons";
@@ -25,7 +26,7 @@ export function WorkFilters({ filters, assigners = [], loading = false }: { filt
     {loading ? <button className={`filters-toggle${moreCount ? " active" : ""}`} type="button" disabled><IconFilter size={15} />More filters{moreCount > 0 && <span className="fbadge">{moreCount}</span>}</button> : <FiltersToggle label="More filters" count={moreCount} />}
     {loading ? <button type="button" className="btn apply-button" disabled>Apply</button> : <ApplyButton />}
     <span className="spacer" /><a className="btn-text" href={loading ? undefined : workHref({ view: filters.view })}>Reset</a>
-    {!loading && <div className="filters-panel work-more-filters" id="filters-panel">
+    {!loading && <FilterPanel groups={[{ label: "More filters", content: <>
       <label className="work-filter"><span>City</span><input className="field" name="city" aria-label="Filter by city" defaultValue={filters.city || ""} placeholder="Any city" /></label>
       <label className={`work-filter chip${filters.assigned_by ? " active" : ""}`}><span>Assigned by</span><select aria-label="Assigned by" name="assigned_by" defaultValue={filters.assigned_by || ""}>
         <option value="">Anyone</option>{people.map(person => <option value={person.email} key={person.email}>{person.name || person.email}</option>)}
@@ -36,7 +37,7 @@ export function WorkFilters({ filters, assigners = [], loading = false }: { filt
       <label className={`work-filter chip${filters.sort ? " active" : ""}`}><span>Sort</span><select aria-label="Sort my work" name="sort" defaultValue={filters.sort || ""}>
         <option value="">{WORK_SORT_LABELS.newest}</option><option value="oldest">{WORK_SORT_LABELS.oldest}</option><option value="name">{WORK_SORT_LABELS.name}</option>
       </select></label>
-    </div>}
+    </> }]} />}
   </>;
   if (!loading) return <FilterForm action="/dashboard/my" className="work-filters" applied={filters} preserveKeys={["view"]} labels={WORK_FILTER_LABELS} formatValue={workFilterValue}>{controls}</FilterForm>;
   const active = Object.entries(filters).filter(([key]) => WORK_FILTER_LABELS[key]);

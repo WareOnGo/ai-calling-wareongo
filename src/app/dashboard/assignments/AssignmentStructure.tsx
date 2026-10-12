@@ -5,7 +5,7 @@ import { ASSIGNMENT_COLUMNS, ASSIGNMENT_WIDTHS } from "../sheet-columns";
 const WIDTHS = [32, ...ASSIGNMENT_COLUMNS.map(name => ASSIGNMENT_WIDTHS[name])];
 
 export function AssignmentColumns({widths=WIDTHS,hidden=[]}:{widths?:number[];hidden?:string[]}={}) {
-  return <colgroup>{widths.map((width,index)=><col key={index} className={hidden.includes(ASSIGNMENT_COLUMNS[index-1])?"column-hidden":undefined} style={{width}}/>)}</colgroup>;
+  return <colgroup>{widths.map((width,index)=><col key={index} className={index === 0 ? "rowgutter" : hidden.includes(ASSIGNMENT_COLUMNS[index-1]) ? "column-hidden" : undefined} style={{width}}/>)}</colgroup>;
 }
 
 export function AssignmentHeaders({hidden=[]}:{hidden?:string[]}={}) {

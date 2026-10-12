@@ -17,7 +17,7 @@ import { AssignmentColumns, AssignmentHeaders, AssignmentStats } from "./assignm
 import { AssignmentFilters } from "./assignments/AssignmentFilters";
 import { FILTER_LABELS, filterLabel, filterValue } from "./filter-labels";
 import {
-  ASSIGNMENT_COLUMNS, CALL_COLUMNS, CALL_GROUPS, RAW_COLUMNS, RAW_GROUPS,
+  ASSIGNMENT_COLUMNS, callColumns, RAW_COLUMNS,
   defaultColumnWidth, readColumnPreferences,
 } from "./sheet-columns";
 import { IconClipboard, IconDataset, IconDownload, IconFilter, IconPhone, IconPhoneOutgoing, IconPlus, IconUsers } from "./icons";
@@ -55,7 +55,7 @@ function LoadingFilters({ view, admin }: { view: "calls" | "raw" | "assignments"
       <span className="spacer" />
       {view !== "assignments" && <button type="button" className="btn-export" disabled><IconDownload size={15} />Export CSV</button>}
       {view !== "assignments" && admin && <button type="button" className="btn-assign" disabled><IconUsers size={15} />Assign</button>}
-      {view === "raw" && <button type="button" className="btn-export" disabled><IconPhoneOutgoing size={15} />Queue for calling</button>}
+      {view === "raw" && <button type="button" className="btn-export btn-dispatch" disabled><IconPhoneOutgoing size={15} />Queue for calling</button>}
       <a className="btn-text">Reset</a>
       <details className="column-menu views-menu"><summary>Views</summary></details>
     </div>
@@ -74,38 +74,30 @@ function LoadingPager() {
 }
 
 function LoadingSheet({ view, admin }: { view: "calls" | "raw"; admin: boolean }) {
-  const columns = view === "calls" ? [...CALL_COLUMNS, ...(admin ? ["Assigned To"] : [])] : RAW_COLUMNS;
+  const columns = view === "calls" ? callColumns(admin) : RAW_COLUMNS;
   const selectable = view === "raw" || admin;
   const labels = ["Row", ...(selectable ? ["Select"] : []), ...columns];
-  const groups = view === "calls" ? CALL_GROUPS : RAW_GROUPS;
-  const [preferences, setPreferences] = useState<{ widths: number[]; hiddenColumns: string[]; expanded: string[] } | null>(null);
+  const [preferences, setPreferences] = useState<{ widths: number[]; hiddenColumns: string[] } | null>(null);
   const key = `${view}:${admin}`;
   useEffect(() => {
     const path = `/dashboard/${view}`;
     const preferences = readColumnPreferences(path, labels);
-    const expanded = groups.filter(group => {
-      try { return localStorage.getItem(`sheet-groups:${path}:${group.key}`) === "true"; }
-      catch { return false; }
-    }).map(group => group.key);
-    setPreferences({ ...preferences, expanded });
+    setPreferences(preferences);
     const initialStyles = document.getElementById(`loading-column-styles-${view}`);
     if (initialStyles) initialStyles.textContent = "";
-    // Labels and groups only change with view/role.
+    // Labels only change with view/role.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
   function columnClass(label: string) {
     if (label === "Row") return "rowgutter";
     if (label === "Select") return "selcol";
-    const group = groups.find(group => group.members.includes(label));
-    const toggle = groups.find(group => group.toggle === label);
-    return [group ? `${group.key}-col` : "", toggle ? `${toggle.key}-toggle grp-toggle` : "", preferences?.hiddenColumns.includes(label) ? "column-hidden" : ""].join(" ");
+    return preferences?.hiddenColumns.includes(label) ? "column-hidden" : "";
   }
-  const collapsed = groups.filter(group => !preferences?.expanded.includes(group.key)).map(group => `${group.key}-collapsed`).join(" ");
   return <div className="gridwrap">
-    <table className={`sheet resizable loading-sheet ${collapsed}`}>
+    <table className="sheet resizable loading-sheet">
       <colgroup>{labels.map((label, index) => <col key={label} className={columnClass(label)} style={{ width: preferences?.widths[index] ?? defaultColumnWidth(label) }} />)}</colgroup>
       <thead><tr className="colheads">{labels.map(label => <th key={label} className={columnClass(label)}>
-        {label === "Row" ? null : label === "Select" ? <input type="checkbox" className="selall" disabled /> : <>{label}{groups.some(group => group.toggle === label) && <span className="grp-caret" />}</>}
+        {label === "Row" ? null : label === "Select" ? <input type="checkbox" className="selall" disabled /> : label}
       </th>)}</tr></thead>
       <tbody>{Array.from({ length: 10 }, (_, row) => <tr className="skeleton-row" key={row}>
         {labels.map((label, index) => <td key={label} className={label === "Row" ? "rownum" : columnClass(label)}>
@@ -134,11 +126,11 @@ function LoadingWork() {
             <td className="rownum"><Placeholder width={10} /></td>
             <td className="who"><div className="work-person-heading"><span className="who-name"><Placeholder width="85%" height={14} /></span><span className="btn-row details-trigger loading-detail-button">Details</span></div><WorkContext loading /><div className="work-assignment-note"><span className="work-note-label"><IconClipboard size={12} />Assigner&apos;s note</span><span className="brief"><Placeholder width="90%" /></span></div><div className="work-assigned-meta"><Placeholder width="65%" /><Placeholder width={35} /></div></td>
             <td className="work-phone"><Placeholder width="90%" /><AiCallStatus loading /></td>
-            <td className="edit-cell edit-first"><Placeholder width="100%" height={31} /></td>
-            <td className="edit-cell notes-cell"><Placeholder width="100%" height={58} /></td>
-            <td className="edit-cell center"><Placeholder width={48} height={14} /></td>
-            <td className="edit-cell"><Placeholder width="100%" height={31} /></td>
-            <td className="edit-cell"><Placeholder width="100%" height={28} /></td>
+            <td data-label="Result" className="edit-cell edit-first"><Placeholder width="100%" height={31} /></td>
+            <td data-label="Your notes" className="edit-cell notes-cell"><Placeholder width="100%" height={58} /></td>
+            <td data-label="In DB?" className="edit-cell center"><Placeholder width={48} height={14} /></td>
+            <td data-label="WH ID" className="edit-cell"><Placeholder width="100%" height={31} /></td>
+            <td data-label="Finished?" className="edit-cell"><Placeholder width="100%" height={28} /></td>
           </tr>)}</tbody>
         </table></div>
       </section>)}

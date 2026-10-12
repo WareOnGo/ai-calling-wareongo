@@ -1,11 +1,11 @@
 import {dispositionLabel} from "@/lib/manual-dispositions";
-import {InlineAiTimeline} from '../AiTimeline';
+import {AiHistoryButton} from '../AiTimeline';
 import { firstValue, searchQuery, type SearchValues } from "@/lib/filter-values";
 import { MultiSelect } from "../MultiSelect";
 import { PageJump } from "../PageJump";
 import { WalletBalance } from "../WalletBalance";
 import { rawFiltersSchema } from "@/lib/filters";
-import { RAW_COLUMNS as COLUMNS, RAW_GROUPS as GROUPS } from "../sheet-columns";
+import { RAW_COLUMNS as COLUMNS } from "../sheet-columns";
 import { dateTime as fmtDate } from "@/lib/display";
 import { SelectionProvider, SelectionSummary } from "../Selection";
 import { ExportButton } from "../ExportButton";
@@ -17,11 +17,10 @@ import { getRawRecords, getRawFilterOptions, getQueuedNumberSet, type RawFilters
 import { requireAdmin } from "@/lib/auth";
 import { listAssignees } from "@/lib/users";
 import { AssignButton } from "../AssignButton";
-import { GridInteractivity } from "../GridInteractivity";
 import { ApplyButton } from "../ApplyButton";
-import { ColumnResize } from "../ColumnResize";
-import { GroupToggle } from "../GroupToggle";
+import { ColumnChooser } from "../ColumnChooser";
 import { IconDataset } from "../icons";
+import { FilterPanel } from "../FilterPanel";
 import { FiltersToggle } from "../FiltersToggle";
 import { QueueForCalling } from "../QueueForCalling";
 import { getConfiguredLanguages } from "@/lib/agents";
@@ -34,19 +33,6 @@ export const dynamic = "force-dynamic";
 // Admin-only page: this is the full scraped corpus with owner PII, and it's the
 // launch point for Bolna dispatch. Employees see their assigned slice at
 // /dashboard/my instead.
-
-
-// Collapsible "Calls" group: green toggle shows the call count; collapses the
-// call-history detail columns. Same pattern as the analytics view.
-
-function colClass(label: string): string | undefined {
-  for (const g of GROUPS) {
-    if (label === g.toggle) return `${g.key}-toggle grp-toggle`;
-    if (g.members.includes(label)) return `${g.key}-col`;
-  }
-  return undefined;
-}
-
 
 
 function hl(text: string | null | undefined, terms: string[]): React.ReactNode {
@@ -82,7 +68,7 @@ export default async function RawDataset({
     listAssignees(),
   ]);
 
-  const numCols = COLUMNS.length + 1; // + select col (group toggles count as one col each)
+  const numCols = COLUMNS.length + 1; // + selection column
   const startRow = (page - 1) * pageSize;
   const activeFilters = ["source", "state", "city", "contact", "called", "last_result", "min_area", "max_area", "has_phone", "assignee", "assignment_state", "manual_outcome", "onboarded", "warehouse_type"]
     .filter((k) => sp[k]).length;
@@ -102,44 +88,45 @@ export default async function RawDataset({
         <FiltersToggle count={activeFilters} />
         <ApplyButton />
 
-        <ColumnResize />
+        <ColumnChooser />
         <span className="spacer" />
         <ExportButton entity="raw" />
         <AssignButton entity="record" total={total} assignees={assignees} />
         <QueueForCalling availableLanguages={getConfiguredLanguages()} />
         <a className="btn-text" href="/dashboard/raw">Reset</a>
 
-        <div className="filters-panel" id="filters-panel">
+        <FilterPanel groups={[
+          { label: "Call outcome", count: ["last_result", "manual_outcome", "called"].filter(key => sp[key]).length, content: <>
             <MultiSelect name="last_result" label="Last result" value={sp.last_result} options={["Available","Unavailable","Unclear",{value:"none",label:"No AI result"}]}/>
-            <MultiSelect name="source" label="Source" value={sp.source} options={opts.sources}/>
-            <MultiSelect name="state" label="State" value={sp.state} options={opts.states}/>
-            <label className="chip"><span className="sr-only">City</span><input name="city" aria-label="City" placeholder="City" defaultValue={firstValue(sp.city) || ""}/></label>
-            <MultiSelect name="contact" label="Contact" value={sp.contact} options={[{value:"owner",label:"Owner"},{value:"broker",label:"Probable broker"}]}/>
             <MultiSelect name="manual_outcome" label="Manual result" value={sp.manual_outcome} options={["Available","Unavailable","Unclear",{value:"none",label:"No manual result"}]}/>
-            <input className="num-filter" type="number" aria-label="Minimum square feet" min="0" name="min_area" defaultValue={firstValue(sp.min_area)||""} placeholder="min sqft"/>
-            <input className="num-filter" type="number" aria-label="Maximum square feet" min="0" name="max_area" defaultValue={firstValue(sp.max_area)||""} placeholder="max sqft"/>
-            <div className="chip"><select name="onboarded" aria-label="Onboarded" defaultValue={firstValue(sp.onboarded)||""}><option value="">Any onboarding</option><option value="yes">Onboarded with WH ID</option><option value="no">Not onboarded</option></select></div>
-            <div className="chip"><select name="assignment_state" aria-label="Ownership" defaultValue={firstValue(sp.assignment_state)||""}><option value="">Any ownership</option><option value="unassigned">Unassigned now</option><option value="open">Open assignment</option><option value="done">Completed history</option><option value="never">Never assigned</option></select></div>
+            <label className="chip filter-field"><span>Called</span><select aria-label="Called" name="called" defaultValue={firstValue(sp.called)||""}><option value="">Called?</option><option value="no">Not called</option><option value="yes">Already called</option></select></label>
+          </> },
+          { label: "Property", count: ["city", "state", "source", "contact", "warehouse_type", "min_area", "max_area", "has_phone"].filter(key => sp[key]).length, content: <>
+            <label className="chip"><span>City</span><input name="city" aria-label="City" placeholder="City" defaultValue={firstValue(sp.city) || ""}/></label>
+            <MultiSelect name="state" label="State" value={sp.state} options={opts.states}/>
+            <MultiSelect name="source" label="Source" value={sp.source} options={opts.sources}/>
+            <MultiSelect name="contact" label="Contact" value={sp.contact} options={[{value:"owner",label:"Owner"},{value:"broker",label:"Probable broker"}]}/>
             <MultiSelect name="warehouse_type" label="Warehouse type" value={sp.warehouse_type} options={opts.warehouseTypes}/>
-            <div className="chip"><select aria-label="Called" name="called" defaultValue={firstValue(sp.called)||""}><option value="">Called?</option><option value="no">Not called</option><option value="yes">Already called</option></select></div>
+            <label className="filter-field"><span>Minimum square feet</span><input className="num-filter" type="number" aria-label="Minimum square feet" min="0" name="min_area" defaultValue={firstValue(sp.min_area)||""} placeholder="min sqft"/></label>
+            <label className="filter-field"><span>Maximum square feet</span><input className="num-filter" type="number" aria-label="Maximum square feet" min="0" name="max_area" defaultValue={firstValue(sp.max_area)||""} placeholder="max sqft"/></label>
             <label className="toggle"><input type="checkbox" name="has_phone" value="1" defaultChecked={sp.has_phone==="1"}/>Has phone</label>
+          </> },
+          { label: "Assignment", count: ["assignee", "assignment_state", "onboarded"].filter(key => sp[key]).length, content: <>
             <MultiSelect name="assignee" label="Assigned to" value={sp.assignee} options={[{value:"none",label:"Unassigned now"},...assignees.map(a=>({value:a.email,label:a.name||a.email}))]}/>
-        </div>
+            <label className="chip filter-field"><span>Ownership</span><select name="assignment_state" aria-label="Ownership" defaultValue={firstValue(sp.assignment_state)||""}><option value="">Any ownership</option><option value="unassigned">Unassigned now</option><option value="open">Open assignment</option><option value="done">Completed history</option><option value="never">Never assigned</option></select></label>
+            <label className="chip filter-field"><span>Onboarded</span><select name="onboarded" aria-label="Onboarded" defaultValue={firstValue(sp.onboarded)||""}><option value="">Any onboarding</option><option value="yes">Onboarded with WH ID</option><option value="no">Not onboarded</option></select></label>
+          </> },
+        ]} />
       </FilterForm>
 
       <SelectionSummary />
       <div className="gridwrap">
-        <table className="sheet calls-collapsed">
+        <table className="sheet">
           <thead>
             <tr className="colheads">
               <th className="rowgutter"></th>
               <th className="selcol"><input type="checkbox" className="selall" aria-label="Select all on this page" title="Select all on this page" /></th>
-              {COLUMNS.map((c) => {
-                const g = GROUPS.find((g) => g.toggle === c);
-                return g
-                  ? <GroupToggle key={c} group={g.key} label={c} />
-                  : <th key={c} data-column={c} className={colClass(c)}>{c}</th>;
-              })}
+              {COLUMNS.map(c => <th key={c} data-column={c}>{c}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -172,36 +159,35 @@ export default async function RawDataset({
                 </td>
                 <td className="identity-owner">{hl(r.owner_name, terms)} <RecordDetails id={r.id} entity="record" /></td>
                 <td><CopyText value={r.phone} display={hl(r.phone, terms)} label="phone number" /></td>
-                <td>{r.area_sqft ? Number(r.area_sqft).toLocaleString("en-IN") : ""}</td>
+                <td>{r.contact_type === "probable broker" ? <span className="review-tag">probable broker</span> : "owner"}</td>
+                <td>{hl(r.city, terms)}</td>
+                <td>{hl(r.state, terms)}</td>
+                <td className="clip" title={r.address ?? ""}><span className="record-preview">{hl(r.address, terms)}</span></td>
+                <td className="numeric-cell">{r.area_sqft ? Number(r.area_sqft).toLocaleString("en-IN") : ""}</td>
                 <td>{hl(r.source, terms)}</td>
                 <td className="clip" title={r.source_record_id ?? ""}>{r.source_record_id ?? ""}</td>
-                {/* Calls group (collapsible, middle) */}
-                <td className="calls-toggle" title="Open AI timeline for attempt history">
-                  {r.ai_attempt_count||0} outbound · {r.ai_inbound_count||0} inbound<small><br/>{r.call_count} execution records</small><br/><InlineAiTimeline entity="record" id={r.id}/>
+                {/* AI execution history */}
+                <td className="record-history" title="Open AI timeline for attempt history">
+                  {r.ai_attempt_count||0} outbound · {r.ai_inbound_count||0} inbound<small className="sr-only"> · {r.call_count} execution records</small>{(r.ai_attempt_count||0)+(r.ai_inbound_count||0)>0&&<AiHistoryButton entity="record" id={r.id} name={r.owner_name} executionCount={r.call_count}/>}
                 </td>
                 <td className="calls-col">{r.last_status ?? ""}</td>
                 <td className="calls-col">{r.last_availability ?? ""}</td>
                 <td className="calls-col">{fmtDate(r.last_called_at)}</td>
-                <td className="calls-col clip" title="Transcript preview; open Details for the full transcript">{r.last_transcript ?? ""}</td>
+                <td className="calls-col clip" title="Transcript preview; open Details for the full transcript"><span className="record-preview">{r.last_transcript ?? ""}</span></td>
                 <td className="calls-col">{r.last_recording_url ? <a href={r.last_recording_url} target="_blank" rel="noreferrer">Play</a> : ""}</td>
-                <td className="calls-col clip" title={r.last_notes ?? ""}>{r.last_notes ?? ""}</td>
-                <td><RecordDetails id={r.id} entity="record" label="Manual calls"/><br/>{r.manual_attempt_count||0} recorded in {r.assignment_state==='open'?'current':'latest'} assignment<br/>{r.assignment_outcome||"No manual result"}{r.manual_disposition&&<><br/>{dispositionLabel(r.manual_disposition)}</>}{r.assignment_closure_reason==='exhausted'&&<><br/>Closed: Exhausted</>}{r.manual_last_attempt_at&&<><br/>{fmtDate(r.manual_last_attempt_at)}</>}{r.manual_next_due_at&&<><br/>Due {fmtDate(r.manual_next_due_at)}</>}</td>
-                {/* location kept together */}
-                <td>{r.contact_type === "probable broker" ? <span className="review-tag">probable broker</span> : "owner"}</td>
-                <td>{hl(r.city, terms)}</td>
-                <td>{hl(r.state, terms)}</td>
-                <td className="clip" title={r.address ?? ""}>{hl(r.address, terms)}</td>
+                <td className="calls-col clip" title={r.last_notes ?? ""}><span className="record-preview">{r.last_notes ?? ""}</span></td>
                 <td className="clip" title={r.assignment_note ?? ""}>
                   {r.assigned_to ?? <span className="muted">—</span>}
                   {!r.assigned_to && r.assignment_state === "done" && <span className="review-tag" title={`Previously assigned to ${r.assignment_assignee || "a caller"}; see Details`}>completed history</span>}
                 </td>
+                <td className="record-history"><div>{r.assignment_outcome||"No manual result"}</div>{(r.manual_attempt_count||0)>0&&<RecordDetails id={r.id} entity="record" label="Manual calls"/>}<div className="sr-only">{r.manual_attempt_count||0} recorded in {r.assignment_state==='open'?'current':'latest'} assignment<br/>{r.assignment_outcome||"No manual result"}{r.manual_disposition&&<><br/>{dispositionLabel(r.manual_disposition)}</>}{r.assignment_closure_reason==='exhausted'&&<><br/>Closed: Exhausted</>}{r.manual_last_attempt_at&&<><br/>{fmtDate(r.manual_last_attempt_at)}</>}{r.manual_next_due_at&&<><br/>Due {fmtDate(r.manual_next_due_at)}</>}</div></td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
 
-      <div className="pager">
+      <div className="records-pagination"><div className="pager">
         <span className="muted">
           {total === 0 ? "No results" : `${(startRow + 1).toLocaleString()}–${Math.min(startRow + pageSize, total).toLocaleString()} of ${total.toLocaleString()}`}
         </span>
@@ -215,9 +201,8 @@ export default async function RawDataset({
         </div>
       </div>
 
-      <PageJump key={page} page={page} pages={pages}/>
+      <PageJump key={page} page={page} pages={pages}/></div>
 
-      <GridInteractivity />
     </SelectionProvider>
   );
 }

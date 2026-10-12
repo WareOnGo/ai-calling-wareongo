@@ -52,7 +52,7 @@ test('UTC provider timestamps show IST times and readable intervals on desktop a
   sql(`select bolna_record_ai_evidence('${JSON.stringify(body)}'::jsonb,'retained')`);
  }
  await page.goto('/dashboard/raw?q=Raghav');await page.getByRole('button',{name:'Show AI attempts'}).click();const history=page.locator('.ai-timeline');
- await expect(history).toContainText('1 minute 30 seconds since');await expect(history).toContainText('5:31 am IST');await expect(history.locator('.detail-history').first()).toContainText('local-second');
+ await expect(history).toContainText('1 minute 30 seconds since');await expect(history).toContainText('5:31 am IST');await expect(history.locator('.attempt-card').first()).toContainText('local-second');
  await shot(page,'review2-provider-intervals');await page.setViewportSize({width:1000,height:1000});await detailShot(history,'changelog-provider-history');await page.setViewportSize({width:390,height:844});expect(await bodyOverflowsX(page)).toBe(false);await history.getByText(/1 minute 30 seconds since/).scrollIntoViewIfNeeded();await expect(history.getByText(/1 minute 30 seconds since/)).toBeInViewport();await shot(page,'review2-provider-intervals-mobile');
 });
 

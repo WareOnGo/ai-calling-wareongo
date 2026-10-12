@@ -17,12 +17,12 @@ test.describe("look and feel @shot", () => {
     await shot(page, "02-hub-employee");
   });
 
-  test("calls grid: fixed layout, colour-coded availability, group toggles", async ({ adminPage: page, shot }) => {
+  test("calls table: readable status labels and optional detail columns", async ({ adminPage: page, shot }) => {
     await page.goto("/dashboard/calls");
     const table = page.locator("table.sheet");
     await expect(table).toBeVisible();
 
-    // ColumnResize injects a colgroup and switches to fixed layout
+    // The column chooser applies the same fixed geometry as the loading view.
     await expect(table.locator("colgroup")).toHaveCount(1);
     expect(await css(page, "table.sheet", "table-layout")).toBe("fixed");
 
@@ -34,14 +34,12 @@ test.describe("look and feel @shot", () => {
 
     // and they must be visually distinct, not all inheriting the same colour
     const bg = async (s: string) => css(page, s, "background-color");
-    const [g, r, y] = [await bg("td.cf-green"), await bg("td.cf-red"), await bg("td.cf-yel")];
+    const [g, r, y] = [await bg("td.cf-green .cell-status"), await bg("td.cf-red .cell-status"), await bg("td.cf-yel .cell-status")];
     expect(new Set([g, r, y]).size).toBe(3);
 
-    // collapsible groups start collapsed
-    await expect(table).toHaveClass(/db-collapsed/);
-    await expect(table).toHaveClass(/call-collapsed/);
-    await expect(page.locator("th.grp-toggle")).toHaveCount(2);
-    expect(await css(page, "td.db-col", "display")).toBe("none");
+    await expect(page.locator("th.grp-toggle, .col-resizer")).toHaveCount(0);
+    await expect(page.locator('th[data-column="DB Owner"]')).toBeHidden();
+    expect(await table.locator('tbody td:visible').evaluateAll(cells => cells.some(cell => getComputedStyle(cell).position === 'sticky'))).toBe(false);
 
     // needs-review + broker + match-count tags
     await expect(page.locator(".review-tag").filter({ hasText: "review" })).toHaveCount(1);
@@ -50,13 +48,22 @@ test.describe("look and feel @shot", () => {
     await shot(page, "03-calls-admin");
   });
 
-  test("expanding a column group reveals its detail columns", async ({ adminPage: page, shot }) => {
+  test("optional detail columns can be shown, remembered and reset", async ({ adminPage: page, shot }) => {
     await page.goto("/dashboard/calls");
-    expect(await css(page, "td.db-col", "display")).toBe("none");
-    await page.locator("th.db-toggle button").click();
-    await expect(page.locator("table.sheet")).not.toHaveClass(/db-collapsed/);
-    expect(await css(page, "td.db-col", "display")).not.toBe("none");
-    await shot(page, "04-calls-db-group-expanded");
+    const owner = page.locator('th[data-column="DB Owner"]');
+    await expect(owner).toBeHidden();
+    const menu = page.locator('.column-menu:not(.views-menu)');
+    await menu.locator('summary').click();
+    await menu.getByRole('checkbox', {name: 'DB Owner', exact: true}).check();
+    await expect(owner).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(menu.locator('summary')).toBeFocused();
+    await page.reload();
+    await expect(owner).toBeVisible();
+    await shot(page, "04-calls-optional-columns");
+    await menu.locator('summary').click();
+    await menu.getByRole('button', {name: 'Reset columns'}).click();
+    await expect(owner).toBeHidden();
   });
 
   test("the grid scrolls inside its wrapper, the page does not scroll sideways", async ({ adminPage: page }) => {

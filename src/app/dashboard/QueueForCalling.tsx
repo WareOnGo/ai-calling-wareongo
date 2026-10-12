@@ -27,7 +27,7 @@ import type { DispatchResult } from "@/lib/dispatch-service";
 //
 // Per-row checkboxes (input.rowsel) and the header select-all (input.selall) are
 // rendered server-side in raw/page.tsx; this client component wires them up via
-// event delegation (survives grid re-renders, same pattern as GridInteractivity).
+// event delegation (survives table re-renders).
 // Both scopes load current phone and ownership metadata from the server.
 //
 // Two selection scopes:
@@ -172,7 +172,7 @@ export function QueueForCalling({ availableLanguages }: { availableLanguages: Ca
     <>
       <button
         type="button"
-        className="btn-export"
+        className="btn-export btn-dispatch"
         onClick={openModal}
         disabled={(!hasSelection && !uncertain) || pending}
         title={btnCount === 0 ? "Select records to queue" : `Queue ${btnCount} record(s) for a Bolna batch`}
@@ -281,7 +281,7 @@ export function QueueForCalling({ availableLanguages }: { availableLanguages: Ca
               ) : (
                 <table className="preview">
                   <thead>
-                    <tr>{["Name", "Property type", "Phone number", "Area", "Agent"].map((h) => <th key={h}>{h}</th>)}</tr>
+                    <tr>{["Name", "Phone number", "Area", "Property type", "Agent"].map((h) => <th key={h}>{h}</th>)}</tr>
                   </thead>
                   <tbody>
                     {active.map((r) => {
@@ -296,9 +296,9 @@ export function QueueForCalling({ availableLanguages }: { availableLanguages: Ca
                             {held ? <span className="cat-tag cat-held">held</span> : null}
                             {r.queued ? <span className="cat-tag cat-queued">queued</span> : null}
                           </td>
-                          <td>{PROPERTY_TYPE}</td>
                           <td>{r.contact || <span className="muted">—</span>}</td>
                           <td>{r.area}</td>
+                          <td>{PROPERTY_TYPE}</td>
                           <td>{language ? LANGUAGE_LABELS[language] : "Held"}</td>
                         </tr>
                       );

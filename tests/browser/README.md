@@ -24,3 +24,22 @@ absolute fixture directory when starting `db:up`; the harness bind-mounts it as
 the disposable PostgreSQL data directory. A directory under `/tmp` is ephemeral.
 
 Provider dispatch responses, wallet reads and failure paths are mocked. Nothing here establishes that live calls, OAuth setup or production migrations are ready. `npm run report --prefix tests/browser` opens the generated HTML report.
+
+## Visual design audit
+
+Run `npm run render:dashboard` from this directory with the same environment
+settings as the browser suite. The command runs `31-render-dashboard.spec.ts` and
+prints a searchable HTML gallery plus a JSON manifest under `shots/dashboard-*`.
+`EVAL_RENDER_DIR` selects a fixed output directory. It covers every page type and
+filter, assignment, history, details, queue and manual-call states at desktop and
+mobile widths in both themes. Only synthetic eval data appears in the images.
+
+The sibling `bolna-eval` harness also provides `npm run render:dashboard`; its
+wrapper uses `APP_DIR` to run this checkout's scenarios. Thus the renderer stays
+versioned with the implementation it checks. The wrapper defaults to the
+`bolna-visual-overhaul` worktree for this review.
+
+Review the actual images as well as the checks. Use
+[the design SOP](../../docs/DESIGN_SOP.md) for consistency, contrast, whitespace,
+density and interaction review. A gallery's visible-control count is a useful
+inspection aid, not an automated usability score.

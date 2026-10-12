@@ -204,9 +204,13 @@ test('column visibility, keyboard navigation and reduced motion remain usable',a
   await page.locator('.column-menu:not(.views-menu) summary').click();
   for(const name of ['AI result','AI attempts','Manual result'])await page.locator('.column-options').getByRole('checkbox',{name,exact:true}).uncheck();
   await page.locator('.column-menu:not(.views-menu) summary').click();
-  const phone=page.locator('tbody tr').first().locator('td').filter({has:page.locator('.copytext')});
-  await phone.click({position:{x:12,y:5}}); await page.keyboard.press('ArrowRight');
-  expect(await page.evaluate(()=>document.activeElement?.querySelector('input')?.getAttribute('aria-label'))).toBe('Manual follow-up notes');
+  const row=page.locator('tbody tr').filter({has:page.getByLabel('Manual follow-up notes').and(page.locator(':enabled'))}).first();
+  const phone=row.locator('td').filter({has:page.locator('.copytext')});
+  await phone.click({position:{x:12,y:5}});
+  await expect(page.locator('td.selected, td[tabindex="0"]')).toHaveCount(0);
+  await phone.getByRole('button',{name:'Copy phone number'}).focus();
+  await page.keyboard.press('Tab');
+  await expect(row.getByLabel('Manual follow-up notes')).toBeFocused();
   await page.reload(); await expect(page.locator('th').filter({hasText:'AI result',visible:true})).toHaveCount(0);
   await page.emulateMedia({reducedMotion:'reduce'}); await page.locator('tbody .details-trigger').first().click();
   const animation=await page.locator('.navigation-progress span').count(); expect(animation).toBe(0);
@@ -269,7 +273,7 @@ test('recent batches reads scheduled jobs and their received results',async ({ad
     expect((await result.json()).batches.find((b:any)=>b.id===id)).toMatchObject({callable:3,results_received:1,state:'scheduled'});
     await page.goto('/dashboard/raw');await page.getByRole('button',{name:'Recent batches',exact:true}).click();
     await expect(page.getByRole('dialog')).toContainText('1 call results received');
-    await page.locator('dialog .modal-close').click();await page.getByRole('button',{name:'Recent batches',exact:true}).click();
+    await page.locator('dialog[open] .modal-close').click();await page.getByRole('button',{name:'Recent batches',exact:true}).click();
     await expect(page.getByRole('dialog')).toContainText('ux-batch');await shot(page,'ux-batch-history');
   } finally {sql(`delete from call_batches where id='${id}'`);}
 });

@@ -32,7 +32,7 @@ export default async function Home({
         <p className="muted" style={{ marginTop: 4, marginBottom: 24 }}>
           WareOnGo voice-AI call dashboard
         </p>
-        <a className="btn" href="/api/auth/google">Sign in with Google</a>
+        <a className="btn btn-primary" href="/api/auth/google">Sign in with Google</a>
       </div>
       {msg && (
         <div className="error-banner">

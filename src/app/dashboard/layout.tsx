@@ -6,7 +6,7 @@ import { DashboardUI } from "./DashboardUI";
 import { Navigation } from "./Navigation";
 import { ViewModeToggle } from "./ViewModeToggle";
 import { LoadingColumnStyles } from "./LoadingColumnStyles";
-import { CALL_COLUMNS, CALL_GROUPS, RAW_COLUMNS, RAW_GROUPS } from "./sheet-columns";
+import { callColumns, RAW_COLUMNS } from "./sheet-columns";
 
 export const dynamic = "force-dynamic";
 
@@ -14,8 +14,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const user = await requireUser();
   return (
     <div className="app">
-      <LoadingColumnStyles view="calls" labels={["Row", ...(user.isAdmin ? ["Select"] : []), ...CALL_COLUMNS, ...(user.isAdmin ? ["Assigned To"] : [])]} groups={CALL_GROUPS} />
-      <LoadingColumnStyles view="raw" labels={["Row", "Select", ...RAW_COLUMNS]} groups={RAW_GROUPS} />
+      <LoadingColumnStyles view="calls" labels={["Row", ...(user.isAdmin ? ["Select"] : []), ...callColumns(user.isAdmin)]} />
+      <LoadingColumnStyles view="raw" labels={["Row", "Select", ...RAW_COLUMNS]} />
       <DashboardUI isAdmin={user.isAdmin} userEmail={user.email} header={
       <div className="header">
         <div className="brand">

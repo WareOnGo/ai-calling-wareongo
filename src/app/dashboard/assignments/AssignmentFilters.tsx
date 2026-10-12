@@ -1,7 +1,8 @@
 import { firstValue, type SearchValues } from "@/lib/filter-values";
 import { MultiSelect } from "../MultiSelect";
-import { ColumnResize } from "../ColumnResize";
+import { ColumnChooser } from "../ColumnChooser";
 import { FilterForm } from "../FilterForm";
+import { FilterPanel } from "../FilterPanel";
 import { FiltersToggle } from "../FiltersToggle";
 import { ApplyButton } from "../ApplyButton";
 import { IconFilter } from "../icons";
@@ -20,12 +21,12 @@ export function AssignmentFilters({ applied, assignees = [], loading = false }: 
     </div>
     {loading ? <button type="button" className={`filters-toggle${moreCount ? " active" : ""}`} disabled><IconFilter size={15} />More filters{moreCount > 0 && <span className="fbadge">{moreCount}</span>}</button> : <FiltersToggle count={moreCount} label="More filters" />}
     {loading ? <button type="button" className="btn apply-button" disabled>Apply</button> : <ApplyButton />}
-    {loading ? <details className="column-menu"><summary>Columns</summary></details> : <ColumnResize/>}<span className="spacer" /><a className="btn-text" href={loading ? undefined : "/dashboard/assignments"}>Reset</a>
-    {!loading && <div className="filters-panel" id="filters-panel">
+    {loading ? <details className="column-menu"><summary>Columns</summary></details> : <ColumnChooser/>}<span className="spacer" /><a className="btn-text" href={loading ? undefined : "/dashboard/assignments"}>Reset</a>
+    {!loading && <FilterPanel groups={[{ label: "Assignment", content: <>
       <MultiSelect name="type" label="Channel" value={applied.type} options={[{value:"record",label:"Manual (listing)"},{value:"call",label:"AI call follow-up"}]}/>
       <MultiSelect name="outcome" label="Manual result" value={applied.outcome} options={[...OUTCOMES,{value:"none",label:"No result yet"}]}/>
 
-    </div>}
+    </> }]} />}
   </>;
   return loading ? <div className="filterbar assignment-filters">{controls}<details className="column-menu views-menu"><summary>Views</summary></details></div>
     : <FilterForm key={JSON.stringify(applied)} action="/dashboard/assignments" applied={applied} className="assignment-filters">{controls}</FilterForm>;

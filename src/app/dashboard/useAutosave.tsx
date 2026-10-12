@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { Autosave, type Values } from "@/lib/autosave";
 import { useDashboardUI } from "./DashboardUI";
 import { requestJson } from "./requests";
@@ -36,7 +36,10 @@ export function useAutosave<T extends Values>(id: string, url: string, initial: 
     return queue.subscribe(persist);
   }, [queue, storageKey]);
   const initialKey = JSON.stringify(initial);
-  useEffect(() => { if (!queue.getSnapshot().dirty) version.current = initialRevision; queue.reconcile(JSON.parse(initialKey)); }, [queue, initialKey, initialRevision]);
+  // Reconcile the server revision before refreshed controls become interactive.
+  // A quick edit after logging a call must not submit the previous revision.
+  // Dirty drafts retain their original revision so conflicts remain protected.
+  useLayoutEffect(() => { if (!queue.getSnapshot().dirty) version.current = initialRevision; queue.reconcile(JSON.parse(initialKey)); }, [queue, initialKey, initialRevision]);
   useEffect(() => {
     const report = () => { const current = queue.getSnapshot(); reportSave(id, { dirty: current.dirty, status: current.status, label: id, retry: queue.retry, discard: queue.discard }); };
     report();

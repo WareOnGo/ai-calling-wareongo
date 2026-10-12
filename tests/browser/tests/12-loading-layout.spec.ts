@@ -27,7 +27,7 @@ for (const width of [1366,390]) {
         await expect(skeleton).toBeVisible();
         await expect(page.getByRole('status').filter({hasText:/Loading/}).first()).toBeAttached();
         expect(await bodyOverflowsX(page)).toBe(false);
-        const selector=view==='home'?'.hub-card':view==='team'?'.team-report h2':'.colheads th';
+        const selector=view==='home'?'.hub-card':view==='team'?'.team-report h2':view==='my'&&width<760?'.worklist:first-child .task-sheet tbody':'.colheads th';
         if(view==='calls'||view==='raw')await expect(page.locator('.loading-sheet col')).not.toHaveCount(0);
         before={headers:await rectangles(page,selector), title:await rectangles(page,'.page-title'),toolbar:await rectangles(page,'.filterbar'),rows:await rectangles(page,'tbody tr'),section:await rectangles(page,'.section-head'),stats:await rectangles(page,'.stat-row')};
         await page.screenshot({path:`shots/loading-${view}-${width}.png`,animations:'disabled'});
@@ -35,7 +35,7 @@ for (const width of [1366,390]) {
       await expect(page.locator('[data-loading-view]')).toHaveCount(0);
       await expect(page.locator('.dashboard-content')).toHaveAttribute('data-hydrated','true');
       if(view==='calls'||view==='raw')await expect(page.locator('table.sheet')).toHaveClass(/resizable/);
-      const selector=view==='home'?'.hub-card':view==='team'?'.team-report h2':'.colheads th';
+      const selector=view==='home'?'.hub-card':view==='team'?'.team-report h2':view==='my'&&width<760?'.worklist:first-child .task-sheet tbody':'.colheads th';
       const after=await rectangles(page,selector);
       if(view!=='team')expect(after.length).toBe(before.headers.length);
       for(const [index,r] of after.entries()){
@@ -47,11 +47,11 @@ for (const width of [1366,390]) {
           expect(Math.abs(r.width-old.width),'card width').toBeLessThanOrEqual(1);
           expect(Math.abs(r.height-old.height),'card height').toBeLessThanOrEqual(2);
         } else if(view==='calls'||view==='raw'||view==='my'||view==='assignments'){
-          expect(r.text).toBe(old.text);
+          if (view !== 'my' || width >= 760) expect(r.text).toBe(old.text);
           expect(Math.abs(r.x-old.x),`${r.text} x`).toBeLessThanOrEqual(1);
           expect(Math.abs(r.width-old.width),`${r.text} width`).toBeLessThanOrEqual(1);
           // Second work section depends on the unknown data row count/length.
-          if(view!=='my'||index<8)expect(Math.abs(r.y-old.y),`${r.text} y`).toBeLessThanOrEqual(2);
+          if(view!=='my'||index<(width<760?1:7))expect(Math.abs(r.y-old.y),`${r.text} y`).toBeLessThanOrEqual(2);
         }
       }
       const toolbar=await rectangles(page,'.filterbar');
@@ -71,7 +71,7 @@ for (const width of [1366,390]) {
   }
 }
 
-test('employee skeleton follows saved widths, hidden columns and expanded groups',async ({employeePage:page})=>{
+test('employee skeleton ignores old spreadsheet geometry and honours the new column preferences',async ({employeePage:page})=>{
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
   await page.goto('/dashboard/calls');
   await page.evaluate(()=>{
@@ -85,10 +85,10 @@ test('employee skeleton follows saved widths, hidden columns and expanded groups
     await page.goto('/dashboard/calls',{waitUntil:'commit'});
     await expect(page.locator('.loading-sheet')).toBeAttached();
     await expect(page.locator('.loading-sheet')).toBeVisible();
-    await expect(page.locator('.loading-sheet th.db-col').first()).toBeVisible();
+    await expect(page.locator('.loading-sheet th').filter({hasText:/^DB Owner$/})).toBeHidden();
     expect(await page.locator('.loading-sheet .selcol').count()).toBe(0);
     before=await rectangles(page,'.colheads th');
-    expect(before.find((r:any)=>r.text==='Owner').width).toBe(280);
+    expect(before.find((r:any)=>r.text==='Owner').width).toBeGreaterThanOrEqual(200);
   } finally {await db.query('commit');await db.end();}
   await expect(page.locator('[data-loading-view]')).toHaveCount(0);
   await expect(page.locator('table.sheet')).toHaveClass(/resizable/);

@@ -47,10 +47,11 @@ export function FilterForm({ action, applied, children, className = "", preserve
     const params=searchQuery(next);navigate(action+(params.size?`?${params}`:""));
   }
   return <>
-    <form ref={formRef} className={`filterbar ${className}${active.length ? " has-filters" : ""}`} method="GET" action={action} onChange={e => {if ((e.target as HTMLElement).closest("dialog")) return; setDirty(serialize(e.currentTarget) !== initial.current);}} onSubmit={e => {
+    <form ref={formRef} className={`filterbar ${className}${active.length ? " has-filters" : ""}`} method="GET" action={action} onChange={e => {if ((e.target as HTMLElement).closest("dialog:not(.filter-panel)")) return; setDirty(serialize(e.currentTarget) !== initial.current);}} onSubmit={e => {
       e.preventDefault();
       const params = new URLSearchParams();
       new FormData(e.currentTarget).forEach((value,key) => { if (String(value).trim()) params.append(key, String(value).trim()); });
+      e.currentTarget.querySelector<HTMLDialogElement>('.filter-panel[open]')?.close();
       navigate(action + (params.size ? `?${params}` : ""));
     }} aria-busy={pending}>{children}<SavedViews path={action} applied={applied} /></form>
     {(active.length > 0 || dirty || transitioning) && <div className="applied-filters" aria-label="Applied filters">

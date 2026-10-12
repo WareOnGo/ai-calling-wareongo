@@ -83,12 +83,11 @@ test.describe("assign flow @shot", () => {
     };
 
     let modal = await pickA1();
-    await modal.getByRole("button", { name: /^Assign/ }).click();
-    await expect(modal.locator(".assign-summary")).toContainText("skipped");
-    await expect(modal.locator(".assign-done")).toContainText("Assigned 0");
-
-    modal = await pickA1();
-    await modal.locator(".assign-check input").check();
+    await expect(modal.getByRole("region", {name:"Assignment preview"})).toContainText("0 eligible of 1 rows");
+    await expect(modal.getByRole("button", {name:"Assign 0",exact:true})).toBeDisabled();
+    await expect(modal).toContainText("1 kept with current owners");
+    await modal.getByText("Assignment options", {exact:true}).click();
+    await modal.getByLabel("Reassign rows already owned by someone else").check();
     await modal.getByRole("button", { name: /^Assign/ }).click();
     await expect(modal.locator(".assign-summary")).toContainText("taken from a previous owner");
   });

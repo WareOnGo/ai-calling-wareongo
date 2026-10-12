@@ -3,7 +3,9 @@ import {execFileSync} from 'node:child_process';
 import {CONTAINER} from '../lib/env.mjs';
 const sql=(text:string)=>execFileSync('podman',['exec','-i',CONTAINER,'psql','-U','postgres','-v','ON_ERROR_STOP=1','-q'],{input:text});
 const choices=async(page:any,label:string,values:string[])=>{
- const menu=page.locator('details.filter-multi').filter({has:page.locator('summary').filter({hasText:new RegExp(`^${label}( \\(|$)`)})});
+ const category = ['Contact','Source','State','Warehouse type'].includes(label) ? 'Property' : label==='Assigned to' ? 'Assignment' : 'Call outcome';
+ const tab=page.getByRole('tab',{name:category,exact:true});if(await tab.count())await tab.click();
+ const menu=page.locator('details.filter-multi').filter({has:page.locator('.multi-control-label').filter({hasText:new RegExp(`^${label}( \\(|$)`)})});
  await menu.locator('summary').click();for(const value of values)await menu.getByRole('checkbox',{name:value,exact:true}).check();await menu.locator('summary').click();
 };
 test('repeated Last Result filters, chips, saved view, exports, queue and preview keep both values',async({adminPage:page})=>{
@@ -20,8 +22,8 @@ test('repeated Last Result filters, chips, saved view, exports, queue and previe
  const preview=await page.request.post('/api/assignments/preview',{data:{entity_type:'record',assignee:'priya@eval.test',filters:{last_result:['Unavailable','Unclear']}}});expect(preview.status()).toBe(200);expect((await preview.json()).requested).toBe(5);
  await page.getByRole('button',{name:'Export CSV',exact:true}).click();const request=page.waitForRequest(r=>r.url().includes('/api/raw/export')&&r.method()==='POST');await page.getByRole('button',{name:'Download CSV'}).click();expect((await request).postDataJSON().filters.last_result).toEqual(['Unavailable','Unclear']);
 });
-test('source city stays visible; grouped columns can be shown, hidden, persisted and reset',async({adminPage:page,shot})=>{
- await page.goto('/dashboard/calls');await expect(page.locator('th[data-column="Source city"]')).toBeVisible();
+test('source city remains under the owner; optional columns persist and reset',async({adminPage:page,shot})=>{
+ await page.goto('/dashboard/calls');await expect(page.locator('td.identity-owner .record-meta').first()).toBeVisible();await expect(page.locator('th[data-column="Source city"]')).toBeHidden();
  await expect(page.locator('th[data-column="Notes"]')).toBeHidden();await page.locator('details.column-menu:not(.views-menu) summary').click();
  const options=page.locator('details.column-menu:not(.views-menu)');await expect(options.getByRole('checkbox',{name:'Notes',exact:true})).not.toBeChecked();
  await options.getByRole('checkbox',{name:'Notes',exact:true}).check();await expect(page.locator('th[data-column="Notes"]')).toBeVisible();
