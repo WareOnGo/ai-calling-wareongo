@@ -5,6 +5,29 @@ import { CONTAINER,BASE_URL } from '../lib/env.mjs';
 const sql = (statement: string) => execFileSync('podman', ['exec', '-i', CONTAINER, 'psql', '-U', 'postgres', '-v', 'ON_ERROR_STOP=1', '-q', '-c', statement]);
 const ownCall = 'c0000000-0000-4000-8000-000000000002';
 
+test('completed assignments retain attribution and remain distinct from current ownership', async ({adminPage:page}) => {
+  await page.goto('/dashboard/raw?q=Meera');
+  await expect(page.locator('.assignment-attribution')).toContainText('Priya Eval');
+  await expect(page.locator('.assignment-attribution')).toContainText('Assignment completed');
+  await expect(page.locator('.assignment-attribution')).toHaveAttribute('title', /priya@eval.test/);
+  sql(`begin;
+    insert into bolna_assignments(entity_type,entity_id,assignee,assigned_by,outcome,disposition) values('call','${ownCall}','raj@eval.test','admin@eval.test','Unavailable','connected');
+    insert into bolna_manual_attempts(id,assignment_id,actor,assignee,occurred_at,disposition,outcome,request_hash)
+      select gen_random_uuid(),id,'raj@eval.test','raj@eval.test',now(),'connected','Unavailable','completed-attribution-fixture'
+      from bolna_assignments where entity_type='call' and entity_id='${ownCall}';
+    update bolna_assignments set state='done' where entity_type='call' and entity_id='${ownCall}';
+    commit;`);
+  await page.goto('/dashboard/calls?q=Meera');
+  await expect(page.locator('.assignment-attribution')).toContainText('Raj Eval');
+  await expect(page.locator('.assignment-attribution')).toContainText('Assignment completed');
+  sql("update bolna_app_users set active=false where email='priya@eval.test'");
+  await page.goto('/dashboard/raw?q=Meera');
+  await expect(page.locator('.assignment-attribution')).toContainText('priya@eval.test');
+  sql("insert into bolna_assignments(entity_type,entity_id,assignee,assigned_by) values('record','a0000000-0000-4000-8000-000000000002','raj@eval.test','admin@eval.test')");
+  await page.reload();await expect(page.locator('.assignment-attribution')).toHaveCount(0);
+  await expect(page.locator('table.sheet tbody')).toContainText('raj@eval.test');
+});
+
 test('contact identity leads assignments and follow-up notes remain expandable', async ({adminPage: page, shot}) => {
   sql("update bolna_assignments set remarks = repeat('Owner confirmed the warehouse is available. ', 12) || 'Final inspection booked.' where id = 1");
   await page.goto('/dashboard/assignments');
@@ -50,8 +73,10 @@ test('admin employee view scopes pages and APIs and survives a reload', async ({
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
   sql(`insert into bolna_assignments(entity_type, entity_id, assignee, assigned_by) values ('call', '${ownCall}', 'admin@eval.test', 'admin@eval.test')`);
   await page.goto('/dashboard/assignments');
+  if(await page.locator('.account-menu').getAttribute('open')===null)await page.locator('.account-menu > summary').click();
   await page.getByRole('button', {name: 'Employee view', exact: true}).click();
   await expect(page).toHaveURL(/dashboard\/my$/);
+  if(await page.locator('.account-menu').getAttribute('open')===null)await page.locator('.account-menu > summary').click();
   await expect(page.getByRole('button', {name: 'Employee view', exact: true})).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('.topnav a')).toHaveCount(1);
   await expect(page.locator('[data-loading-view]')).toHaveCount(0);
@@ -59,6 +84,7 @@ test('admin employee view scopes pages and APIs and survives a reload', async ({
   await expect(page.locator('tbody:visible')).toHaveCount(1);
   await expect(page.locator('tbody:visible')).not.toContainText('Raghav Sharma');
   await page.reload();
+  if(await page.locator('.account-menu').getAttribute('open')===null)await page.locator('.account-menu > summary').click();
   await expect(page.getByRole('button', {name: 'Employee view', exact: true})).toHaveAttribute('aria-pressed', 'true');
   await page.goto('/dashboard/calls');
   await expect(page.locator('tbody tr')).toHaveCount(1);
@@ -72,6 +98,7 @@ test('admin employee view scopes pages and APIs and survives a reload', async ({
   await page.goto('/dashboard/team');
   await expect(page).toHaveURL(/dashboard\/my$/);
   await shot(page, 'admin-employee-view');
+  if(await page.locator('.account-menu').getAttribute('open')===null)await page.locator('.account-menu > summary').click();
   await page.getByRole('button', {name: 'Admin view', exact: true}).click();
   await expect(page).toHaveURL(/dashboard$/);
   await expect(page.locator('.topnav a')).toHaveCount(6);
@@ -89,22 +116,27 @@ test('employees cannot enable admin mode with the endpoint or a forged view cook
 });
 
 test('view switching protects failed drafts and handles a failed request', async ({adminPage: page}) => {
-  await page.goto('/dashboard/calls');
+  sql(`insert into bolna_assignments(entity_type, entity_id, assignee, assigned_by) values ('call', '${ownCall}', 'admin@eval.test', 'admin@eval.test')`);
+  await page.goto('/dashboard/my');
   await page.route('**/api/assignments/*', route => route.fulfill({status: 500, json: {error: 'test failure'}}));
-  const input = page.getByRole('textbox', {name: 'Manual follow-up notes'}).and(page.locator(':enabled')).first();
+  const input = page.getByRole('textbox', {name: 'Your notes'}).first();
   await input.fill('Keep my draft'); await input.blur();
   await expect(page.locator('.sheet-save-status')).toContainText("hasn't saved");
+  if(await page.locator('.account-menu').getAttribute('open')===null)await page.locator('.account-menu > summary').click();
   await page.getByRole('button', {name: 'Employee view', exact: true}).click();
   await expect(page.locator('.snackbar')).toContainText('Save or discard');
-  await expect(page).toHaveURL(/dashboard\/calls$/);
+  await expect(page).toHaveURL(/dashboard\/my$/);
   await expect(input).toHaveValue('Keep my draft');
   await page.locator('.sheet-save-status').getByRole('button', {name: /Discard/}).click();
   await page.getByRole('dialog').getByRole('button', {name: 'Discard changes', exact: true}).click();
   await page.route('**/api/view-mode', route => route.fulfill({status: 500, json: {error: 'test failure'}}));
+  if(await page.locator('.account-menu').getAttribute('open')===null)await page.locator('.account-menu > summary').click();
   await page.getByRole('button', {name: 'Employee view', exact: true}).click();
   await expect(page.locator('.snackbar')).toContainText("Couldn't confirm");
+  if(await page.locator('.account-menu').getAttribute('open')===null)await page.locator('.account-menu > summary').click();
   await expect(page.getByRole('button', {name: 'Admin view', exact: true})).toHaveAttribute('aria-pressed', 'true');
   await page.unroute('**/api/view-mode');
+  if(await page.locator('.account-menu').getAttribute('open')===null)await page.locator('.account-menu > summary').click();
   await page.getByRole('button', {name: 'Employee view', exact: true}).click();
   await expect(page).toHaveURL(/dashboard\/my$/);
 });
@@ -125,6 +157,7 @@ for (const width of [1366, 1024, 390]) {
     for (const dark of [false, true]) {
       if (dark) await page.getByRole('button', {name: 'Toggle dark mode'}).click();
       expect(await bodyOverflowsX(page)).toBe(false);
+      if(await page.locator('.account-menu').getAttribute('open')===null)await page.locator('.account-menu > summary').click();
       await expect(page.getByRole('button', {name: 'Employee view', exact: true})).toBeVisible();
       await expect(page.getByRole('button', {name: 'Sign out', exact: true})).toBeVisible();
       await expect(page.locator('.colheads th').nth(1)).toBeVisible();

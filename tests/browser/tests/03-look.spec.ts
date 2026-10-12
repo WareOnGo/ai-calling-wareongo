@@ -104,13 +104,16 @@ test.describe("look and feel @shot", () => {
     await shot(page, "07-my-work-employee");
   });
 
-  test("team keeps the access directory alongside reporting", async ({ adminPage: page }) => {
-    await page.goto("/dashboard/team");
+  test("team separates performance from access control", async ({ adminPage: page }) => {
+    await page.goto("/dashboard/team/access");
     await expect(page.locator(".addcard, .add-trigger")).toHaveCount(1);
     await expect(page.locator(".person")).toHaveCount(4);
     await expect(page.locator(".person").first().locator(".avatar")).toBeVisible();
     await expect(page.locator(".team table")).toHaveCount(0);
+    await expect(page.getByLabel("Team metrics table")).toHaveCount(0);
+    await page.getByRole("link", { name: "Performance", exact: true }).click();
     await expect(page.getByLabel("Team metrics table")).toBeVisible();
+    await expect(page.locator(".person")).toHaveCount(0);
   });
 });
 

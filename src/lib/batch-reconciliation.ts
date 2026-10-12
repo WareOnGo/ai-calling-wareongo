@@ -17,19 +17,22 @@ function retryCount(e:Execution){
  const n=Number(raw);return Number.isSafeInteger(n)&&n>=0?n:-1;
 }
 
-export function executionsFinished(expected: string[], executions: Execution[]): boolean {
-  // A failed attempt can have a delayed retry. Without exhaustion metadata we keep
-  // the reservation; elapsed time and a terminal webhook alone are not sufficient.
+export function executionsFinished(expected: string[], executions: Execution[], providerCompleted = false): boolean {
+  // Current Bolna batches finish as "completed" (including configured retries).
+  // Legacy "executed" only proves dispatch, so it still needs retry exhaustion.
+  // Neither a result count nor elapsed time establishes completion on its own.
   if (!executions.length) return false;
   if (executions.some(e => !TERMINAL_STATUSES.has(e.status))) return false;
+  if (providerCompleted && executions.some(e => e.status === "call-disconnected" ||
+    (typeof e.batch_run_details?.status === "string" && !["completed", "stopped", "canceled"].includes(e.batch_run_details.status)))) return false;
   return expected.every(phone => executions.some(e => normNum(e.telephony_data?.to_number) === phone &&
-    (!RETRYABLE.has(e.status) || retryCount(e) >= 3)));
+    (providerCompleted || !RETRYABLE.has(e.status) || retryCount(e) >= 3)));
 }
 
-async function providerGet(path: string): Promise<unknown> {
+async function providerGet(path: string, timeoutMs = 15_000): Promise<unknown> {
   if (!process.env.BOLNA_API_KEY) throw new ApiError(503, "Calling service is not configured");
   const res = await fetch(`https://api.bolna.ai${path}`, {
-    headers: { Authorization: `Bearer ${process.env.BOLNA_API_KEY}` }, signal: AbortSignal.timeout(15_000), cache: "no-store",
+    headers: { Authorization: `Bearer ${process.env.BOLNA_API_KEY}` }, signal: AbortSignal.timeout(timeoutMs), cache: "no-store",
   });
   if (!res.ok) throw new ApiError(502, `Calling service status check failed (${res.status})`);
   return res.json();
@@ -51,8 +54,12 @@ export async function reconcileBatch(id: string) {
     const remote = snapshotSchema.parse(await providerGet(`/batches/${encodeURIComponent(batch.bolna_batch_id)}`));
     if (remote.batch_id !== batch.bolna_batch_id) throw new ApiError(502, "Calling service returned a different batch");
     let complete = false;
-    if (remote.status === "executed") {
-      const executions = z.array(executionSchema).max(80000).parse(await providerGet(`/batches/${encodeURIComponent(batch.bolna_batch_id)}/executions`));
+    if (["completed", "stopped", "executed"].includes(remote.status)) {
+      // Large historical snapshots can exceed the short metadata-read timeout.
+      const executions = z.array(executionSchema).max(80000).parse(await providerGet(`/batches/${encodeURIComponent(batch.bolna_batch_id)}/executions`, 45_000));
+      if (executions.some(execution => execution.batch_id != null && execution.batch_id !== batch.bolna_batch_id)) {
+        throw new ApiError(502, "Calling service returned executions from a different batch");
+      }
       // A stable snapshot fingerprint makes cursors safe even when the provider
       // reorders deliveries or changes the snapshot between checks.
       const serialized=executions.map(execution=>({
@@ -79,15 +86,16 @@ export async function reconcileBatch(id: string) {
       if(offset===executions.length){
         const items=await query<{contact_number:string}>("select contact_number from call_batch_items where batch_id=$1",[id]);
         const expected=[...new Set(items.rows.map(r=>normNum(r.contact_number)))];
-        complete=expected.length>0&&remote.valid_contacts===expected.length&&executionsFinished(expected,executions);
+        complete=expected.length>0&&remote.valid_contacts===expected.length&&executionsFinished(expected,executions,['completed','stopped'].includes(remote.status));
       }
     }
     return await transaction(async client => {
       const result = await client.query(`update call_batches set state = $2, updated_at = now(), last_error = null,
-        completed_at = case when $2 = 'completed' then now() else completed_at end,
+        completed_at = case when $2 in ('completed','canceled') then now() else completed_at end,
+        resolution_note = case when $2='canceled' then coalesce(resolution_note,'Stopped in Bolna; all target executions verified finished.') else resolution_note end,
         reconciliation_token=null,reconciliation_lease_until=null
         where id = $1 and reconciliation_token=$3 and state not in ('completed', 'canceled') returning *`,
-      [id, complete ? "completed" : ["scheduled", "queued", "executed"].includes(remote.status) ? "scheduled" : "uncertain",token]);
+      [id, complete ? remote.status==='stopped'?'canceled':'completed' : ["scheduled", "queued", "running", "executed", "completed"].includes(remote.status) ? "scheduled" : "uncertain",token]);
       if (complete && result.rowCount) await client.query("delete from bolna_dispatch_reservations where batch_id = $1", [id]);
       return result.rows[0] ?? batch;
     });
@@ -112,12 +120,38 @@ export async function reconcileBatches() {
     where state in ('sending', 'creating', 'scheduling') and updated_at < now() - interval '5 minutes'`);
   const batches = await query<{ id: string }>(`select id from call_batches where state in ('uncertain', 'scheduled')
     and bolna_batch_id is not null order by updated_at, id limit 5`);
-  let succeeded = 0;
+  let succeeded = 0, checked = 0;const started=Date.now();
   for (const batch of batches.rows) {
+    if(Date.now()-started>150_000)break;
+    checked++;
     try { await reconcileBatch(batch.id); succeeded++; }
     catch (error) {
       await query("update call_batches set last_error = $2, updated_at = now() where id = $1", [batch.id, String(error).slice(0, 1000)]);
     }
   }
-  return { checked: batches.rows.length, succeeded };
+  return { checked, succeeded };
+}
+
+// A visible batch page also checks its active batches. The stored update time and
+// existing reconciliation lease bound requests across tabs and concurrent admins.
+export async function syncVisibleBatches(ids: string[]) {
+  const candidates = await query<{id:string}>(`select id from call_batches
+    where id=any($1::uuid[]) and state in ('scheduled','uncertain','failed') and bolna_batch_id is not null
+      and (scheduled_at is null or scheduled_at<=now()) and updated_at<now()-interval '1 minute'
+      and (reconciliation_lease_until is null or reconciliation_lease_until<now())
+    order by updated_at,id limit 3`, [[...new Set(ids)]]);
+  let completed = 0, failed = 0, checked = 0;const started=Date.now();
+  for (const {id} of candidates.rows) {
+    if(Date.now()-started>150_000)break;
+    checked++;
+    try { if ((await reconcileBatch(id)).state === 'completed') completed++; }
+    catch (error) {
+      if (error instanceof ApiError && error.status === 409) continue;
+      failed++;
+      await query(`update call_batches set last_error=$2,updated_at=now() where id=$1
+        and state not in ('completed','canceled') and reconciliation_token is null`,
+      [id,error instanceof Error?error.message.slice(0,1000):'Could not check batch status']);
+    }
+  }
+  return {checked,completed,failed};
 }

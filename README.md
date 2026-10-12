@@ -476,9 +476,12 @@ array and aggregate `state` (`partial` when only some children are confirmed).
 Replaying the parent never resends either child. Resolve each affected batch in
 Recent batches; only that child's reservations are released.
 
-`/api/batches/reconcile` polls known provider IDs. Completion requires an executed
-batch, coverage of every reserved contact, terminal executions and exhaustion of
-retryable failures. Unknown retry metadata remains reserved. Recent batches lets
+`/api/batches/reconcile` polls known provider IDs. Current Bolna batches report
+`completed` after their configured retry cycle. Completion requires that provider
+state, matching contact counts, coverage of every target and finished executions.
+Legacy `executed` snapshots still require explicit retry exhaustion. A provider
+`stopped` batch becomes locally canceled only after its target executions have
+finished; no stop or cancel request is sent to Bolna. Recent batches lets
 an admin check provider status or record a verified completion/cancellation note,
 including who released the numbers. That action does not cancel calls remotely.
 Stale in-flight states and legacy failures require reconciliation; a timeout alone
@@ -486,6 +489,14 @@ never frees a phone. Reconciliation commits a snapshot fingerprint and cursor wi
 each 250-execution page, yielding after 1,000 executions per invocation. It resumes
 unchanged snapshots and safely restarts changed ones; expiring leases fence
 concurrent checks.
+
+While a batch page is visible, `/api/batches/sync` checks up to three of its active
+batches, throttled to once per minute per batch, and refreshes the page every
+30 seconds. It pauses during edits, dialogs and background tabs. The existing
+reconciliation cron remains responsible for checks when the page is closed.
+Provider metadata requests time out after 15 seconds; large execution snapshots
+have 45 seconds. Polling yields between batches to fit the request budget.
+Result progress on a card is separate from confirmed batch completion.
 
 Provider contracts: [batch status](https://www.bolna.ai/docs/api-reference/batches/get_batch),
 [batch executions](https://www.bolna.ai/docs/api-reference/batches/executions), and
@@ -530,8 +541,9 @@ append-only assignment audit supports reopen history and team reporting.
 
 The Call Analytics **Legacy Called By** field is labelled, hidden initially even
 for existing column preferences, and read-only. It is not proof of who called.
-Actual caller attribution comes from logged attempts. Calls notes, Added and WH
-ID controls edit the current assignment and use its revision and validation.
+Actual caller attribution comes from logged attempts. Call Analytics reports saved
+manual notes, Added status and WH ID as text, with explicit empty states. Edit
+these values in My Work, using the assignment's revision and validation.
 Becoming Done requires a logged attempt. Existing Done edits skip that prerequisite but still validate result, WH ID, notes and closure. Invalid legacy completion data must be repaired or reopened before relevant edits.
 New or changed warehouse references must be positive integers. Unchanged legacy
 references remain visible, exportable and included in historical reporting, with
@@ -611,10 +623,11 @@ database account remains an admin; the preference cannot grant admin access.
 | `/` | Public | Google sign-in and access errors. |
 | `/dashboard` | Signed-in users | Role-aware navigation and workload counts. |
 | `/dashboard/raw` | Admin | Search listings, export, assign, and prepare calling batches. |
-| `/dashboard/calls` | Signed-in users; scoped for employees | Call results, transcripts, inference, workflow edits. |
+| `/dashboard/calls` | Signed-in users; scoped for employees | Call results, transcripts, inference and saved manual-work reporting. |
 | `/dashboard/my` | Signed-in users, including admins | Own manual-call and AI-review assignments, independently paginated. |
 | `/dashboard/assignments` | Admin | Assignment history and human/AI comparison. |
-| `/dashboard/team` | Admin | Date-based productivity/quality, evidence drill-downs, accounts and access. |
+| `/dashboard/team` | Admin | Team performance, date filters, caller metrics and evidence drill-downs. |
+| `/dashboard/team/access` | Admin | Search members, grant/revoke sign-in access and manage roles. |
 | `/dashboard/batches` | Admin | Paginated AI/manual batches, stable membership, metric cards and CSV. |
 
 ### Shared query rules
@@ -840,6 +853,7 @@ non-admin requests; ordinary session guards return 401.
 | GET | `/api/batches` | Admin | Latest 20 batches, errors and received-result counts. |
 | POST | `/api/batches/[id]` | Admin | Check provider status or record a verified resolution. |
 | GET, POST | `/api/batches/reconcile` | Process secret | Reconcile five active provider batches per run. |
+| POST | `/api/batches/sync` | Admin | Reconcile up to three eligible batches from the visible page; accepts at most 25 batch IDs. |
 | GET, POST | `/api/raw/export` | Scoped session | Selected or filtered listing CSV. |
 | GET, POST | `/api/calls/export` | Scoped session | Selected/filtered call CSV. |
 | PATCH | `/api/calls/[id]` | Scoped session | Retired legacy editing channel; returns 409 for in-scope calls. Use assignment controls. |

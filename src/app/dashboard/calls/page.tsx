@@ -1,11 +1,14 @@
 import {AiHistoryButton} from '../AiTimeline';
-import { firstValue, searchQuery, type SearchValues } from "@/lib/filter-values";
+import { firstValue } from "@/lib/filter-values";
 import { MultiSelect } from "../MultiSelect";
-import { PageJump } from "../PageJump";
+import { RecordsPagination } from "../RecordsPagination";
+import { RecordsHeader } from "../RecordsHeader";
 import { AiReviewNotice, CallGridHint } from "../GridNotices";
 import { callFiltersSchema } from "@/lib/filters";
 import { callColumns } from "../sheet-columns";
 import { dateTime as fmtDate, rent, number } from "@/lib/display";
+import { ResultBadge } from "../ResultBadge";
+import { AssignedCaller } from "../AssignedCaller";
 import { SelectionProvider, SelectionSummary } from "../Selection";
 import { ExportButton } from "../ExportButton";
 import { FilterForm } from "../FilterForm";
@@ -16,7 +19,7 @@ import { countCalls,getCalls, getFilterOptions, type CallFilters, type CallRow }
 import { agentLabel } from "@/lib/agents";
 import { requireUser } from "@/lib/auth";
 import { listAssignees } from "@/lib/users";
-import { EditableCells } from "../EditableCells";
+import { AssignmentNotes } from "../assignments/AssignmentNotes";
 import { EnrichButton } from "../EnrichButton";
 import { ApplyButton } from "../ApplyButton";
 import { ColumnChooser } from "../ColumnChooser";
@@ -33,23 +36,6 @@ export const dynamic = "force-dynamic";
 // Forking the page per role would mean fixing every grid bug twice.
 
 
-
-// Build a compact page list with ellipses: 1 … 4 5 [6] 7 8 … 20
-function pageList(page: number, pages: number): (number | "…")[] {
-  const set = new Set<number>();
-  for (let p = 1; p <= pages; p++) {
-    if (p === 1 || p === pages || Math.abs(p - page) <= 1) set.add(p);
-  }
-  const sorted = [...set].sort((a, b) => a - b);
-  const out: (number | "…")[] = [];
-  let prev = 0;
-  for (const p of sorted) {
-    if (prev && p - prev > 1) out.push("…");
-    out.push(p);
-    prev = p;
-  }
-  return out;
-}
 
 // Wrap any occurrences of the search terms in <mark> for highlighting.
 function hl(text: string | null | undefined, terms: string[]): React.ReactNode {
@@ -71,9 +57,6 @@ function cfClass(availability: string | null) {
 }
 
 
-
-type SP = SearchValues;
-function qs(base: SP, override: SP) { return `?${searchQuery({ ...base, ...override })}`; }
 
 export default async function Dashboard({
   searchParams,
@@ -105,10 +88,10 @@ export default async function Dashboard({
 
   return (
     <SelectionProvider key={JSON.stringify(sp)} total={total}>
-      <div className="page-title"><span className="pt-icon"><IconPhone size={18} /></span> Call Analytics <Freshness updatedAt={new Date().toISOString()} /></div>
+      <RecordsHeader title="Call Analytics" icon={<IconPhone size={18}/>} actions={<Freshness updatedAt={new Date().toISOString()}/>}/>
       <AiReviewNotice count={aiReviewCount} />
       {/* Search and optional filters */}
-      <FilterForm key={JSON.stringify(sp)} applied={sp} action="/dashboard/calls">
+      <FilterForm key={JSON.stringify(sp)} applied={sp} action="/dashboard/calls" viewTools={<ColumnChooser/>} actions={<><ExportButton entity="calls"/>{user.isAdmin&&<AssignButton entity="call" total={total} assignees={assignees}/>}</>}>
         <div className="search">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
@@ -119,11 +102,7 @@ export default async function Dashboard({
         <FiltersToggle count={activeFilters} />
         <ApplyButton />
 
-        <ColumnChooser />
-        <span className="spacer" />
-        <ExportButton entity="calls" />
-        {user.isAdmin && <AssignButton entity="call" total={total} assignees={assignees} />}
-        <a className="btn-text" href="/dashboard/calls">Reset</a>
+        <a className="btn-text toolbar-reset" href="/dashboard/calls">Reset</a>
 
         {firstValue(sp.batch_id)&&<input type="hidden" name="batch_id" value={firstValue(sp.batch_id)}/>}
         <FilterPanel groups={[
@@ -200,7 +179,7 @@ export default async function Dashboard({
                 <td>{r.call_type === "inbound" ? "Inbound" : "Outbound"}</td>
                 <td title={r.agent_id || undefined}>{agentLabel(r.agent_id)}</td>
                 <td className={cfClass(r.availability)}>
-                  <span className="cell-status">{r.availability ?? ""}</span>
+                  <ResultBadge value={r.availability} empty="No AI result" className="cell-status"/>
                   {r.needs_review && <span className="review-tag" title="The AI inference has low confidence; review the transcript or recording.">Needs AI review</span>}
                   {!r.inferred && r.can_enrich && <EnrichButton id={r.id} />}
                 </td>
@@ -211,19 +190,16 @@ export default async function Dashboard({
                 <td className="call-col">{r.recording_url ? <a href={r.recording_url} target="_blank" rel="noreferrer">Play</a> : ""}</td>
                 {user.isAdmin && (
                   <td className="clip" title={r.assignment_note ?? ""}>
-                    {r.assigned_to ?? <span className="muted">—</span>}
-                    {!r.assigned_to && r.assignment_state === "done" && <span className="review-tag" title={`Previously assigned to ${r.assignment_assignee || "a caller"}; see Details`}>completed history</span>}
+                    <AssignedCaller current={r.assigned_to} previous={r.assignment_assignee} state={r.assignment_state} people={assignees}/>
                   </td>
                 )}
-                <td>{r.assignment_outcome||<span className="muted">No manual result</span>}{r.assignment_closure_reason==='exhausted'&&<><br/>Closed: Exhausted</>}{(r.manual_attempt_count||0)>0&&<><br/><RecordDetails id={r.id} entity="call" label="Manual history"/></>}</td>
-                <EditableCells canEdit={!!r.assignment_id && r.assignment_state !== "dropped"} revision={r.assignment_revision||0}
-                  id={r.id}
-                  assignmentId={r.assignment_id}
-                  remarks={r.assignment_remarks}
-                  addedToDb={!!r.assignment_added_to_db}
-                  whId={r.assignment_wh_id}
-                  legacyWhId={r.wh_id} legacyAdded={r.added_to_db}
-                />
+                <td><ResultBadge value={r.assignment_outcome} empty="No manual result"/>{r.assignment_closure_reason==='exhausted'&&<><br/>Closed: Exhausted</>}{(r.manual_attempt_count||0)>0&&<><br/><RecordDetails id={r.id} entity="call" label="Manual history"/></>}</td>
+                <td className="report-notes"><AssignmentNotes text={r.assignment_remarks}/></td>
+                <td><span className={r.assignment_added_to_db ? undefined : "muted"}>{r.assignment_added_to_db ? "Yes" : "No"}</span></td>
+                <td>
+                  {r.assignment_wh_id || <span className="muted">—</span>}
+                  {(r.wh_id || r.added_to_db) && <small className="legacy-reference">Legacy call: {r.wh_id || "ID missing"}{r.added_to_db ? " · Added" : ""}</small>}
+                </td>
                 <td title="Legacy metadata; actual callers are recorded in manual history">{r.called_by || "—"}</td>
                 <td>{r.source_cities ? hl(r.source_cities, terms) : <span className="muted">Unknown</span>}</td>
                 <td>{hl(r.db_area, terms)}</td>
@@ -249,26 +225,7 @@ export default async function Dashboard({
         </table>
       </div>
 
-      <div className="records-pagination"><div className="pager">
-        <span className="muted">
-          {total === 0 ? "No results" : `${(startRow + 1).toLocaleString()}–${Math.min(startRow + pageSize, total).toLocaleString()} of ${total.toLocaleString()}`}
-        </span>
-        <div className="pages">
-          {page <= 1 ? <button type="button" disabled aria-label="First">«</button> : <Link href={qs(sp, { page: "1" })} aria-label="First">«</Link>}
-          {page <= 1 ? <button type="button" disabled aria-label="Prev">‹</button> : <Link href={qs(sp, { page: String(page - 1) })} aria-label="Prev">‹</Link>}
-          {pageList(page, pages).map((t, i) =>
-            t === "…"
-              ? <span key={`e${i}`} className="ellipsis">…</span>
-              : t === page
-                ? <span key={t} className="cur">{t}</span>
-                : <Link key={t} href={qs(sp, { page: String(t) })}>{t}</Link>,
-          )}
-          {page >= pages ? <button type="button" disabled aria-label="Next">›</button> : <Link href={qs(sp, { page: String(page + 1) })} aria-label="Next">›</Link>}
-          {page >= pages ? <button type="button" disabled aria-label="Last">»</button> : <Link href={qs(sp, { page: String(pages) })} aria-label="Last">»</Link>}
-        </div>
-      </div>
-
-      <PageJump key={page} page={page} pages={pages}/></div>
+      <RecordsPagination page={page} pages={pages} total={total} pageSize={pageSize} applied={sp}/>
 
 
     </SelectionProvider>

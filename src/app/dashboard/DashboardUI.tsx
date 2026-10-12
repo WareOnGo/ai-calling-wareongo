@@ -92,7 +92,7 @@ export function DashboardUI({ children, header, userEmail, isAdmin }: { children
   return <Context.Provider value={context}>
     {header}
     {transitioning && <div className="navigation-progress" role="status"><span />Updating results…</div>}
-    {(saveList.length > 0 || pathname === "/dashboard/calls" || pathname === "/dashboard/my") && <div className={`sheet-save-status${failed.length ? " has-error" : ""}`} role="status" aria-live="polite">
+    {(saveList.length > 0 || pathname === "/dashboard/my") && <div className={`sheet-save-status${failed.length ? " has-error" : ""}`} role="status" aria-live="polite">
       {!saveList.length ? "Edits save automatically" : failed.length ? <>{failed.length} {failed.length === 1 ? "row hasn't" : "rows haven't"} saved. Your drafts are still here.
         <button type="button" onClick={() => failed.forEach(([, s]) => s.retry())}>Retry</button>
         <button type="button" onClick={() => document.getElementById(`save-${failed[0][0]}`)?.scrollIntoView({ block: "center", inline: "nearest" })}>Show change</button>

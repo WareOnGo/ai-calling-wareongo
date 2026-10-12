@@ -23,7 +23,7 @@ test('Available found precedes onboarding and uses the actual logged date with m
  const row=page.getByLabel('Team metrics table').and(page.locator(':visible')).locator('tbody tr').filter({hasText:'priya@eval.test'});
  await expect(row.getByRole('link',{name:'First Available targets for priya@eval.test: 1',exact:true})).toBeVisible();
  await expect(row.getByRole('link',{name:'Warehouse references onboarded for priya@eval.test: 0',exact:true})).toBeVisible();
- await expect(page.getByLabel('Team metrics table').locator('th')).toHaveCount(6);await expect(row).toContainText('40.0s');
+ await expect(page.getByLabel('Team metrics table').locator('thead th')).toHaveCount(6);await expect(row).toContainText('40.0s');
  await row.getByRole('link',{name:'First Available targets for priya@eval.test: 1',exact:true}).click();
  await expect(page.getByLabel('Metric evidence table').and(page.locator(':visible')).locator('tbody tr')).toHaveCount(1);
  const csv=await page.request.get('/api/team/export?date_from=2026-08-02&date_to=2026-08-02&caller=priya%40eval.test&metric=available');expect(csv.status()).toBe(200);expect(csv.headers()['x-export-row-count']).toBe('1');expect(await csv.text()).toContain('Available found');

@@ -27,7 +27,7 @@ test('measures cold/warm pages and lazy details on the volume fixture',async({pa
   }
   measurements[`${kind}_batch_250`]=runs;
  }
- await page.goto('/dashboard/calls');await expect(page.locator('.sheet-save-status')).toHaveText('All changes saved');await page.getByRole('button',{name:'Details for call',exact:true}).first().click({timeout:10000});await expect(page.getByRole('dialog')).toContainText('Warehouse discussion');
+ await page.goto('/dashboard/calls');await expect(page.locator('.sheet-save-status')).toHaveCount(0);await page.getByRole('button',{name:'Details for call',exact:true}).first().click({timeout:10000});await expect(page.getByRole('dialog')).toContainText('Warehouse discussion');
  measurements.resources=await page.evaluate(()=>performance.getEntriesByType('resource').map(r=>({name:r.name.split('/').slice(-2).join('/'),ms:Math.round(r.duration)})));
  await context.addCookies([sessionCookie('caller1@perf.test') as never]);await page.goto('/dashboard/my');await expect(page.locator('.page-title:visible')).toContainText('My Work');
  expect(errors).toEqual([]);writeFileSync(`/tmp/bolna-handoff-browser-performance${process.env.EVAL_PRODUCTION?'-production':''}.json`,JSON.stringify(measurements,null,2));console.log(JSON.stringify(measurements));

@@ -8,12 +8,24 @@ test('old Result and RNR notes cannot close a task without a logged call',async(
  await row.getByLabel('Your notes').fill('RNR; call back later');await row.getByLabel('Your notes').blur();await expect(row.locator('.save-status')).toHaveText('Saved');
  await row.getByRole('button',{name:'Mark done'}).click();await expect(row).toContainText('Log an actual manual call');await expect(row.getByRole('button',{name:'Mark done'})).toHaveAttribute('aria-pressed','false');
 });
-test('Calls onboarding writes the assignment and reconciles with the Onboarded filter',async({adminPage:page})=>{
- await page.goto('/dashboard/calls');const row=page.locator('tbody tr').filter({has:page.getByLabel('Manual follow-up notes').and(page.locator(':enabled'))});
- await row.getByLabel('Team warehouse ID').fill('123456');await row.getByLabel('Team warehouse ID').blur();await expect(page.locator('.sheet-save-status')).toHaveText('All changes saved');
- await row.getByLabel('Team marked warehouse added to database').check();await expect(page.locator('.sheet-save-status')).toHaveText('All changes saved');
- await page.goto('/dashboard/calls?onboarded=yes');await expect(page.locator('tbody tr')).toHaveCount(1);await expect(page.getByLabel('Team warehouse ID')).toHaveValue('123456');
+test('Call Analytics reports saved My Work values without editable fields and keeps onboarding filters and exports',async({adminPage:page,employeePage:caller})=>{
+ await caller.goto('/dashboard/my');const work=caller.locator('[data-entity="call"] tbody tr').filter({hasText:'Raghav'});
+ await work.getByLabel('Your notes').fill('Site visit requested after confirming availability.');await work.getByLabel('Your notes').blur();await expect(work.locator('.save-status')).toHaveText('Saved');
+ await work.getByLabel('Warehouse ID').fill('123456');await work.getByLabel('Warehouse ID').blur();await expect(work.locator('.save-status')).toHaveText('Saved');
+ await work.locator('.checkfield input').check();await expect(work.locator('.save-status')).toHaveText('Saved');
+ const writes:string[]=[];page.on('request',r=>{if(r.method()==='PATCH')writes.push(r.url());});
+ await page.goto('/dashboard/calls?onboarded=yes');await expect(page.locator('tbody tr')).toHaveCount(1);
+ const row=page.locator('table.sheet tbody tr');
+ for(const [heading,value] of [['Manual notes','Site visit requested after confirming availability.'],['Added','Yes'],['WH ID','123456']]){
+  const index=await page.locator(`th[data-column="${heading}"]`).evaluate((cell:HTMLTableCellElement)=>cell.cellIndex);
+  await expect(row.locator('td').nth(index)).toHaveText(value);
+ }
+ await expect(row.locator('input:not(.rowsel),textarea,select,[contenteditable="true"]')).toHaveCount(0);
+ await expect(page.locator('.sheet-save-status')).toHaveCount(0);
  const csv=await page.request.get('/api/calls/export?onboarded=yes');expect(csv.status()).toBe(200);expect(await csv.text()).toContain('123456');
+ expect(writes).toEqual([]);
+ await page.goto('/dashboard/calls?q=Meera');await expect(page.locator('.report-notes')).toHaveText('No notes yet');
+ await caller.goto('/dashboard/calls');await expect(caller.locator('table.sheet tbody input,table.sheet tbody textarea,table.sheet tbody select')).toHaveCount(0);
  expect((await page.request.patch('/api/calls/c0000000-0000-4000-8000-000000000001',{data:{called_by:'bypass',revision:0}})).status()).toBe(409);
 });
 test('saved column preferences migrate Called By to hidden, labelled and read-only',async({adminPage:page})=>{
@@ -29,5 +41,5 @@ test('Bolna preview shows alternate-number human ownership before any send',asyn
 });
 test('Bangalore matches Bengaluru and the five-metric Team view discloses unknown history',async({adminPage:page})=>{
  await page.goto('/dashboard/raw?city=Bangalore');await expect(page.locator('tbody tr')).toHaveCount(1);await expect(page.locator('tbody')).toContainText('Anil Broker');
- await page.goto('/dashboard/team');await expect(page.getByLabel('Team metrics table').locator('th')).toHaveCount(6);await expect(page.getByText('Historical call counts are unknown',{exact:false})).toBeVisible();await expect(page.getByLabel('Metric evidence table')).toHaveCount(0);
+ await page.goto('/dashboard/team');await expect(page.getByLabel('Team metrics table').locator('thead th')).toHaveCount(6);await expect(page.getByText('Historical call counts are unknown',{exact:false})).toBeVisible();await expect(page.getByLabel('Metric evidence table')).toHaveCount(0);
 });

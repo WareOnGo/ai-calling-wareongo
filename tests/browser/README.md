@@ -42,6 +42,23 @@ allocation counts, detail tabs and history pagination, and actual hit testing
 of Views/Columns menus at the viewport edges. The gallery includes each new
 detail section and the split-caller and saved-view states in both themes.
 
+`35-pagination-batches.spec.ts` covers centered pagination, preserved repeated
+filters, grouped batch details and live completion updates. `36-team-pages.spec.ts`
+checks the separate Performance/Access control routes, member search and route
+permissions. `37-navigation-loading.spec.ts` holds database reads while navigating
+to Batches and its details, and watches rendered frames for unwanted home cards.
+The gallery includes the account menu and both Team pages, plus the add-member
+form. Provider sync requests are stubbed in browser contexts; completion,
+stopped batches, retries, incomplete snapshots and reservation release are tested
+against fake provider responses in `tests/integration/batch-live.test.ts`.
+
+`13-assignment-view.spec.ts` checks completed-assignment attribution, inactive
+caller fallback and replacement by a new active owner. `20-handoff-ai.spec.ts`
+checks the shared result palette, AI summary precedence, empty history actions,
+focus return and contrast at both widths in both themes. `26-review-regressions.spec.ts`
+verifies that My Work changes appear as read-only Call Analytics values, retaining
+the same onboarding filters and export data.
+
 The sibling `bolna-eval` harness also provides `npm run render:dashboard`; its
 wrapper uses `APP_DIR` to run this checkout's scenarios. Thus the renderer stays
 versioned with the implementation it checks. The wrapper defaults to the

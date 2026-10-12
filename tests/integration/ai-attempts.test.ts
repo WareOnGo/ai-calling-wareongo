@@ -92,6 +92,27 @@ it('busy and no-answer remain retryable and are never labeled dead across Calls/
   const r=(await getRawRecords(admin,{})).rows[0];expect(r.last_availability).toBe('Unclear');expect(deriveCat(r.call_count,r.last_availability)).toBe('unclear');
  }
 });
+it('AI history colors use Available before Unavailable before Unclear across all saved calls',async()=>{
+ expect((await getRawRecords(admin,{})).rows[0].ai_history_result).toBe('Unclear');
+ const prior=randomUUID();
+ await query("insert into bolna_call_logs(id,phone_id,status,call_type,to_number,llm_availability,call_created_at) select $1,phone_id,'completed','outbound','+919876543210','Unavailable',now()-interval '2 days' from raw_phone_numbers where phone_last10='9876543210'",[prior]);
+ expect((await getRawRecords(admin,{})).rows[0]).toMatchObject({ai_history_result:'Unavailable',last_availability:'Unclear'});
+ await query("update bolna_call_logs set llm_availability='Available' where id=$1",[prior]);
+ // An older result must still count after it leaves the 20-call detail preview.
+ await query("insert into bolna_call_logs(id,phone_id,status,call_type,to_number,call_created_at) select gen_random_uuid(),p.phone_id,'no-answer','outbound','+919876543210',now()-interval '1 hour' from generate_series(1,25) cross join raw_phone_numbers p where p.phone_last10='9876543210'");
+ expect((await getRawRecords(admin,{})).rows[0]).toMatchObject({ai_history_result:'Available',last_availability:'Unclear'});
+ await query("update bolna_call_logs set status='balance-low' where id=$1",[prior]);
+ expect((await getRawRecords(admin,{})).rows[0].ai_history_result).toBe('Unclear');
+});
+it('AI history summary includes inbound calls on alternate phones without replacing the latest result',async()=>{
+ const phone=(await query("insert into raw_phone_numbers(phone_last10,phone) values('9876543211','+919876543211') returning phone_id")).rows[0].phone_id;
+ await query('insert into raw_phones(master_id,phone_id,is_primary) values($1,$2,false)',[record,phone]);
+ await query("insert into bolna_call_logs(id,phone_id,status,call_type,from_number,to_number,llm_availability,call_created_at) values($1,$2,'completed','inbound','+919876543211','+918000000000','Available',now()-interval '1 day')",[randomUUID(),phone]);
+ expect((await getRawRecords(admin,{})).rows[0]).toMatchObject({ai_history_result:'Available',last_availability:'Unclear',ai_attempt_count:0,ai_inbound_count:0});
+ // No saved call result cannot be presented as an Unclear result.
+ await query('delete from bolna_call_logs');
+ expect((await getRawRecords(admin,{})).rows[0].ai_history_result).toBeNull();
+});
 it('timelines are scoped, paginated and filterable by batch, with intervals computed before pagination',async()=>{
  for(let i=0;i<55;i++)await capture(payload({initiated_at:new Date(Date.UTC(2026,9,10,0,i)).toISOString(),telephony_data:{...payload().telephony_data,provider_call_id:`p-${i}`}}));
  expect((await aiHistory(admin,'record',record,{page:2})).rows).toHaveLength(5);

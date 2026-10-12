@@ -83,10 +83,12 @@ test('employee skeleton ignores old spreadsheet geometry and honours the new col
   try {
     await db.query('begin');await db.query('lock table bolna_call_logs in access exclusive mode');
     await page.goto('/dashboard/calls',{waitUntil:'commit'});
-    await expect(page.locator('.loading-sheet')).toBeAttached();
-    await expect(page.locator('.loading-sheet')).toBeVisible();
-    await expect(page.locator('.loading-sheet th').filter({hasText:/^DB Owner$/})).toBeHidden();
-    expect(await page.locator('.loading-sheet .selcol').count()).toBe(0);
+    // React may stage a hidden copy while replacing an inherited fallback.
+    // Measure the one visible skeleton, as in the layout cases above.
+    const skeleton=page.locator('.loading-sheet:visible');
+    await expect(skeleton).toHaveCount(1);
+    await expect(skeleton.locator('th').filter({hasText:/^DB Owner$/})).toBeHidden();
+    expect(await skeleton.locator('.selcol').count()).toBe(0);
     before=await rectangles(page,'.colheads th');
     expect(before.find((r:any)=>r.text==='Owner').width).toBeGreaterThanOrEqual(200);
   } finally {await db.query('commit');await db.end();}

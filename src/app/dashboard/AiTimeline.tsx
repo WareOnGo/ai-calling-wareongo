@@ -39,10 +39,12 @@ export function AiTimeline({entity,id,initialOpen=false,initialBatch="",initialS
  </section>;
 }
 
-export function AiHistoryButton({entity,id,name,executionCount}:{entity:'call'|'record';id:string;name?:string|null;executionCount?:number}){
+export function AiHistoryButton({entity,id,name,executionCount,summary}:{entity:'call'|'record';id:string;name?:string|null;executionCount?:number;summary?:{outbound:number;inbound:number;result:'Available'|'Unavailable'|'Unclear'|null}}){
  const [open,setOpen]=useState(false);
  return <div className="inline-ai-history">
-  <button className="btn-row" type="button" aria-haspopup="dialog" onClick={()=>setOpen(true)}>Show AI attempts</button>
+  <button className={`btn-row${summary?` ai-attempt-summary ai-attempt-${summary.result?.toLowerCase()||'unknown'}`:''}`} type="button" aria-label="Show AI attempts" aria-haspopup="dialog" title={summary?'Open AI history. Result priority: Available → Unavailable → Unclear across all calls.':undefined} onClick={()=>setOpen(true)}>
+    {summary?<><span className="ai-attempt-result">{summary.result||'View attempts'}<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m6 3 5 5-5 5"/></svg></span><span className="ai-attempt-counts">{summary.outbound} outbound · {summary.inbound} inbound</span></>:'Show AI attempts'}
+  </button>
   {open&&<Dialog title="AI attempt history" drawer wide onClose={()=>setOpen(false)}>
     <div className="modal-body ai-history-panel">{name&&<p className="history-record-name">{name}</p>}{executionCount!==undefined&&<p className="history-scope">{executionCount} execution records</p>}<AiTimeline entity={entity} id={id} initialOpen/></div>
     <div className="modal-foot"><button className="btn secondary" type="button" onClick={()=>setOpen(false)}>Close AI history</button></div>

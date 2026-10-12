@@ -1,0 +1,106 @@
+/* Team has separate reporting and access pages with the same navigation. */
+.team-intro { margin: 0; font-size: var(--text-support); color: var(--muted); }
+.team-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.team-nav a { padding: 8px 12px; border-radius: var(--radius-input); color: var(--muted); font-size: var(--text-support); }
+.team-nav a:hover { text-decoration: none; color: var(--heading); background: var(--hover); }
+.team-nav a[aria-current="page"] { color: var(--accent); background: var(--accent-bg); font-weight: 500; }
+.team-page { padding: 20px 24px 32px; border-top: 1px solid var(--border); }
+.team-report { padding: 0; }
+.team-report .team-range { margin: 0 0 20px; padding: 0; gap: 16px 24px; font-size: var(--text-support); }
+.team-date-fields { display: flex; align-items: flex-end; gap: 12px; }
+.team-range .team-date-fields label { display: grid; gap: 6px; color: var(--muted); }
+.team-range input { min-height: 38px; min-width: 150px; background: var(--surface); }
+.team-date-fields .btn { min-height: 38px; }
+.team-date-presets { display: flex; flex-wrap: wrap; gap: 4px; align-self: flex-end; }
+.team-date-presets a { padding: 9px 12px; border: 1px solid transparent; border-radius: var(--radius-input); color: var(--muted); }
+.team-date-presets a:hover { text-decoration: none; color: var(--accent); }
+.team-date-presets a[aria-current="date"] { background: var(--accent-bg); color: var(--accent); }
+.team-date-zone { color: var(--muted); align-self: flex-end; padding-block: 10px; margin-left: auto; }
+.team-overview { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 24px; }
+.team-metric { display: grid; gap: 6px; padding: 16px 20px; border: 1px solid var(--border); border-radius: var(--radius-panel); color: var(--text); background: var(--surface); }
+.team-metric:hover { border-color: var(--accent); text-decoration: none; }
+.team-metric > span { font-size: var(--text-support); color: var(--muted); }
+.team-metric strong { display: flex; align-items: center; min-height: 1.3em; color: var(--heading); font-size: var(--text-metric); font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.3; }
+.team-metric small { color: var(--muted); font-size: var(--text-caption); line-height: 1.5; }
+.team-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px 24px; margin-bottom: 12px; }
+.team-report .team-section-heading h2 { font-size: var(--text-section); font-weight: 600; margin: 0; }
+.team-report .team-section-heading p { font-size: var(--text-support); margin: 4px 0 0; min-height: 1.55em; }
+.team-section-heading > a { font-size: var(--text-support); }
+.team-report-grid { max-height: none; overflow-x: auto; }
+.team-report-grid .sheet { min-width: 850px; }
+.team-report-grid .sheet thead th { padding: 12px 16px; font-size: var(--text-support); background: var(--surface-subtle); text-align: right; line-height: 1.4; }
+.team-report-grid .sheet th:first-child { text-align: left; }
+.team-report-grid .sheet tbody th, .team-report-grid .sheet td { padding: 12px 16px; vertical-align: middle; font-size: var(--text-body); font-weight: 400; }
+.team-report-grid .sheet tbody th { background: var(--surface); border-bottom: 1px solid var(--border); }
+.team-report-grid .sheet tbody tr:last-child th { border-bottom: 0; }
+.team-report-grid .sheet .team-number { text-align: right; }
+.team-caller-name { display: block; font-weight: 500; color: var(--heading); }
+.team-caller-email, .team-cell-meta { display: block; color: var(--muted); font-size: var(--text-support); margin-top: 4px; }
+.team-cell-meta a { color: var(--muted); text-decoration: underline; text-underline-offset: 2px; }
+.team-cell-value { display: block; color: var(--heading); }
+.team-report .team-coverage-note { max-width: 100ch; font-size: var(--text-support); margin: 16px 0 8px; }
+.team-definitions { padding: 0; margin: 0; border: 0; background: transparent; font-size: var(--text-support); }
+.team-definitions summary { padding: 8px 0; color: var(--accent); font-weight: 400; }
+.team-definitions p { max-width: 105ch; font-size: var(--text-support); }
+.team-evidence { margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--border); scroll-margin-top: 16px; }
+.team-evidence-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; font-size: var(--text-support); }
+.team-evidence .team-section-heading p { overflow-wrap: anywhere; }
+.team-evidence-grid .sheet thead th { text-align: left; }
+.team-evidence-grid .sheet td { vertical-align: top; }
+.team-evidence-target { display: grid; gap: 8px; justify-items: start; }
+.team-evidence .records-pagination { border-bottom: 1px solid var(--border); }
+.team-access-page .team { padding: 0; max-width: 1280px; margin: 0 auto; }
+.team-access-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-bottom: 20px; }
+.team-access-toolbar .callout { margin: 0; padding: 0; border: 0; background: transparent; max-width: 78ch; font-size: var(--text-support); color: var(--muted); }
+.team-access-toolbar .callout strong { display: block; color: var(--heading); font-weight: 500; font-size: var(--text-body); margin-bottom: 4px; }
+.team-access-toolbar .add-trigger { margin: 0; flex: none; }
+.team-directory-tools { display: flex; align-items: center; gap: 16px; padding-bottom: 24px; }
+.team-member-search { width: 340px; max-width: 100%; }
+.team-member-search input { width: 100%; min-height: 38px; padding: 8px 12px; border: 1px solid var(--field-border); border-radius: var(--radius-input); background: var(--surface); color: var(--text); font: inherit; }
+.team-directory-tools > span { font-size: var(--text-support); color: var(--muted); }
+.team-access-page .people-group { margin-bottom: 28px; }
+.team-access-page .group-head { font-size: var(--text-section); margin-bottom: 12px; gap: 12px; }
+.team-access-page .group-hint { font-size: var(--text-support); }
+.team-access-page .people { max-width: none; gap: 0; border: 1px solid var(--border); border-radius: var(--radius-panel); overflow: hidden; }
+.team-access-page .person { grid-template-columns: 36px minmax(200px, 1fr) minmax(150px, auto) 150px 148px; padding: 16px; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; box-shadow: none; background: var(--surface); }
+.team-access-page .person:last-child { border-bottom: 0; }
+.team-access-page .person-email { font-size: var(--text-support); }
+.team-access-page .person-name { overflow-wrap: anywhere; }
+.team-access-page .person-role, .team-access-page .switch { grid-column: auto; }
+.team-access-page .person-load { grid-column: auto; }
+.team-access-page .addcard { max-width: none; background: var(--surface); margin-bottom: 24px; }
+.team-no-matches { padding: 24px; border: 1px solid var(--border); border-radius: var(--radius-panel); color: var(--muted); text-align: center; }
+@media (max-width: 1000px) {
+  .team-date-zone { margin-left: 0; }
+  .team-date-presets { order: 2; flex-basis: 100%; }
+  .team-access-page .person { grid-template-columns: 36px minmax(150px, 1fr) 145px 148px; }
+  .team-access-page .person-load { grid-column: 2; grid-row: 2; }
+  .team-access-page .person-role { grid-column: 3; grid-row: 1 / 3; }
+  .team-access-page .switch { grid-column: 4; grid-row: 1 / 3; }
+  .team-access-page .team-feedback { grid-row: 3; }
+}
+@media (max-width: 760px) {
+  .team-page { padding: 16px; }
+  .team-date-fields { width: 100%; flex-wrap: wrap; gap: 12px; }
+  .team-date-fields label { flex: 1; min-width: 0; }
+  .team-range input { width: 100%; min-width: 0; }
+  .team-date-fields .btn { flex-basis: 100%; }
+  .team-date-presets { gap: 0; flex-basis: auto; }
+  .team-date-presets a { padding: 8px; }
+  .team-report .team-range { gap: 8px; }
+  .team-date-zone { order: 3; font-size: var(--text-caption); }
+  .team-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .team-metric { padding: 12px; }
+  .team-section-heading { align-items: flex-start; flex-direction: column; gap: 8px; }
+  .team-access-toolbar { align-items: flex-start; flex-direction: column; gap: 16px; }
+  .team-directory-tools { flex-wrap: wrap; gap: 12px; }
+  .team-member-search { width: 100%; }
+  .team-access-page .person { grid-template-columns: 36px minmax(0, 1fr); gap: 8px 12px; }
+  .team-access-page .person-load { grid-column: 2; grid-row: auto; flex-wrap: wrap; }
+  .team-access-page .person-role { grid-column: 2; grid-row: auto; max-width: 180px; }
+  .team-access-page .switch { grid-column: 2; grid-row: auto; justify-self: start; min-height: 36px; }
+  .team-access-page .team-feedback { grid-row: auto; }
+  .team-access-page .group-head { flex-wrap: wrap; gap: 6px 8px; }
+  .team-access-page .person-name { flex-wrap: wrap; }
+  .team-access-page .person-email { overflow-wrap: anywhere; }
+}

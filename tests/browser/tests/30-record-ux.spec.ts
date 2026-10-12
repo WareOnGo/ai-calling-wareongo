@@ -25,11 +25,13 @@ test('primary records and their actions fit a laptop without horizontal panning'
     await expect(page.locator('.rownum:visible, .rowgutter:visible, .col-resizer, .grp-toggle')).toHaveCount(0);
     await expect(page.locator('tbody .details-trigger').first()).toBeVisible();
     if (view === 'calls') {
-      // Moving the admin ownership column must keep every editable field under
-      // its label, including the three cells returned by EditableCells.
-      for (const [heading, label] of [['Manual notes','Manual follow-up notes'],['Added','Team marked warehouse added to database'],['WH ID','Team warehouse ID']]) {
+      // Saved manual values belong under their report headings, without inputs
+      // or disabled controls suggesting that the report is another editing grid.
+      for (const [heading, value] of [['Manual notes','No notes yet'],['Added','No'],['WH ID','—']]) {
         const index = await page.locator(`th[data-column="${heading}"]`).evaluate((cell:HTMLTableCellElement) => cell.cellIndex);
-        await expect(page.locator('tbody tr').first().locator('td').nth(index).getByLabel(label)).toBeVisible();
+        const cell=page.locator('tbody tr').first().locator('td').nth(index);
+        await expect(cell).toHaveText(value);
+        await expect(cell.locator('input,textarea,select')).toHaveCount(0);
       }
     }
   }

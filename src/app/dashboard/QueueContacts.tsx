@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { type QueueSel, type CallCat, CAT_TAG_LABEL, normNum } from "@/lib/queue";
 import { routeLanguage, LANGUAGE_LABELS, type CallLanguage, type RoutingMode } from "@/lib/routing";
+import { ResultBadge } from "./ResultBadge";
 
 const PAGE_SIZE = 25;
 
@@ -26,7 +27,7 @@ export function QueueContacts({ rows, excluded, routingMode, availableLanguages 
           : !/^\d{10}$/.test(normNum(row.contact)) ? "No usable number" : null;
         return <li key={row.id} className="queue-contact">
           <div><strong>{row.name || "Unnamed contact"}</strong><span className="queue-contact-phone">{row.contact || "No phone number"}</span>
-            <small>{[row.area, language && LANGUAGE_LABELS[language], row.cat && `AI: ${CAT_TAG_LABEL[row.cat]}`].filter(Boolean).join(" · ")}</small>
+            <small>{[row.area, language && LANGUAGE_LABELS[language]].filter(Boolean).join(" · ")}{row.cat && <> · {row.cat === 'dead' ? 'AI: no-answer' : <ResultBadge prefix="AI: " value={CAT_TAG_LABEL[row.cat]}/>}</>}</small>
           </div>
           <span className={`queue-contact-status${reason ? "" : " is-ready"}`}>{reason || "Ready to call"}</span>
         </li>;

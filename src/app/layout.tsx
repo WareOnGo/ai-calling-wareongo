@@ -5,6 +5,9 @@ import "./tables.css";
 import "./typography.css";
 import "./workflows.css";
 import "./queue.css";
+import "./chrome.css";
+import "./batches.css";
+import "./team.css";
 
 const inter = localFont({
   src: "./fonts/InterVariable.woff2",

@@ -1,12 +1,15 @@
 import {dispositionLabel} from "@/lib/manual-dispositions";
 import {AiHistoryButton} from '../AiTimeline';
-import { firstValue, searchQuery, type SearchValues } from "@/lib/filter-values";
+import { firstValue } from "@/lib/filter-values";
 import { MultiSelect } from "../MultiSelect";
-import { PageJump } from "../PageJump";
+import { RecordsPagination } from "../RecordsPagination";
+import { RecordsHeader } from "../RecordsHeader";
 import { WalletBalance } from "../WalletBalance";
 import { rawFiltersSchema } from "@/lib/filters";
 import { RAW_COLUMNS as COLUMNS } from "../sheet-columns";
 import { dateTime as fmtDate } from "@/lib/display";
+import { ResultBadge } from "../ResultBadge";
+import { AssignedCaller } from "../AssignedCaller";
 import { SelectionProvider, SelectionSummary } from "../Selection";
 import { ExportButton } from "../ExportButton";
 import { FilterForm } from "../FilterForm";
@@ -45,9 +48,6 @@ function hl(text: string | null | undefined, terms: string[]): React.ReactNode {
   return parts.map((p, i) => (isMatch(p) ? <mark key={i}>{p}</mark> : <span key={i}>{p}</span>));
 }
 
-type SP = SearchValues;
-function qs(base: SP, override: SP) { return `?${searchQuery({ ...base, ...override })}`; }
-
 export default async function RawDataset({
   searchParams,
 }: {
@@ -75,9 +75,8 @@ export default async function RawDataset({
 
   return (
     <SelectionProvider key={JSON.stringify(sp)} total={total}>
-      <div className="page-title"><span className="pt-icon"><IconDataset size={18} /></span> Raw Dataset <BatchActivity /> <Freshness updatedAt={new Date().toISOString()} /></div>
-      <WalletBalance/>
-      <FilterForm key={JSON.stringify(sp)} applied={sp} action="/dashboard/raw">
+      <RecordsHeader title="Raw Dataset" icon={<IconDataset size={18}/>} meta={<WalletBalance compact/>} actions={<><BatchActivity/><Freshness updatedAt={new Date().toISOString()}/></>}/>
+      <FilterForm key={JSON.stringify(sp)} applied={sp} action="/dashboard/raw" viewTools={<ColumnChooser/>} actions={<><ExportButton entity="raw"/><AssignButton entity="record" total={total} assignees={assignees}/><QueueForCalling availableLanguages={getConfiguredLanguages()}/></>}>
         <div className="search">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
@@ -88,12 +87,7 @@ export default async function RawDataset({
         <FiltersToggle count={activeFilters} />
         <ApplyButton />
 
-        <ColumnChooser />
-        <span className="spacer" />
-        <ExportButton entity="raw" />
-        <AssignButton entity="record" total={total} assignees={assignees} />
-        <QueueForCalling availableLanguages={getConfiguredLanguages()} />
-        <a className="btn-text" href="/dashboard/raw">Reset</a>
+        <a className="btn-text toolbar-reset" href="/dashboard/raw">Reset</a>
 
         <FilterPanel groups={[
           { label: "Call outcome", count: ["last_result", "manual_outcome", "called"].filter(key => sp[key]).length, content: <>
@@ -167,41 +161,29 @@ export default async function RawDataset({
                 <td>{hl(r.source, terms)}</td>
                 <td className="clip" title={r.source_record_id ?? ""}>{r.source_record_id ?? ""}</td>
                 {/* AI execution history */}
-                <td className="record-history" title="Open AI timeline for attempt history">
-                  {r.ai_attempt_count||0} outbound · {r.ai_inbound_count||0} inbound<small className="sr-only"> · {r.call_count} execution records</small>{(r.ai_attempt_count||0)+(r.ai_inbound_count||0)>0&&<AiHistoryButton entity="record" id={r.id} name={r.owner_name} executionCount={r.call_count}/>}
+                <td className="record-history">
+                  {(r.ai_attempt_count||0)+(r.ai_inbound_count||0)>0
+                    ? <AiHistoryButton entity="record" id={r.id} name={r.owner_name} executionCount={r.call_count} summary={{outbound:r.ai_attempt_count||0,inbound:r.ai_inbound_count||0,result:r.ai_history_result}}/>
+                    : <span className="muted">0 outbound · 0 inbound</span>}
+                  <small className="sr-only"> · {r.call_count} execution records</small>
                 </td>
                 <td className="calls-col">{r.last_status ?? ""}</td>
-                <td className="calls-col">{r.last_availability ?? ""}</td>
+                <td className="calls-col"><ResultBadge value={r.last_availability} empty="No AI result"/></td>
                 <td className="calls-col">{fmtDate(r.last_called_at)}</td>
                 <td className="calls-col clip" title="Transcript preview; open Details for the full transcript"><span className="record-preview">{r.last_transcript ?? ""}</span></td>
                 <td className="calls-col">{r.last_recording_url ? <a href={r.last_recording_url} target="_blank" rel="noreferrer">Play</a> : ""}</td>
                 <td className="calls-col clip" title={r.last_notes ?? ""}><span className="record-preview">{r.last_notes ?? ""}</span></td>
                 <td className="clip" title={r.assignment_note ?? ""}>
-                  {r.assigned_to ?? <span className="muted">—</span>}
-                  {!r.assigned_to && r.assignment_state === "done" && <span className="review-tag" title={`Previously assigned to ${r.assignment_assignee || "a caller"}; see Details`}>completed history</span>}
+                  <AssignedCaller current={r.assigned_to} previous={r.assignment_assignee} state={r.assignment_state} people={assignees}/>
                 </td>
-                <td className="record-history"><div>{r.assignment_outcome||"No manual result"}</div>{(r.manual_attempt_count||0)>0&&<RecordDetails id={r.id} entity="record" label="Manual calls"/>}<div className="sr-only">{r.manual_attempt_count||0} recorded in {r.assignment_state==='open'?'current':'latest'} assignment<br/>{r.assignment_outcome||"No manual result"}{r.manual_disposition&&<><br/>{dispositionLabel(r.manual_disposition)}</>}{r.assignment_closure_reason==='exhausted'&&<><br/>Closed: Exhausted</>}{r.manual_last_attempt_at&&<><br/>{fmtDate(r.manual_last_attempt_at)}</>}{r.manual_next_due_at&&<><br/>Due {fmtDate(r.manual_next_due_at)}</>}</div></td>
+                <td className="record-history"><div><ResultBadge value={r.assignment_outcome} empty="No manual result"/></div>{(r.manual_attempt_count||0)>0&&<RecordDetails id={r.id} entity="record" label="Manual calls"/>}<div className="sr-only">{r.manual_attempt_count||0} recorded in {r.assignment_state==='open'?'current':'latest'} assignment<br/>{r.assignment_outcome||"No manual result"}{r.manual_disposition&&<><br/>{dispositionLabel(r.manual_disposition)}</>}{r.assignment_closure_reason==='exhausted'&&<><br/>Closed: Exhausted</>}{r.manual_last_attempt_at&&<><br/>{fmtDate(r.manual_last_attempt_at)}</>}{r.manual_next_due_at&&<><br/>Due {fmtDate(r.manual_next_due_at)}</>}</div></td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
 
-      <div className="records-pagination"><div className="pager">
-        <span className="muted">
-          {total === 0 ? "No results" : `${(startRow + 1).toLocaleString()}–${Math.min(startRow + pageSize, total).toLocaleString()} of ${total.toLocaleString()}`}
-        </span>
-        <div className="pages">
-          {page <= 1 ? <button type="button" disabled aria-label="First">«</button> : <Link href={qs(sp, { page: "1" })} aria-label="First">«</Link>}
-          {page <= 1 ? <button type="button" disabled aria-label="Prev">‹</button> : <Link href={qs(sp, { page: String(page - 1) })} aria-label="Prev">‹</Link>}
-          <span className="cur">{page}</span>
-          {page >= pages ? <button type="button" disabled aria-label="Next">›</button> : <Link href={qs(sp, { page: String(page + 1) })} aria-label="Next">›</Link>}
-          {page >= pages ? <button type="button" disabled aria-label="Last">»</button> : <Link href={qs(sp, { page: String(pages) })} aria-label="Last">»</Link>}
-          <span className="muted">{page}/{pages}</span>
-        </div>
-      </div>
-
-      <PageJump key={page} page={page} pages={pages}/></div>
+      <RecordsPagination page={page} pages={pages} total={total} pageSize={pageSize} applied={sp}/>
 
     </SelectionProvider>
   );

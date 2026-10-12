@@ -8,16 +8,16 @@ const callId = 'c0000000-0000-4000-8000-000000000001';
 const rawId = 'a0000000-0000-4000-8000-000000000001';
 const sql = (statement: string) => execFileSync('podman',['exec','-i',CONTAINER,'psql','-U','postgres','-v','ON_ERROR_STOP=1','-q','-c',statement]);
 
-test('call edits persist when restored to their original value', async ({adminPage:page}) => {
-  await page.goto('/dashboard/calls');
-  const input = page.getByRole('textbox',{name:'Manual follow-up notes'}).and(page.locator(':enabled')).first();
+test('manual follow-up notes persist when restored to their original value', async ({employeePage:page}) => {
+  await page.goto('/dashboard/my');
+  const input = page.locator('[data-entity="call"]').getByRole('textbox',{name:'Your notes'}).first();
   for (const value of ['Follow up','']) {
     await input.fill(value);
     const response = page.waitForResponse(r => r.url().includes('/api/assignments/') && r.request().method() === 'PATCH');
     await input.blur(); expect((await response).status()).toBe(200);
     await expect(page.locator('.sheet-save-status')).toHaveText('All changes saved');
   }
-  await page.reload(); await expect(page.getByRole('textbox',{name:'Manual follow-up notes'}).and(page.locator(':enabled')).first()).toHaveValue('');
+  await page.reload(); await expect(page.locator('[data-entity="call"]').getByRole('textbox',{name:'Your notes'}).first()).toHaveValue('');
 });
 
 test('failed checkbox rolls back and offers a working retry', async ({employeePage:page,shot}) => {
@@ -170,7 +170,7 @@ test('unassign failure stays visible and retry refreshes the row', async ({admin
 });
 
 test('Team reports a failed change beside the person and can retry', async ({adminPage:page}) => {
-  await page.goto('/dashboard/team'); let fail=true;
+  await page.goto('/dashboard/team/access'); let fail=true;
   await page.route('**/api/users',r=>fail?r.fulfill({status:500,json:{error:'failed'}}):r.continue());
   const row=page.locator('.person').filter({hasText:'priya@eval.test'}); await row.getByRole('switch').click();
   await expect(row.locator('.team-feedback')).toContainText("Couldn't confirm"); await expect(row.getByRole('switch')).toHaveAttribute('aria-checked','true');
@@ -208,13 +208,13 @@ test('column visibility, keyboard navigation and reduced motion remain usable',a
   await page.locator('.column-menu:not(.views-menu) summary').click();
   for(const name of ['AI result','AI attempts','Manual result'])await page.locator('.column-options').getByRole('checkbox',{name,exact:true}).uncheck();
   await page.locator('.column-menu:not(.views-menu) summary').click();
-  const row=page.locator('tbody tr').filter({has:page.getByLabel('Manual follow-up notes').and(page.locator(':enabled'))}).first();
+  const row=page.locator('tbody tr').first();
   const phone=row.locator('td').filter({has:page.locator('.copytext')});
   await phone.click({position:{x:12,y:5}});
   await expect(page.locator('td.selected, td[tabindex="0"]')).toHaveCount(0);
   await phone.getByRole('button',{name:'Copy phone number'}).focus();
   await page.keyboard.press('Tab');
-  await expect(row.getByLabel('Manual follow-up notes')).toBeFocused();
+  await expect(page.locator('tbody .rowsel').nth(1)).toBeFocused();
   await page.reload(); await expect(page.locator('th').filter({hasText:'AI result',visible:true})).toHaveCount(0);
   await page.emulateMedia({reducedMotion:'reduce'}); await page.locator('tbody .details-trigger').first().click();
   const animation=await page.locator('.navigation-progress span').count(); expect(animation).toBe(0);

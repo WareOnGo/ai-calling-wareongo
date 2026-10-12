@@ -1,7 +1,8 @@
 /* Secondary controls and evidence open in focused panels; the record list keeps
    its space and scroll position. Shared tokens apply to both themes. */
 .filter-panel { width: min(600px, 100vw); }
-.filterbar:has(.filter-panel[open]) > .apply-button { visibility: hidden; }
+.filterbar:has(.filter-panel[open]) > .apply-button,
+.filterbar:has(.filter-panel[open]) > .toolbar-search > .apply-button { visibility: hidden; }
 .filter-panel .modal-title { margin: 0; }
 .filter-categories { display: flex; flex: none; gap: 4px; padding: 12px 16px; overflow-x: auto; border-bottom: 1px solid var(--border); }
 .filter-categories button { display: flex; align-items: center; gap: 6px; flex: none; border: 0; border-radius: var(--radius-input); padding: 9px 10px; background: transparent; color: var(--muted); font-size: var(--text-support); }
@@ -136,11 +137,31 @@
    Full evidence remains in Details; optional columns keep the same preview. */
 table.sheet:not(.task-sheet):not(.assignment-sheet) tbody td { padding-block: 8px; }
 table.sheet .record-preview { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+table.sheet .report-notes .notes-preview { -webkit-line-clamp: 2; }
 table.sheet .record-history { line-height: 1.5; }
-table.sheet .record-history .btn-row { white-space: nowrap; padding: 3px 8px; font-size: var(--text-caption); margin-top: 4px; }
+table.sheet .record-history .btn-row { white-space: normal; max-width: 100%; padding: 3px 8px; font-size: var(--text-caption); margin-top: 4px; }
 table.sheet .record-history small { font-size: var(--text-caption); }
 table.sheet .record-history > br { display: none; }
 table.sheet .record-history .inline-ai-history { display: block; }
+table.sheet .record-history .ai-attempt-summary {
+  display: inline-grid; gap: 2px; margin: 0; padding: 5px 8px; max-width: 100%; text-align: left;
+  border: 1px solid transparent; border-radius: var(--radius-input); white-space: normal; line-height: 1.5;
+  background: var(--attempt-bg, var(--surface-subtle)); color: var(--attempt-fg, var(--text));
+}
+table.sheet .record-history .ai-attempt-summary:hover { border-color: currentColor; }
+.ai-attempt-result { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-weight: 600; }
+.ai-attempt-result svg { flex: none; }
+.ai-attempt-counts { font-variant-numeric: tabular-nums; }
+.ai-attempt-available { --attempt-bg: var(--fill-green-bg); --attempt-fg: var(--fill-green-tx); }
+.ai-attempt-unavailable { --attempt-bg: var(--fill-red-bg); --attempt-fg: var(--fill-red-tx); }
+.ai-attempt-unclear { --attempt-bg: var(--fill-yel-bg); --attempt-fg: var(--fill-yel-tx); }
+/* Outcomes have the same meaning in reports and editable calling tasks. */
+select.outcome-select[data-result="Available"] { background-color: var(--fill-green-bg); color: var(--fill-green-tx); }
+select.outcome-select[data-result="Unavailable"] { background-color: var(--fill-red-bg); color: var(--fill-red-tx); }
+select.outcome-select[data-result="Unclear"] { background-color: var(--fill-yel-bg); color: var(--fill-yel-tx); }
+select.outcome-select option { background: var(--surface); color: var(--text); }
+.cell-status.muted { background: var(--surface-subtle); color: var(--muted); }
+.assignment-attribution .record-meta { margin-top: 2px; }
 table.sheet:not(.task-sheet) .identity-owner .details-trigger { margin-top: 4px; padding: 2px 8px; }
 .wallet-balance { grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; padding-block: 6px; min-height: 42px; }
 .wallet-balance .wallet-meta { grid-column: 2; grid-row: 1; justify-self: end; font-size: var(--text-caption); }

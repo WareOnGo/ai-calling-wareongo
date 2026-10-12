@@ -1,4 +1,5 @@
-import {test,expect} from './fixtures';
+import {test,expect,bodyOverflowsX} from './fixtures';
+import {unreadableText} from '../lib/visual-audit';
 import {execFileSync} from 'node:child_process';
 import {CONTAINER} from '../lib/env.mjs';
 const record='a0000000-0000-4000-8000-000000000001',call='c0000000-0000-4000-8000-000000000001';
@@ -32,3 +33,40 @@ test('balance blocks stay available explicitly, while no-answer is not a dead nu
  await page.goto('/dashboard/calls?status=balance-low');await expect(page.locator('table.sheet tbody').first().locator('tr')).toHaveCount(1);await page.getByRole('button',{name:'Details for call'}).click();await expect(page.getByRole('dialog')).toContainText('balance-low');
  await page.goto('/dashboard/calls?include_blocked=1');await expect(page.locator('table.sheet tbody').first().locator('tr')).toHaveCount(5);
 });
+
+for(const width of [1366,390])for(const theme of ['light','dark']){
+ test(`AI attempt summaries and manual results share readable colors at ${width}px in ${theme}`,async({adminPage:page,employeePage,shot})=>{
+  await page.setViewportSize({width,height:width===390?844:768});await page.addInitScript(value=>localStorage.setItem('theme',value),theme);
+  for(const [suffix,phone,direction] of [['1','9811100001','outbound'],['2','9811100002','inbound'],['3','9811100003','outbound']]){
+   capture({id:`c0000000-0000-4000-8000-00000000000${suffix}`,status:'completed',telephony_data:{provider_call_id:'color-'+suffix,call_type:direction,to_number:direction==='outbound'?'+91'+phone:'+918000000000',from_number:direction==='inbound'?'+91'+phone:'+918000000000'}});
+  }
+  sql("update bolna_assignments set outcome='Unavailable' where id=1; update bolna_assignments set outcome='Unclear' where id=4");
+  await page.goto('/dashboard/raw');
+  for(const [name,result,manual] of [['Raghav Sharma','Available','Unavailable'],['Meera Nair','Unavailable','Available'],['Suresh Kumar','Unclear','Unclear']]){
+   const row=page.locator('table.sheet tbody tr').filter({hasText:name});
+   const summary=row.getByRole('button',{name:'Show AI attempts',exact:true});
+   await expect(summary.locator('.ai-attempt-result')).toHaveText(result);
+   await expect(summary).toHaveClass(new RegExp('ai-attempt-'+result.toLowerCase()));
+   await expect(row.locator('.record-history .pill-'+manual.toLowerCase())).toHaveText(manual);
+  }
+  const empty=page.locator('table.sheet tbody tr').filter({hasText:'Latha Menon'});
+  await expect(empty.getByRole('button',{name:'Show AI attempts'})).toHaveCount(0);
+  await expect(empty.locator('.record-history .muted').first()).toHaveText('0 outbound · 0 inbound');
+  const summary=page.locator('.ai-attempt-summary').first();await summary.scrollIntoViewIfNeeded();
+  expect(await unreadableText(page)).toEqual([]);expect(await bodyOverflowsX(page)).toBe(false);
+  await shot(page,`ai-attempt-colors-${width}-${theme}`);
+  await summary.click();await expect(page.getByRole('dialog',{name:'AI attempt history'})).toBeVisible();
+  await page.keyboard.press('Escape');await expect(summary).toBeFocused();
+  if(width===390){await page.locator('.record-history .pill').first().scrollIntoViewIfNeeded();expect(await unreadableText(page)).toEqual([]);await shot(page,`manual-result-colors-${width}-${theme}`);}
+  const palette=await page.locator('.record-history .pill-available').first().evaluate(el=>({color:getComputedStyle(el).color,background:getComputedStyle(el).backgroundColor}));
+  await page.goto('/dashboard/calls');
+  const history=page.getByRole('button',{name:'Show AI attempts',exact:true}).first();await history.scrollIntoViewIfNeeded();
+  const bounds=await history.evaluate(button=>{const cell=button.closest('td')!;return {right:button.getBoundingClientRect().right,cellRight:cell.getBoundingClientRect().right,text:button.scrollWidth,width:button.clientWidth};});
+  expect(bounds.right).toBeLessThanOrEqual(bounds.cellRight);expect(bounds.text).toBeLessThanOrEqual(bounds.width);
+  await employeePage.setViewportSize({width,height:width===390?844:768});await employeePage.addInitScript(value=>localStorage.setItem('theme',value),theme);
+  await employeePage.goto('/dashboard/my?view=done');
+  const result=employeePage.getByLabel('Result of the call').first();await expect(result).toHaveAttribute('data-result','Available');
+  expect(await result.evaluate(el=>({color:getComputedStyle(el).color,background:getComputedStyle(el).backgroundColor}))).toEqual(palette);
+  expect(await unreadableText(employeePage)).toEqual([]);
+ });
+}

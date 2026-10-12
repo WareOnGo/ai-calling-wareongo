@@ -1,6 +1,6 @@
 import {dispositionLabel} from "@/lib/manual-dispositions";
 import { firstValue, filterValues, searchQuery, type SearchValues } from "@/lib/filter-values";
-import { PageJump } from "../PageJump";
+import { RecordsPagination } from "../RecordsPagination";
 import { AssignmentNotices } from "../GridNotices";
 import { SelectionProvider } from "../Selection";
 import { ASSIGNMENT_COLUMNS as COLUMNS } from "../sheet-columns";
@@ -18,6 +18,7 @@ import { ReopenAssignment } from "../ReopenAssignment";
 import { UnassignButton } from "../UnassignButton";
 import { CopyText } from "../CopyText";
 import { IconClipboard } from "../icons";
+import { ResultBadge } from "../ResultBadge";
 
 export const dynamic = "force-dynamic";
 
@@ -45,7 +46,7 @@ function resultCell(r: AssignmentHistoryRow) {
   const disagrees = ai && ai.toLowerCase() !== r.outcome.toLowerCase();
   return (
     <>
-      <span className={`pill pill-${r.outcome.toLowerCase()}`}>{r.outcome}</span>
+      <ResultBadge value={r.outcome}/>
       {disagrees && r.entity_type === "call" && <span className="review-tag" title={`AI heard "${ai}"`}>≠ AI</span>}
     </>
   );
@@ -114,7 +115,7 @@ export default async function Assignments({
                 <td title={`${fmt(r.assigned_at)} · Assigned by ${r.assigned_by}`} className="assignment-date nowrap">{ago(r.assigned_at)}</td>
                 <td><span className={`pill pill-${r.state}`}>{r.state === "dropped" ? "unassigned" : r.state}</span></td>
                 <td className="assignment-brief">{r.note || <span className="muted">—</span>}</td>
-                <td title={r.entity_type === "record" ? "AI context from a shared phone; may describe another property" : "AI result for this execution"}>{r.ai_availability||"No AI result"}{r.entity_type === "record" && r.ai_availability && <small className="record-meta">contact context</small>}</td>
+                <td title={r.entity_type === "record" ? "AI context from a shared phone; may describe another property" : "AI result for this execution"}><ResultBadge value={r.ai_availability} empty="No AI result"/>{r.entity_type === "record" && r.ai_availability && <small className="record-meta">contact context</small>}</td>
                 <td>{resultCell(r)}<span className="record-meta">{dispositionLabel(r.disposition)}{r.closure_reason==='exhausted'&&' · Exhausted'}{r.next_due_at&&<><br/>Due {fmt(r.next_due_at)}</>}</span></td>
                 <td className="assignment-note-cell"><AssignmentNotes text={r.remarks} /></td>
                 <td>{r.added_to_db ? <span className="pill pill-available">yes</span> : <span className="muted">no</span>}</td>
@@ -129,22 +130,7 @@ export default async function Assignments({
         </table>
       </div>
 
-      <div className="records-pagination"><div className="pager">
-        <span className="muted">
-          {total === 0 ? "No assignments"
-            : `${(startRow + 1).toLocaleString()}–${Math.min(startRow + HISTORY_PAGE_SIZE, total).toLocaleString()} of ${total.toLocaleString()}`}
-        </span>
-        <div className="pages">
-          {page <= 1 ? <button type="button" disabled aria-label="First">«</button> : <Link href={qs(sp, { page: "1" })} aria-label="First">«</Link>}
-          {page <= 1 ? <button type="button" disabled aria-label="Prev">‹</button> : <Link href={qs(sp, { page: String(page - 1) })} aria-label="Prev">‹</Link>}
-          <span className="cur">{page}</span>
-          {page >= pages ? <button type="button" disabled aria-label="Next">›</button> : <Link href={qs(sp, { page: String(page + 1) })} aria-label="Next">›</Link>}
-          {page >= pages ? <button type="button" disabled aria-label="Last">»</button> : <Link href={qs(sp, { page: String(pages) })} aria-label="Last">»</Link>}
-          <span className="muted">{page}/{pages}</span>
-        </div>
-      </div>
-
-      <PageJump key={page} page={page} pages={pages}/></div>
+      <RecordsPagination page={page} pages={pages} total={total} pageSize={HISTORY_PAGE_SIZE} applied={sp} empty="No assignments"/>
 
     </SelectionProvider>
   );

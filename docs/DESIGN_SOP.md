@@ -22,19 +22,31 @@ Within a row, identify the subject first. Keep its phone beside its name and put
 
 Optional columns stay next to their related default columns. Keep exact identifiers and legacy metadata secondary. Column visibility preferences are keyed by label and survive a change in reading order.
 
+Reporting tables show values as text. In Call Analytics, manual notes, Added and WH ID must not render inputs or checkboxes, including disabled ones. Use explicit empty states, preserve legacy labels and keep long notes readable on demand. Editing and save feedback belong in My Work.
+
+Keep attribution after an assignment is completed. When there is no active assignment, show the last completed assignment's caller with “Assignment completed” beneath the name. A new active assignment takes precedence. Keep an email fallback when the caller no longer has access; removing access must not erase their attribution.
+
 For calling previews, show a single eligible count and only nonzero skip reasons. Put per-contact evidence, duplicate counts, routing explanations and balance timestamps behind named disclosures. Contact inspection keeps names and phones together, with one eligibility reason per contact. An empty batch offers a clear next step and Close; a nonempty batch retains an explicit confirmation before placing calls. Changing outcomes or language resets that confirmation. Keep the footer outside the scrollable review content.
 
 For human assignments, offer One caller and Split across callers beside the caller controls. Split mode shows an explicit checklist, each selected caller's share and a confirmation such as “Split 90 calls across 3 callers”. Use eligible tasks after the ownership and duplicate checks for the call count. Require at least two selected callers for a split, preserve selections while searching, and keep reassignment as a separate option.
 
 Record details keep the contact's name, phone and call action visible above Overview, AI activity and Manual activity tabs. Group property facts and the latest AI call separately in Overview; keep linked source listings distinct because the same phone can refer to different properties. Load AI history when its tab is visited. Keep recordings, transcripts, manual corrections and verification history accessible in their named sections.
 
+Keep global navigation compact, with the current section underlined. Group identity, view switching and sign-out in the account menu, while leaving the theme toggle visible. Page headers contain the title, related page tabs, context and freshness. Raw/call toolbars group search and filters, display preferences, then record actions. Keep pagination centered as a single Previous / Page / Next group; preserve filters when changing pages.
+
+Team Performance and Access control are separate routes with shared navigation. Reporting follows date range → summary → caller metrics → optional evidence. Keep numeric columns aligned, duration coverage explicit, historical limitations readable and full definitions available on demand. Access control follows sign-in explanation → member search → role groups. Preserve self-access and last-admin protections.
+
+Batch cards show identity and status, contact progress, labeled dates/creator and the next action. Detail pages group progress, outcomes and exceptions above the member list. A full progress bar is not proof that retries have finished: use the provider's confirmed lifecycle state before labeling a batch Completed or releasing its reservations. Provider-stopped work remains distinct from completed work.
+
 ## 2. Use shared components and tokens
 
 - Use `theme.css` for semantic colors, spacing, radii and font sizes. Add a role to the shared system before adding a one-off color.
 - Use Inter and the existing scale: 12px captions, 13px supporting text, 14px body/controls, 16px sections, 20px titles and 24px metrics at the default root size. The tokens use `rem` so user text settings can scale them.
 - Keep primary actions chartreuse, navigation/secondary emphasis violet, destructive actions red, and result colors semantic. Always show the result in words too.
-- Use the same `Dialog`, `FilterPanel`, `MultiSelect`, `RecordDetails`, `PageJump`, save feedback and column chooser across pages. Position the primary dialog action at the end of its footer.
+- Use the same `RecordsHeader`, `RecordsPagination`, `Dialog`, `FilterPanel`, `MultiSelect`, `RecordDetails`, `PageJump`, save feedback and column chooser across pages. Position the primary dialog action at the end of its footer.
 - Separate AI results, manual results, the latest manual attempt and task completion by explicit labels. A recorded call and a note edit are different events.
+
+Use the shared result badges everywhere: Available is green, Unavailable is red, and Unclear is amber in both themes. Missing results remain neutral. My Work's editable result controls use the same semantic colors. Always retain a written result, so color is not the only signal. Raw Dataset's AI-attempt summary uses Available → Unavailable → Unclear precedence across all saved, non-balance-blocked AI results for the listing's linked numbers. Keep that summary distinct from the most recent execution result and retain separate outbound/inbound counts. A zero known-attempt count has no history action.
 
 The principle of reusing tested typography styles is drawn from [GOV.UK's type scale](https://design-system.service.gov.uk/styles/type-scale/); the sizes above are our dashboard choices, not GOV.UK's scale.
 
@@ -60,6 +72,7 @@ Toolbar menus must fit inside the viewport even when their trigger is against an
 - Primary raw/call/assignment columns must fit a 1366px laptop without horizontal panning. Optional wide evidence tables may scroll inside their own region.
 - At 390px, and at 320px for calling forms, check every control. My Work becomes labeled cards and the page scrolls naturally. Panels fit the viewport with their action footer reachable.
 - Verify long names, multiple cities, empty results, busy/save/error states, and populated history. Compare loading and loaded page geometry.
+- Give each route its own loading state. The inherited dashboard fallback must follow the destination route; never flash the home cards when opening a record list, Team or Batches. Check slow client navigation as well as initial page loads.
 
 ## 6. Run, inspect, fix, repeat
 
@@ -70,4 +83,4 @@ Toolbar menus must fit inside the viewport even when their trigger is against an
 5. Fix shared causes in tokens/components first. Rebuild and rerun affected checks after a change. Run the full browser suite before concluding a broad overhaul.
 6. Record actual results and remaining limits in [the visual audit](VISUAL_OVERHAUL.md). Preserve representative synthetic screenshots. Never use production contacts in committed audit images.
 
-The automated coverage includes rendered text contrast (`29` and the catalog), loading geometry (`12`, `14`), controls/density (`30`, `31`), field/focus contrast and filter continuity (`32`), calling-preview eligibility, confirmation, contact pagination and balance recovery (`33`), and multiple-caller selection, detail tabs and menu clipping (`34`). Human screenshot review remains required; automated checks do not establish that a workflow is easy to understand.
+The automated coverage includes rendered text contrast (`29` and the catalog), loading geometry (`12`, `14`), controls/density (`30`, `31`), field/focus contrast and filter continuity (`32`), calling-preview eligibility, confirmation, contact pagination and balance recovery (`33`), multiple-caller selection, detail tabs and menu clipping (`34`), centered pagination and live batch updates (`35`), separate Team pages and member search (`36`), and slow navigation without home-screen flashes (`37`). Human screenshot review remains required; automated checks do not establish that a workflow is easy to understand.

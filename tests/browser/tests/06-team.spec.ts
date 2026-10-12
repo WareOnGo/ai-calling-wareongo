@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 
 test.describe("team management @shot", () => {
   test("people are grouped by what they can do", async ({ adminPage: page, shot }) => {
-    await page.goto("/dashboard/team");
+    await page.goto("/dashboard/team/access");
     const heads = await page.locator(".group-head").allInnerTexts();
     expect(heads.join("|")).toContain("Admins");
     expect(heads.join("|")).toContain("Employees");
@@ -15,7 +15,7 @@ test.describe("team management @shot", () => {
   });
 
   test("adding someone grants access from one form", async ({ adminPage: page, shot }) => {
-    await page.goto("/dashboard/team");
+    await page.goto("/dashboard/team/access");
     await page.getByRole("button", { name: /Add someone/ }).click();
     await page.locator('.addcard input[type="email"]').fill("newhire@eval.test");
     await page.locator('.addcard input[placeholder="e.g. Priya"]').fill("New Hire");
@@ -27,7 +27,7 @@ test.describe("team management @shot", () => {
   });
 
   test("the access switch reads as on/off with its meaning", async ({ adminPage: page }) => {
-    await page.goto("/dashboard/team");
+    await page.goto("/dashboard/team/access");
     const priya = page.locator(".person").filter({ hasText: "priya@eval.test" }).first();
     const sw = priya.locator(".switch");
     await expect(sw).toHaveAttribute("aria-checked", "true");
@@ -45,7 +45,7 @@ test.describe("team management @shot", () => {
     execFileSync("podman", ["exec", "-i", CONTAINER, "psql", "-U", "postgres", "-q", "-c",
       "update bolna_app_users set role='employee' where email <> 'admin@eval.test'"]);
 
-    await page.goto("/dashboard/team");
+    await page.goto("/dashboard/team/access");
     const admin = page.locator(".person").filter({ hasText: "admin@eval.test" }).first();
     await expect(admin.locator(".switch")).toBeDisabled();
     await expect(admin.locator("select")).toBeDisabled();
@@ -63,7 +63,7 @@ test.describe("team management @shot", () => {
   });
 
   test("workload is shown per person as labelled chips", async ({ adminPage: page }) => {
-    await page.goto("/dashboard/team");
+    await page.goto("/dashboard/team/access");
     const priya = page.locator(".person").filter({ hasText: "priya@eval.test" }).first();
     await expect(priya.locator(".pill-open")).toContainText("open");
     await expect(priya.locator(".pill-done")).toContainText("done");

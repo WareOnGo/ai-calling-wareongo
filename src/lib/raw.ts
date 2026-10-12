@@ -13,6 +13,7 @@ import { assignmentScope, currentAssignmentLateral, contactTargets, ownershipFil
 
 export type RawRow = {
   ai_attempt_count:number;ai_inbound_count:number;ai_conversation_count:number;
+  ai_history_result: 'Available' | 'Unavailable' | 'Unclear' | null;
   id: string;
   source: string | null;
   source_record_id: string | null;
@@ -93,6 +94,7 @@ const SELECT_LIST = `
   calls.last_called_at::text           as last_called_at,
   calls.last_status                    as last_status,
   calls.last_availability              as last_availability,
+  calls.history_result                as ai_history_result,
   calls.last_transcript                as last_transcript,
   calls.last_recording_url             as last_recording_url,
   calls.last_notes                     as last_notes,
@@ -114,9 +116,18 @@ const SELECT_LIST = `
 // Call history aggregated across all of a record's phone numbers.
 const CALLS_JOIN = `
   left join lateral (
-    select totals.call_count, recent.last_called_at, recent.last_status, recent.last_availability,
+    select totals.call_count, totals.history_result, recent.last_called_at, recent.last_status, recent.last_availability,
            recent.last_transcript, recent.last_recording_url, recent.last_notes, history.calls_history
-    from (select count(*) as call_count from raw_phones rp join bolna_call_logs cl on cl.phone_id = rp.phone_id where rp.master_id = r.id and cl.status is distinct from 'balance-low') totals
+    from (
+      -- Summarize all saved AI results across every linked phone, independently
+      -- of the most recent result and the 20-row history preview.
+      select count(*) as call_count,
+        case max(case bolna_availability(cl.status, cl.llm_availability)
+          when 'Available' then 3 when 'Unavailable' then 2 when 'Unclear' then 1 end)
+        when 3 then 'Available' when 2 then 'Unavailable' when 1 then 'Unclear' end as history_result
+      from raw_phones rp join bolna_call_logs cl on cl.phone_id = rp.phone_id
+      where rp.master_id = r.id and cl.status is distinct from 'balance-low'
+    ) totals
     left join lateral (
       select cl.call_created_at as last_called_at, cl.status as last_status,
              bolna_availability(cl.status, cl.llm_availability) as last_availability,

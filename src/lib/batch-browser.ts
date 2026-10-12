@@ -8,6 +8,30 @@ import type {ExportQuery} from './export';
 export const batchListSchema=z.object({kind:z.enum(['ai','manual']).default('ai'),date_from:z.string().date().optional(),date_to:z.string().date().optional(),caller:z.string().max(1000).optional(),agent:z.string().max(1000).optional(),origin:z.enum(['record','call']).optional(),state:z.string().max(100).optional(),dispatch:z.string().uuid().optional()}).refine(f=>!f.date_from||!f.date_to||f.date_from<=f.date_to,'Start date cannot follow end date');
 export type BatchListFilters=z.infer<typeof batchListSchema>;
 export type BatchRow={id:string;kind:'ai'|'manual';created_at:string;created_by:string|null;scheduled_at:string|null;state:string;entity_type:string|null;agent_id:string|null;agent_language:string|null;dispatch_request_id:string|null;bolna_batch_id:string|null;assignees:string[]|null;selection:unknown;last_error:string|null;resolution_note:string|null};
+export type BatchProgress={targeted:number;finished:number;attempts:number};
+export async function batchProgress(rows:BatchRow[]):Promise<Record<string,BatchProgress>>{
+ if(!rows.length)return {};
+ const ids=rows.filter(b=>b.id!=='legacy').map(b=>b.id);
+ if(!ids.length)return {};
+ if(rows[0].kind==='manual'){
+  const result=await query<BatchProgress&{id:string}>(`select b.id,count(i.entity_id)::int targeted,
+   count(*) filter(where a.state='done' and bolna_assignment_quality(a.state,a.outcome,a.wh_id,a.remarks,a.disposition,a.closure_reason) is null)::int finished,
+   coalesce(sum(events.n),0)::int attempts
+   from bolna_assignment_batches b left join bolna_assignment_batch_items i on i.batch_id=b.id left join bolna_assignments a on a.id=i.assignment_id
+   left join lateral(select count(*) n from bolna_effective_manual_attempts e where e.assignment_id=a.id) events on true
+   where b.id=any($1::uuid[]) group by b.id`,[ids]);
+  return Object.fromEntries(result.rows.map(r=>[r.id,r]));
+ }
+ const result=await query<BatchProgress&{id:string}>(`with targets as (
+  select distinct batch_id,right(regexp_replace(contact_number,'\\D','','g'),10) phone from call_batch_items where batch_id=any($1::uuid[])
+ ) select b.id,count(t.phone)::int targeted,count(*) filter(where latest.status=any($2::text[]))::int finished,
+  coalesce(sum(evidence.n),0)::int attempts
+  from call_batches b left join targets t on t.batch_id=b.id
+  left join lateral(select status from bolna_call_logs c where c.batch_id=b.bolna_batch_id and c.phone_last10=t.phone order by c.call_created_at desc nulls last,c.id desc limit 1) latest on true
+  left join lateral(select count(*) n from bolna_ai_attempts e where e.batch_id=b.bolna_batch_id and e.phone_last10=t.phone) evidence on true
+  where b.id=any($1::uuid[]) group by b.id`,[ids,[...TERMINAL_STATUSES]]);
+ return Object.fromEntries(result.rows.map(r=>[r.id,r]));
+}
 const adminOnly=(viewer:Viewer)=>{if(!viewer.isAdmin)throw new ApiError(403,'forbidden');};
 function listQuery(f:BatchListFilters){
  const params:unknown[]=[],where:string[]=[];const kind=f.kind;

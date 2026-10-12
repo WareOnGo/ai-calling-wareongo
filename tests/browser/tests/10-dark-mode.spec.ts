@@ -30,7 +30,7 @@ test.describe("dark mode across every page @shot", () => {
   });
 
   test("team directory", async ({ adminPage: page, shot }) => {
-    await page.goto("/dashboard/team");
+    await page.goto("/dashboard/team/access");
     await goDark(page);
     for (const sel of ["body", ".person", ".callout", ".avatar", ".fld input, .field"]) {
       expect(LUM(await css(page, sel, "background-color")), `${sel} bg`).toBeLessThan(95);

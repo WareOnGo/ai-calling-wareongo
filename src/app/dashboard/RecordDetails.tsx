@@ -6,7 +6,8 @@ import type { CallRow } from "@/lib/calls";
 import type { AssignmentHistoryRow } from "@/lib/assignments";
 import type { ManualAttempt } from "@/lib/manual-attempts";
 import { DISPOSITION_LABELS,type Disposition } from "@/lib/manual-dispositions";
-import { area, dateTime, rent, resultClass } from "@/lib/display";
+import { area, dateTime, rent } from "@/lib/display";
+import { ResultBadge } from "./ResultBadge";
 import { Dialog } from "./Dialog";
 import { CopyText } from "./CopyText";
 import { requestJson } from "./requests";
@@ -42,7 +43,7 @@ function DetailContents({ id, entity, onClose,initialAi,aiBatch,aiScope }: { aiB
   const result = r ? entity === "record" ? r.last_availability : r.availability : null;
   const notes = r ? entity === "record" ? r.last_notes : r.notes : null;
   const transcript = r ? entity === "record" ? r.last_transcript : r.transcript : null;
-  const callFacts = r ? { "AI result": result ? <span className={`pill pill-${resultClass(result)}`}>{result}</span> : "No AI result", "Call connection": entity === "record" ? r.last_status : r.status, "Last call": dateTime(entity === "record" ? r.last_called_at : r.call_created_at) } : {};
+  const callFacts = r ? { "AI result": <ResultBadge value={result} empty="No AI result"/>, "Call connection": entity === "record" ? r.last_status : r.status, "Last call": dateTime(entity === "record" ? r.last_called_at : r.call_created_at) } : {};
   return <Dialog drawer wide className="record-details-dialog" title={r?.owner_name || "Record details"} onClose={onClose}>
     {r && <><div className="detail-contact-bar"><div><span className="detail-label">Phone</span><CopyText value={phone} label="phone number" /></div>{phone && <a className="btn-row" href={`tel:${phone}`}>Call number</a>}</div>
       <div className="detail-tabs" ref={tabList} role="tablist" aria-label="Record details sections" onKeyDown={event => {
@@ -75,14 +76,14 @@ function DetailContents({ id, entity, onClose,initialAi,aiBatch,aiScope }: { aiB
             {!audio && transcript && <p className="detail-description">No recording available.</p>}
           </section>
           <div className="detail-section">{aiVisited && <AiTimeline initialBatch={aiBatch} initialScope={aiScope} entity={entity} id={id} initialOpen />}</div>
-          {r.calls_history?.length ? <details className="detail-section detail-listings"><summary>Latest execution records <span>{r.calls_history.length}</span></summary>{r.calls_history.map((h,i) => <div className="detail-history" key={i}><strong>{dateTime(h.at)}</strong><p>{h.status || "Unknown"} · {h.availability || "No result"}</p></div>)}</details> : null}
+          {r.calls_history?.length ? <details className="detail-section detail-listings"><summary>Latest execution records <span>{r.calls_history.length}</span></summary>{r.calls_history.map((h,i) => <div className="detail-history" key={i}><strong>{dateTime(h.at)}</strong><p>{h.status || "Unknown"} · <ResultBadge value={h.availability}/></p></div>)}</details> : null}
         </div>
         <div className="detail-panel" role="tabpanel" id={`${tabId}-panel-2`} aria-labelledby={`${tabId}-tab-2`} hidden={tab !== "Manual activity"}>
         <section className="detail-section"><h3>Manual calls <span className="detail-count">{data!.manual.total}</span></h3><p className="detail-description">Caller-recorded attempts for this listing/execution. Corrections preserve the original; note edits are not calls.</p>
-          {data!.manual.rows.length?data!.manual.rows.map(event=><div className="detail-history" key={event.id}><strong>{dateTime(event.occurred_at)}</strong> · {DISPOSITION_LABELS[event.disposition as Disposition]}{event.superseded&&<span> · superseded by a correction</span>}{event.corrects_id&&<span> · correction</span>}<p>{event.assignee}{event.actor!==event.assignee?` · recorded by ${event.actor}`:""} · {event.outcome||"No new result"}</p>{event.notes&&<p>{event.notes}</p>}{event.next_due_at&&<p>Follow-up due: {dateTime(event.next_due_at)}</p>}{event.duration_seconds!==null&&<p>Reported duration: {event.duration_seconds}s</p>}</div>):<p>No recorded manual attempts. Older notes or completion records are not proof of an attempt.</p>}
+          {data!.manual.rows.length?data!.manual.rows.map(event=><div className="detail-history" key={event.id}><strong>{dateTime(event.occurred_at)}</strong> · {DISPOSITION_LABELS[event.disposition as Disposition]}{event.superseded&&<span> · superseded by a correction</span>}{event.corrects_id&&<span> · correction</span>}<p>{event.assignee}{event.actor!==event.assignee?` · recorded by ${event.actor}`:""} · <ResultBadge value={event.outcome} empty="No new result"/></p>{event.notes&&<p>{event.notes}</p>}{event.next_due_at&&<p>Follow-up due: {dateTime(event.next_due_at)}</p>}{event.duration_seconds!==null&&<p>Reported duration: {event.duration_seconds}s</p>}</div>):<p>No recorded manual attempts. Older notes or completion records are not proof of an attempt.</p>}
           {data!.manual.pages>1&&<nav aria-label="Manual history pages"><button type="button" disabled={manualPage<=1} onClick={()=>setManualPage(p=>p-1)}>Previous attempts</button><span> {data!.manual.page} / {data!.manual.pages} </span><button type="button" disabled={manualPage>=data!.manual.pages} onClick={()=>setManualPage(p=>p+1)}>Next attempts</button></nav>}
         </section>
-        <section className="detail-section"><h3>Verification history <span className="detail-count">{data!.historyTotal}</span></h3>{data!.history.length ? data!.history.map(h => <div className="detail-history" key={h.id}><strong>{h.assignee_name || h.assignee}</strong> · {h.state === 'dropped' ? 'unassigned' : h.state}<p>{dateTime(h.assigned_at)} · {h.outcome || "No result yet"}</p>{h.note && <p>Brief: {h.note}</p>}{h.remarks && <p className="detail-text">{h.remarks}</p>}<p>Staff-recorded onboarding: {h.added_to_db && h.wh_id ? "Yes" : "Not yet"}{h.wh_id ? ` · ${h.wh_id}` : ""}</p></div>) : <p className="muted">No verification history yet.</p>}{data!.historyTotal > data!.history.length && <p className="muted">Showing the latest {data!.history.length} of {data!.historyTotal} assignments.</p>}</section>
+        <section className="detail-section"><h3>Verification history <span className="detail-count">{data!.historyTotal}</span></h3>{data!.history.length ? data!.history.map(h => <div className="detail-history" key={h.id}><strong>{h.assignee_name || h.assignee}</strong> · {h.state === 'dropped' ? 'unassigned' : h.state}<p>{dateTime(h.assigned_at)} · <ResultBadge value={h.outcome} empty="No result yet"/></p>{h.note && <p>Brief: {h.note}</p>}{h.remarks && <p className="detail-text">{h.remarks}</p>}<p>Staff-recorded onboarding: {h.added_to_db && h.wh_id ? "Yes" : "Not yet"}{h.wh_id ? ` · ${h.wh_id}` : ""}</p></div>) : <p className="muted">No verification history yet.</p>}{data!.historyTotal > data!.history.length && <p className="muted">Showing the latest {data!.history.length} of {data!.historyTotal} assignments.</p>}</section>
         </div>
       </>}
     </div>
