@@ -24,3 +24,7 @@ prisma/
 
 # Ad-hoc query exports (owner PII / source names) — keep private
 exports/
+
+# Browser test output
+playwright-report/
+test-results/

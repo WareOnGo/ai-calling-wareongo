@@ -5,6 +5,7 @@ import { query } from "@/lib/db";
 import { MIN_COST_CENTS, ENABLE_ENRICHMENT } from "@/lib/inference";
 import { INFERENCE_VERSION } from "@/lib/openai";
 import { assignmentScope, currentAssignmentLateral, type Viewer } from "@/lib/scope";
+import { contactOwnershipFilter } from "./assignment-contacts";
 
 export type CallRow = {
   revision: number;
@@ -35,6 +36,7 @@ export type CallRow = {
   added_to_db: boolean;
   wh_id: string | null;
   // current assignment (who owns the follow-up)
+  assigned_state: string | null;
   assigned_to: string | null;
   assignment_id: string | null;   // bigint → pg returns a string; used as a URL segment
   assignment_state: string | null;
@@ -112,7 +114,7 @@ const SELECT_LIST = `(select revision from bolna_call_logs c where c.id = bolna_
        status, availability, segment, confidence, built_up_area_sqft, carpet_area_sqft, expected_rent,
        notes, transcript, recording_url, needs_review, inferred, ${CAN_ENRICH_SQL},
        call_status, called_by, added_to_db, wh_id,
-       asg.assignee as assigned_to, asg.assignment_id, asg.state as assignment_state, asg.outcome as assignment_outcome,
+       asg.contact_assignee as assigned_to, asg.contact_state as assigned_state, asg.assignment_id, asg.state as assignment_state, asg.outcome as assignment_outcome,
        asg.remarks as assignment_remarks, asg.note as assignment_note,
        asg.asg_added as assignment_added_to_db, asg.asg_wh as assignment_wh_id,
        raw_match_count, raw_source, raw_owner_name, raw_warehouse_type,
@@ -158,19 +160,7 @@ function buildFilter(viewer: Viewer, f: CallFilters): { whereSql: string; params
   if (f.date_from) { params.push(f.date_from); where.push(`call_created_at >= $${params.length}::date`); }
   if (f.date_to) { params.push(f.date_to); where.push(`call_created_at < ($${params.length}::date + interval '1 day')`); }
   if (f.needs_review) { where.push(`needs_review = true`); }
-  // Admin-only in practice: an employee already sees only their own rows, so this
-  // narrows nothing for them.
-  // "none" = no OPEN owner; a named assignee matches their open or completed work.
-  if (viewer.isAdmin && f.assignee === "none") {
-    where.push(`not exists (select 1 from bolna_assignments a
-                  where a.entity_type = 'call' and a.entity_id = bolna_call_analysis.id
-                    and a.state = 'open')`);
-  } else if (viewer.isAdmin && f.assignee) {
-    params.push(f.assignee.toLowerCase());
-    where.push(`exists (select 1 from bolna_assignments a
-                 where a.entity_type = 'call' and a.entity_id = bolna_call_analysis.id
-                   and a.state <> 'dropped' and a.assignee = $${params.length})`);
-  }
+  if (viewer.isAdmin && f.assignee) where.push(contactOwnershipFilter("call", "bolna_call_analysis.id", f.assignee, params));
 
   const whereSql = where.length ? `where ${where.join(" and ")}` : "";
   return { whereSql, params, terms };
@@ -215,12 +205,15 @@ export async function getCalls(viewer: Viewer, f: CallFilters) {
   const page = Math.min(requestedPage, Math.max(1, Math.ceil(total / pageSize)));
   const offset = (page - 1) * pageSize;
 
+  // OFFSET 0 keeps the view's expensive listing details behind the page boundary;
+  // an ordinary join can expand them for every call before joining the page IDs.
   const rowsRes = await query<CallRow>(
     `select ${SELECT_LIST}
-       from bolna_call_analysis ${currentAssignmentLateral("call", "bolna_call_analysis.id", viewer, params)}
-       ${whereSql}
-       order by call_created_at desc nulls last, id
-       limit ${pageSize} offset ${offset}`,
+       from (select id as page_id from bolna_call_analysis ${whereSql}
+         order by call_created_at desc nulls last, id limit ${pageSize} offset ${offset}) page
+       join lateral (select * from bolna_call_analysis where id=page.page_id offset 0) bolna_call_analysis on true
+       ${currentAssignmentLateral("call", "bolna_call_analysis.id", viewer, params)}
+       order by call_created_at desc nulls last, id`,
     params,
   );
 

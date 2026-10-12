@@ -21,7 +21,8 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "typecheck": "tsc --noEmit --incremental false",
     "db:migrate": "node database/migrate.mjs",
-    "check": "npm run typecheck && npm test"
+    "check": "npm run typecheck && npm test",
+    "test:browser": "playwright test --config tests/browser/playwright.config.ts"
   },
   "dependencies": {
     "next": "^15.1.0",
@@ -32,6 +33,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@playwright/test": "1.62.1",
     "@types/node": "^22.10.0",
     "@types/pg": "^8.11.10",
     "@types/react": "^19.0.0",

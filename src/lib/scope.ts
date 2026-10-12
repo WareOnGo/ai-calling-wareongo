@@ -13,6 +13,8 @@
 // long as nobody queries bolna_call_logs / raw_records outside lib/calls.ts and
 // lib/raw.ts. Add new read paths there, not ad hoc.
 
+import { contactTargets } from "./assignment-contacts";
+
 export type EntityType = "record" | "call";
 
 export type Viewer = { email: string; isAdmin: boolean };
@@ -57,13 +59,26 @@ export function currentAssignmentLateral(entity: EntityType, idExpr: string, vie
   if (!viewer.isAdmin) { params.push(viewer.email.toLowerCase()); owner = ` and a.assignee = $${params.length}`; }
   // `id` is aliased: exposing a bare `id` from the lateral makes an unqualified `id`
   // in the outer select list ambiguous against the driving table's own id.
-  return `left join lateral (
-    select a.id as assignment_id, a.assignee, a.state, a.outcome, a.remarks, a.note,
+  const history = `select a.id as assignment_id, a.assignee, a.state, a.outcome, a.remarks, a.note,
            a.added_to_db as asg_added, a.wh_id as asg_wh
       from bolna_assignments a
      where a.entity_type = '${entity}' and a.entity_id = ${idExpr} and a.state <> 'dropped'${owner}
-     order by (a.state = 'open') desc, a.assigned_at desc, a.id desc
-     limit 1
+     order by (a.state = 'open') desc, a.assigned_at desc, a.id desc limit 1`;
+  if (!viewer.isAdmin) return `left join lateral (
+    select history.*, history.assignee as contact_assignee, history.state as contact_state
+    from (${history}) history
+  ) asg on true`;
+  // Contact ownership is display metadata; row outcomes, notes and edit IDs stay
+  // attached to the exact assignment. Employees keep their existing row scope.
+  return `left join lateral (
+    select history.*, contact.assignee as contact_assignee, contact.state as contact_state
+    from (select 1) seed
+    left join lateral (${history}) history on true
+    left join lateral (
+      select a.assignee,a.state from (${contactTargets(entity, idExpr)}) contacts
+      join bolna_assignments a using(entity_type,entity_id) where a.state<>'dropped'
+      order by (a.state='open') desc,a.assigned_at desc,a.id desc limit 1
+    ) contact on true
   ) asg on true`;
 }
 

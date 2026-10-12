@@ -7,7 +7,7 @@ import { useDashboardUI } from "./DashboardUI";
 import { requestJson } from "./requests";
 
 export type Assignee = { email: string; name: string | null };
-type Result = { assignee: string; requested: number; assigned: number; reassigned: number; skipped: number; skippedNoPhone: number; capped: boolean };
+type Result = { assignee: string; requested: number; assigned: number; reassigned: number; skipped: number; skippedOwned: number; duplicateContacts: number; skippedNoPhone: number; capped: boolean };
 export function AssignButton({ entity, total, assignees }: { entity: "record" | "call"; total: number; assignees: Assignee[] }) {
   const selection = useSelection();
   const { pending, refresh, notify } = useDashboardUI();
@@ -44,9 +44,10 @@ export function AssignButton({ entity, total, assignees }: { entity: "record" | 
     {open && <Dialog title={<><IconUsers size={16} />Assign {label}s</>} onClose={() => setOpen(false)} busy={busy}>
       {result ? <>
         <div className="modal-body"><p className="assign-done">Assigned <strong>{result.assigned.toLocaleString()}</strong> {label}(s) to <strong>{result.assignee}</strong>.</p><ul className="assign-summary">
-          {result.reassigned > 0 && <li>{result.reassigned} taken from a previous owner</li>}
-          {result.skipped > 0 && <li className="warn">{result.skipped} skipped — already assigned{reassign ? " to this person" : " (enable reassign to take them over)"}</li>}
-          {result.skippedNoPhone > 0 && <li className="warn">{result.skippedNoPhone} left out — no phone number to call</li>}
+          {result.reassigned > 0 && <li>{result.reassigned} previous open assignments closed, including work linked by phone number. Their notes and history are kept.</li>}
+          {result.skippedOwned > 0 && <li className="warn">{result.skippedOwned} skipped — {reassign ? "this caller already has open work for the contact" : "the contact already has assigned or completed work"}</li>}
+          {result.duplicateContacts > 0 && <li className="warn">{result.duplicateContacts} skipped — duplicate phone numbers in this selection</li>}
+          {result.skippedNoPhone > 0 && <li className="warn">{result.skippedNoPhone} left out — no valid phone number to call</li>}
           {result.capped && <li className="warn">Assignment limit reached. Narrow the filters to assign the remaining work.</li>}
         </ul></div><div className="modal-foot"><a href={`/dashboard/assignments?assignee=${encodeURIComponent(result.assignee)}`}>View assignments</a><span className="spacer" /><button type="button" className="btn-primary" onClick={() => setOpen(false)}>Done</button></div>
       </> : <>
@@ -57,7 +58,9 @@ export function AssignButton({ entity, total, assignees }: { entity: "record" | 
           </div>
           <label className="assign-field"><span>Assign to</span><select value={assignee} onChange={e => setAssignee(e.target.value)}><option value="">Choose someone…</option>{assignees.map(a => <option key={a.email} value={a.email}>{a.name ? `${a.name} — ${a.email}` : a.email}</option>)}</select></label>
           <label className="assign-field"><span>Note (optional)</span><input value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. verify area + rent before adding to DB" /></label>
-          <label className="assign-check"><input type="checkbox" checked={reassign} onChange={e => setReassign(e.target.checked)} />Reassign rows already owned by someone else</label>
+          <p className="muted">Duplicate phone numbers, including alternate numbers, are assigned only once. Contacts with assigned or completed work are skipped.</p>
+          <label className="assign-check"><input type="checkbox" checked={reassign} onChange={e => setReassign(e.target.checked)} />Reassign existing contacts, including linked phone numbers</label>
+          {reassign && <p className="muted">Transfers matching open work from other callers to the selected caller. Completed history is kept; completed contacts can receive a new task.</p>}
         </fieldset>{error && <p className="assign-error" role="alert">{error}</p>}</div>
         <div className="modal-foot"><span className="muted">{count.toLocaleString()} {label}(s)</span><span className="spacer" /><button type="button" className="btn-text" disabled={busy} onClick={() => setOpen(false)}>Cancel</button><button type="button" className="btn-primary" disabled={busy || !assignee || !count} onClick={submit}>{busy ? "Assigning…" : `Assign ${count.toLocaleString()}`}</button></div>
       </>}

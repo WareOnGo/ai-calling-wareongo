@@ -87,8 +87,8 @@ describe("assignment isolation and writes", () => {
     expect((await query("select count(*) n from bolna_assignments where state = 'open'")).rows[0].n).toBe("1");
     await query("update bolna_assignments set state = 'done'");
     const previous = (await query("select id from bolna_assignments")).rows[0].id;
-    await assignEntities({ entity: "call", ids: [callId], assignee: b.email, assignedBy: admin.email });
-    await expect(updateAssignment(previous, admin, { state: "open", revision: 0 })).rejects.toMatchObject({ code: "23505" });
+    await assignEntities({ entity: "call", ids: [callId], assignee: b.email, assignedBy: admin.email, reassign: true });
+    await expect(updateAssignment(previous, admin, { state: "open", revision: 0 })).rejects.toMatchObject({ status: 409 });
   });
   it("restores the old owner when insertion fails after reassignment starts", async () => {
     await assignEntities({ entity: "call", ids: [callId], assignee: a.email, assignedBy: admin.email });

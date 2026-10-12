@@ -306,7 +306,7 @@ export default async function Dashboard({
                 {user.isAdmin && (
                   <td className="clip" title={r.assignment_note ?? ""}>
                     {r.assigned_to ?? <span className="muted">—</span>}
-                    {r.assignment_state === "done" && <span className="review-tag">done</span>}
+                    {r.assigned_state === "done" && <span className="review-tag">done</span>}
                   </td>
                 )}
               </tr>

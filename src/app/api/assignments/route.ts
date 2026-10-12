@@ -73,6 +73,7 @@ export async function POST(req: NextRequest) {
     entity, ids, assignee, assignedBy: admin.email, note, reassign,
   });
 
-  return NextResponse.json({ ok: true, assignee, ...summary, skippedNoPhone, capped: capped || summary.capped });
+  return NextResponse.json({ ok: true, assignee, ...summary,
+    skippedNoPhone: skippedNoPhone + summary.skippedNoPhone, capped: capped || summary.capped });
   } catch (error) { return apiError(error); }
 }

@@ -3,6 +3,7 @@ import { unstable_cache } from "next/cache";
 import { query } from "@/lib/db";
 import { deriveCat, normNum, type QueueSel } from "@/lib/queue";
 import { assignmentScope, currentAssignmentLateral, type Viewer } from "@/lib/scope";
+import { contactOwnershipFilter } from "./assignment-contacts";
 
 // Read layer for the raw master warehouse dataset (raw_records). Mirrors lib/calls.ts.
 // Powers the raw listing view and server-validated batch selection.
@@ -34,6 +35,7 @@ export type RawRow = {
   last_notes: string | null;
   calls_history: { at: string | null; status: string | null; availability: string | null }[] | null;
   // current assignment — the human-calling channel, parallel to the AI calls above
+  assigned_state: string | null;
   assigned_to: string | null;
   // bigint → pg hands these back as strings, not numbers (same reason area_sqft and
   // the count(*) columns are read as text). Only ever used as a URL segment.
@@ -88,7 +90,8 @@ const SELECT_LIST = `
   calls.last_recording_url             as last_recording_url,
   calls.last_notes                     as last_notes,
   calls.calls_history                  as calls_history,
-  asg.assignee                         as assigned_to,
+  asg.contact_assignee                 as assigned_to,
+  asg.contact_state                    as assigned_state,
   asg.assignment_id                    as assignment_id,
   asg.state                            as assignment_state,
   asg.outcome                          as assignment_outcome,
@@ -166,18 +169,7 @@ function buildFilter(viewer: Viewer, f: RawFilters): { whereSql: string; params:
                  on cl.phone_id = rp.phone_id where rp.master_id = r.id
                  order by cl.call_created_at desc nulls last, cl.id desc limit 1) = $${params.length}`);
   }
-  // Admin-only in practice: an employee already sees only their own rows.
-  // "none" means no OPEN owner (a finished record is available to hand out again),
-  // while a named assignee matches their open or completed work.
-  if (viewer.isAdmin && f.assignee === "none") {
-    where.push(`not exists (select 1 from bolna_assignments a
-                  where a.entity_type = 'record' and a.entity_id = r.id and a.state = 'open')`);
-  } else if (viewer.isAdmin && f.assignee) {
-    params.push(f.assignee.toLowerCase());
-    where.push(`exists (select 1 from bolna_assignments a
-                 where a.entity_type = 'record' and a.entity_id = r.id
-                   and a.state <> 'dropped' and a.assignee = $${params.length})`);
-  }
+  if (viewer.isAdmin && f.assignee) where.push(contactOwnershipFilter("record", "r.id", f.assignee, params));
 
   const whereSql = where.length ? `where ${where.join(" and ")}` : "";
   return { whereSql, params, terms };
@@ -198,9 +190,11 @@ export async function getRawRecords(viewer: Viewer, f: RawFilters) {
 
   const rowsRes = await query<RawRow>(
     `select ${SELECT_LIST}
-       from raw_records r ${CALLS_JOIN} ${currentAssignmentLateral("record", "r.id", viewer, params)} ${whereSql}
-       order by r.area_sqft desc nulls last, r.id
-       limit ${pageSize} offset ${offset}`,
+       from (select r.id as page_id from raw_records r ${whereSql}
+         order by r.area_sqft desc nulls last, r.id limit ${pageSize} offset ${offset}) page
+       join raw_records r on r.id=page.page_id
+       ${CALLS_JOIN} ${currentAssignmentLateral("record", "r.id", viewer, params)}
+       order by r.area_sqft desc nulls last, r.id`,
     params,
   );
   return { rows: rowsRes.rows, total, page, pageSize, pages: Math.max(1, Math.ceil(total / pageSize)), terms };

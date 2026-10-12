@@ -2,6 +2,7 @@ import { ApiError } from "./api";
 import { query, transaction } from "@/lib/db";
 import type { CurrentUser } from "@/lib/auth";
 import { type EntityType, type Outcome, type AssignmentState } from "@/lib/scope";
+import { assignmentPhones, contactAssignments, lockAssignmentOwnership, type ContactAssignment } from "./assignment-contacts";
 
 // Write layer for assignments. Reads go through the two grid filter builders
 // (lib/calls.ts, lib/raw.ts) so the employee scope is applied in exactly one place.
@@ -16,17 +17,19 @@ export type AssignSummary = {
   requested: number;   // ids given (after uuid validation)
   assigned: number;    // new open assignments created
   reassigned: number;  // previously-open assignments closed to make way
-  skipped: number;     // already open — left with their current owner
+  skipped: number;
+  skippedOwned: number;
+  duplicateContacts: number;
+  skippedNoPhone: number;
   capped: boolean;
 };
 
 /**
  * Assign a set of entities to one person.
  *
- * Exclusive by design (uq_bolna_assignments_open): an entity has at most one open owner.
- * With `reassign` false the already-owned rows are SKIPPED and counted, rather than
- * silently stealing them — the caller reports the number back, the same way the
- * dispatch flow reports rows it held back.
+ * Ownership spans listings and calls sharing any valid phone number. Ordinary
+ * assignment skips open/completed contacts; explicit reassignment transfers open
+ * work, retaining completed history and all notes on the previous episodes.
  */
 export async function assignEntities(opts: {
   entity: EntityType;
@@ -36,39 +39,54 @@ export async function assignEntities(opts: {
   note?: string | null;
   reassign?: boolean;
 }): Promise<AssignSummary> {
-  const capped = opts.ids.length > ASSIGN_CAP;
-  const ids = capped ? opts.ids.slice(0, ASSIGN_CAP) : opts.ids;
+  const unique = [...new Set(opts.ids.map(id => id.toLowerCase()))];
+  if (unique.some(id => !UUID_RE.test(id))) throw new ApiError(400, "Invalid record ID");
+  const capped = unique.length > ASSIGN_CAP;
+  const ids = unique.slice(0, ASSIGN_CAP);
   const assignee = opts.assignee.toLowerCase();
   if (ids.length === 0) {
-    return { requested: 0, assigned: 0, reassigned: 0, skipped: 0, capped };
+    return { requested: 0, assigned: 0, reassigned: 0, skipped: 0, skippedOwned: 0, duplicateContacts: 0, skippedNoPhone: 0, capped };
   }
 
   return transaction(async client => {
+    await lockAssignmentOwnership(client);
     // Lock entities in deterministic order so concurrent assignment/reassignment is serialized.
     const table = opts.entity === "record" ? "raw_records" : "bolna_call_logs";
     const found = await client.query(`select id from ${table} where id = any($1::uuid[]) order by id for update`, [ids]);
     if (found.rowCount !== ids.length) throw new ApiError(400, "One or more selected records no longer exist");
     const target = await client.query(`select email from bolna_app_users where email = $1 and active for share`, [assignee]);
     if (!target.rowCount) throw new ApiError(400, "Assignee must be an active user");
-    if (opts.entity === "record") {
-      const missing = await client.query(`select r.id from raw_records r where r.id = any($1::uuid[])
-        and not exists (select 1 from raw_phones rp join raw_phone_numbers p using (phone_id)
-                        where rp.master_id = r.id and nullif(trim(p.phone), '') is not null) limit 1`, [ids]);
-      if (missing.rowCount) throw new ApiError(400, "Select records with a phone number");
+    const contacts = await assignmentPhones(client, opts.entity, ids);
+    const byId = new Map<string, string[]>();
+    for (const row of contacts) byId.set(row.entity_id, [...(byId.get(row.entity_id) || []), row.phone_last10]);
+    const owners = await contactAssignments(client, opts.entity, ids, [...new Set(contacts.map(c => c.phone_last10))]);
+    const byPhone = new Map<string, ContactAssignment[]>(), byEntity = new Map<string, ContactAssignment[]>();
+    for (const owner of owners) {
+      const key = `${owner.entity_type}:${owner.entity_id}`;
+      byEntity.set(key, [...(byEntity.get(key) || []), owner]);
+      for (const phone of owner.phones) byPhone.set(phone, [...(byPhone.get(phone) || []), owner]);
     }
-    let reassigned = 0;
-    if (opts.reassign) {
-      // Close open assignments held by SOMEONE ELSE. Rows already owned by this
-      // assignee are left alone so re-running doesn't churn their state/attempts.
-      const dropped = await client.query<{ entity_id: string }>(
-        `update bolna_assignments set state = 'dropped', completed_at = now(), revision = revision + 1
-          where entity_type = $1 and entity_id = any($2::uuid[])
-            and state = 'open' and assignee <> $3
-          returning entity_id`,
-        [opts.entity, ids, assignee],
-      );
-      reassigned = dropped.rowCount ?? 0;
+    const seen = new Set<string>(), droppedIds = new Set<string>(), eligible: string[] = [];
+    let skippedOwned = 0, duplicateContacts = 0, skippedNoPhone = 0;
+    for (const id of ids) {
+      const phones = byId.get(id) || [];
+      if (!phones.length) { skippedNoPhone++; continue; }
+      if (phones.some(phone => seen.has(phone))) { duplicateContacts++; continue; }
+      const overlapping = [...new Map([
+        ...(byEntity.get(`${opts.entity}:${id}`) || []), ...phones.flatMap(phone => byPhone.get(phone) || []),
+      ].map(owner => [owner.id, owner])).values()];
+      if (overlapping.length && !opts.reassign) { skippedOwned++; continue; }
+      if (opts.reassign) {
+        for (const owner of overlapping) if (owner.state === "open" && owner.assignee !== assignee) droppedIds.add(owner.id);
+        if (overlapping.some(owner => owner.state === "open" && owner.assignee === assignee)) { skippedOwned++; continue; }
+      }
+      eligible.push(id);
+      phones.forEach(phone => seen.add(phone));
     }
+    const dropped = droppedIds.size ? await client.query(
+      `update bolna_assignments set state='dropped',completed_at=now(),revision=revision+1
+        where id=any($1::bigint[]) and state='open' returning id`, [[...droppedIds]],
+    ) : null;
 
     // Partial-index inference: the ON CONFLICT target must repeat uq_bolna_assignments_open's
     // WHERE clause. Inserted rows always default to state='open', so it always applies.
@@ -77,11 +95,12 @@ export async function assignEntities(opts: {
        select $1, x, $2, $3, $4 from unnest($5::uuid[]) x
        on conflict (entity_type, entity_id) where state = 'open' do nothing
        returning entity_id`,
-      [opts.entity, assignee, opts.assignedBy.toLowerCase(), opts.note || null, ids],
+      [opts.entity, assignee, opts.assignedBy.toLowerCase(), opts.note || null, eligible],
     );
     const assigned = inserted.rowCount ?? 0;
 
-    return { requested: ids.length, assigned, reassigned, skipped: ids.length - assigned, capped };
+    return { requested: ids.length, assigned, reassigned: dropped?.rowCount ?? 0, skipped: ids.length - assigned,
+      skippedOwned, duplicateContacts, skippedNoPhone, capped };
   });
 }
 
@@ -162,12 +181,26 @@ export async function updateAssignment(
     ownership = ` and assignee = $${vals.length}`;
   }
 
-  const res = await query<AssignmentRow>(
-    `update bolna_assignments set ${sets.join(", ")}
+  const sql = `update bolna_assignments set ${sets.join(", ")}
       where id = ${idParam}${ownership} and state <> 'dropped' and revision = ${revisionParam}
-      returning revision, id, state, outcome, remarks, added_to_db, wh_id`,
-    vals,
-  );
+      returning revision, id, state, outcome, remarks, added_to_db, wh_id`;
+  const res = patch.state === "open" ? await transaction(async client => {
+    await lockAssignmentOwnership(client);
+    const current = (await client.query<{ entity_type: EntityType; entity_id: string; state: string }>(
+      `select entity_type,entity_id,state from bolna_assignments
+        where id=$1 and revision=$2 and state<>'dropped'${user.isAdmin ? "" : " and assignee=$3"}`,
+      user.isAdmin ? [id, patch.revision] : [id, patch.revision, user.email.toLowerCase()],
+    )).rows[0];
+    if (!current) throw new ApiError(409, "Assignment changed or is no longer editable. Refresh to review the latest version.");
+    if (current.state !== "open") {
+      const phones = await assignmentPhones(client, current.entity_type, [current.entity_id]);
+      const owners = await contactAssignments(client, current.entity_type, [current.entity_id], phones.map(p => p.phone_last10));
+      if (owners.some(owner => owner.id !== id && owner.state === "open")) {
+        throw new ApiError(409, "This phone number already has open work. Ask an admin to reassign it before reopening.");
+      }
+    }
+    return client.query<AssignmentRow>(sql, vals);
+  }) : await query<AssignmentRow>(sql, vals);
   if (!res.rowCount) throw new ApiError(409, "Assignment changed or is no longer editable. Refresh to review the latest version.");
   return res.rows[0] ?? null;
 }
