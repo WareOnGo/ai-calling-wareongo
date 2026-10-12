@@ -1,11 +1,10 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { searchQuery,type SearchValues } from "@/lib/filter-values";
 import { Dialog } from "./Dialog";
 import { useDashboardUI } from "./DashboardUI";
 
 type View = { name: string; query: string };
-export function SavedViews({ path, applied }: { path: string; applied: SearchValues }) {
+export function SavedViews({ path, applied }: { path: string; applied: Record<string, string | undefined> }) {
   const { viewStorageKey, navigate, pending, notify } = useDashboardUI();
   const key = `${viewStorageKey}:${path}`;
   const menu = useRef<HTMLDetailsElement>(null);
@@ -19,11 +18,12 @@ export function SavedViews({ path, applied }: { path: string; applied: SearchVal
   }
   function save() {
     if (!name.trim()) return;
-    const params=searchQuery(applied,["page","records_page","calls_page","ids"]);
+    const params = new URLSearchParams();
+    for (const [k,v] of Object.entries(applied)) if (v && !['page','records_page','calls_page','ids'].includes(k)) params.set(k,v);
     if (persist([...views.filter(v => v.name !== name.trim()), {name:name.trim(), query:params.toString()}].slice(-20))) { setOpen(false); setName(''); notify('View saved in this browser'); }
   }
   function go(query: string) { if (menu.current) menu.current.open = false; navigate(path + (query ? `?${query}` : '')); }
-  const quick: View[] = path.endsWith('/my') ? [{name:'Still to do',query:'view=open'}, {name:'No manual result',query:'view=open&outcome=none'}, {name:'Oldest open work',query:'view=open&sort=oldest'}] : path.endsWith('/raw') ? [{name:'Not called', query:'called=no'}, {name:'Unassigned', query:'assignee=none'}] : path.endsWith('/calls') ? [{name:'Needs AI review', query:'needs_review=1'}] : [{name:'Open assignments',query:'state=open'}, {name:'Completed',query:'state=done'}];
+  const quick: View[] = path.endsWith('/my') ? [{name:'Still to do',query:'view=open'}, {name:'Not called yet',query:'view=open&outcome=none'}, {name:'Oldest open work',query:'view=open&sort=oldest'}] : path.endsWith('/raw') ? [{name:'Not called', query:'called=no'}, {name:'Unassigned', query:'assignee=none'}] : path.endsWith('/calls') ? [{name:'Needs AI review', query:'needs_review=1'}] : [{name:'Open assignments',query:'state=open'}, {name:'Completed',query:'state=done'}];
   return <>
     <details ref={menu} className="column-menu views-menu"><summary>Views</summary><div className="column-options">
       {quick.map(v => <button className="view-option btn-text" key={v.name} type="button" disabled={pending} onClick={() => go(v.query)}>{v.name}</button>)}

@@ -10,7 +10,6 @@ export type DispatchSummary = {
   heldRegion: number;       // rows held by routing or missing agent configuration
   alreadyQueued: number;    // rows skipped because the number is in a live batch
   skippedNoNumber: number;  // kept rows without a valid normalized phone
-  humanOwned: number;
   callable: QueueSel[];     // final list (deduped, in-category, routable, not-queued, has phone)
   groups: Record<CallLanguage, QueueSel[]>;
 };
@@ -25,8 +24,7 @@ export function assembleBatch(rows: QueueSel[], excludeCats: CallCat[] = [],
   const available = new Set(options.availableLanguages ?? ["hindi"]);
   const deduped = dedupByNumber(rows);
   const excl = new Set(excludeCats.filter((c): c is CallCat => KNOWN_CATS.includes(c)));
-  const unowned=deduped.filter(r=>!r.owners?.some(owner=>owner.state==='open'));
-  const afterCat = unowned.filter((r) => !(r.cat && excl.has(r.cat)));
+  const afterCat = deduped.filter((r) => !(r.cat && excl.has(r.cat)));
   const routable = afterCat.filter((r) => { const language = routeLanguage(r.state, mode); return language !== null && available.has(language); });
   const notQueued = routable.filter((r) => !r.queued);
   const callable = notQueued.filter((r) => /^\d{10}$/.test(normNum(r.contact)));
@@ -35,8 +33,7 @@ export function assembleBatch(rows: QueueSel[], excludeCats: CallCat[] = [],
   return {
     total: deduped.length,
     excludedCats: [...excl],
-    excludedByCat: unowned.length - afterCat.length,
-    humanOwned: deduped.length - unowned.length,
+    excludedByCat: deduped.length - afterCat.length,
     heldRegion: afterCat.length - routable.length,
     alreadyQueued: routable.length - notQueued.length,
     skippedNoNumber: notQueued.length - callable.length,

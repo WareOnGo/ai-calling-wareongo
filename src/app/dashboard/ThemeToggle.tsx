@@ -8,11 +8,9 @@ import { IconSun, IconMoon } from "./icons";
 // component just reflects/updates it (no flash).
 export function ThemeToggle() {
   const [dark, setDark] = useState(false);
-  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     setDark(document.documentElement.getAttribute("data-theme") === "dark");
-    setReady(true);
   }, []);
 
   function toggle() {
@@ -25,7 +23,6 @@ export function ThemeToggle() {
   return (
     <button
       className="theme-toggle"
-      disabled={!ready}
       onClick={toggle}
       title={dark ? "Switch to light mode" : "Switch to dark mode"}
       aria-label="Toggle dark mode"

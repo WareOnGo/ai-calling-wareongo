@@ -25,28 +25,13 @@ not complete schema equivalence: compare an installation with private/custom
 schema changes before adopting it. Missing columns or incompatible constraints
 fail the transaction rather than being silently skipped.
 
-The runner holds a session advisory lock and commits each migration separately.
-Applied file checksums are verified. Baseline and migrations 001–005 are unchanged.
-The unshipped 006–019 development sequence is consolidated into 006 schema,
-007 retained-payload recovery and 008 concurrent indexes. No superseded intermediate
-tables or policies are created. An installation carrying retired migration names
-is refused; rebuild a disposable development database or prepare a specific
-forward upgrade. Never bypass the ledger or edit applied production migrations.
-
-Stage 007 uses 250-row transactions and commits evidence with its cursor. Its
-checksum is recorded only after recovery finishes. An interruption resumes that
-cursor; the already-recorded schema stage is not rerun.
-
-Stage 008 builds indexes concurrently. Its lock timeout is zero so older
-transactions can finish, while the overall statement timeout defaults to ten
-minutes (`MIGRATION_INDEX_TIMEOUT_MS`, 1000–3600000). Invalid partial indexes are
-removed before retrying. Ordinary statements retain thirty-second statement and
-two-second lock limits. A failure rolls back only the active transaction;
-earlier stages remain applied. Fix the cause and rerun. No down migrations exist.
-
-See the [deployment runbook](../docs/DEPLOYMENT.md) for maintenance, recovery,
-backfill catch-up and production-volume rehearsal requirements.
-
+The migration runner serializes itself with a transaction advisory lock, runs
+DDL and ledger writes in one transaction, and records SHA-256 checksums in
+`bolna_schema_migrations`. A later run is a no-op unless a new file was added.
+Changing an applied file is rejected. Add another numbered migration instead.
+Lock waits are limited to two seconds and statements to thirty seconds; a timeout
+rolls back the transaction. Inspect contention before retrying rather than leaving
+a DDL request queued indefinitely behind production traffic.
 Do not use private `db:push` or old post-push SQL after adopting this history;
 they do not know about the new job, revision, reservation and retry columns.
 
@@ -115,32 +100,3 @@ Dispatch has no automatic create/schedule retry. Unknown provider outcomes remai
 reserved. Recent batches can check the provider or record an administrator's
 verified completion/cancellation. This records who released the reservation and
 why; it does not itself cancel remote calls.
-
-## Bolna DB Fixes rollout (006–008)
-
-The schema stage adds shared contact ownership, durable manual batches, manual
-attempt/audit history, canonical completion rules, numeric/search helpers,
-per-dial AI history and the reconciliation cursor/lease. It preserves safe exact-call
-legacy onboarding without manufacturing dates. Obsolete contact claims, wallet
-cache and duplicate delivery-ledger tables are absent from the consolidated schema.
-
-Done inserts/transitions need a logged call. Already-Done edits skip that one
-requirement but still validate result, WH ID, notes and closure whenever relevant
-values change. Available always needs a positive integer WH ID, including Exhausted
-closures. Retry work can be deliberately closed as Exhausted with a substantive
-reason; there is no additional attempt threshold or automatic cap. Invalid legacy
-completions can be repaired atomically or reopened.
-
-Provider timestamps without an offset are interpreted as UTC, independently of
-session TimeZone. Explicit offsets retain their instant. The app stores UTC and
-displays IST. Confirm the provider convention against a known call before rollout.
-
-Run [handoff-audit.sql](handoff-audit.sql) after schema migration on staging (it uses
-handoff views/functions). It identifies overlapping ownership, invalid Done rows,
-missing phones, reused references and legacy ungrouped assignments. Row samples
-are capped at 200. Source imports do not automatically resolve ownership conflicts.
-
-The local rehearsals cover fresh, legacy, through-005, interrupted recovery and
-concurrent-index timeout/retry. They check co-tenant preservation, legacy onboarding,
-unknown dates, retired-history rejection and an index wait exceeding two seconds.
-They do not replace a representative staging migration and restore rehearsal.

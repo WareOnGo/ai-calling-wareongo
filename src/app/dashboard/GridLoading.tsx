@@ -1,5 +1,4 @@
 "use client";
-import { searchValues, filterValues } from "@/lib/filter-values";
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -11,8 +10,6 @@ import { WorkContext } from "./my/WorkContext";
 import { AiCallStatus } from "./my/AiCallStatus";
 import { parseWorkFilters } from "@/lib/work-filters";
 import { TeamAccessNote } from "./team/TeamStructure";
-import { AiReviewNotice, AssignmentNotices, CallGridHint } from "./GridNotices";
-import { WalletBalance } from "./WalletBalance";
 import { AssignmentColumns, AssignmentHeaders, AssignmentStats } from "./assignments/AssignmentStructure";
 import { AssignmentFilters } from "./assignments/AssignmentFilters";
 import { FILTER_LABELS, filterLabel, filterValue } from "./filter-labels";
@@ -60,7 +57,7 @@ function LoadingFilters({ view, admin }: { view: "calls" | "raw" | "assignments"
       <details className="column-menu views-menu"><summary>Views</summary></details>
     </div>
     {active.length > 0 && <div className="applied-filters">
-      {active.map(([key, value]) => <button type="button" className="filter-tag" key={`${key}:${value}`} disabled>{filterLabel(key, `/dashboard/${view}`)}: {filterValue(key, value)}<span>×</span></button>)}
+      {active.map(([key, value]) => <button type="button" className="filter-tag" key={key} disabled>{filterLabel(key, `/dashboard/${view}`)}: {filterValue(key, value)}<span>×</span></button>)}
       <button type="button" className="btn-text" disabled>Clear filters</button>
     </div>}
   </>;
@@ -88,8 +85,8 @@ function LoadingSheet({ view, admin }: { view: "calls" | "raw"; admin: boolean }
       catch { return false; }
     }).map(group => group.key);
     setPreferences({ ...preferences, expanded });
-    const initialStyles = document.getElementById(`loading-column-styles-${view}`);
-    if (initialStyles) initialStyles.textContent = "";
+    const initialStyles = (document.getElementById(`loading-column-styles-${view}`) as HTMLStyleElement | null)?.sheet;
+    if (initialStyles) while (initialStyles.cssRules.length) initialStyles.deleteRule(0);
     // Labels and groups only change with view/role.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
@@ -118,7 +115,7 @@ function LoadingSheet({ view, admin }: { view: "calls" | "raw"; admin: boolean }
 
 function LoadingWork() {
   const params = useSearchParams();
-  const filters = parseWorkFilters(searchValues(new URLSearchParams(params)));
+  const filters = parseWorkFilters(Object.fromEntries(params.entries()));
   const sections = [["record", "Listings to call"], ["call", "AI calls to follow up"]].filter(([entity]) => !filters.type || filters.type === entity);
   return <>
     <WorkStatusBar filters={filters} loading />
@@ -147,7 +144,7 @@ function LoadingWork() {
 }
 
 function LoadingTeam() {
-  return <div className="team-page"><section className="team-report" aria-hidden="true"><h2>Team performance</h2><div className="team-range"><Placeholder width={155} height={35}/><Placeholder width={155} height={35}/><Placeholder width={100} height={35}/></div><Placeholder width="80%"/><div className="team-report-grid" style={{height:210,marginTop:16}}><Placeholder width="100%" height={200}/></div><Placeholder width="100%" height={42}/></section><div className="team">
+  return <div className="team">
     <TeamAccessNote />
     <button type="button" className="btn-primary add-trigger" disabled><IconPlus size={15} />Add someone</button>
     {[
@@ -164,24 +161,21 @@ function LoadingTeam() {
         <span className="switch"><Placeholder width="100%" height={17} /></span>
       </li>)}</ul>
     </section>)}
-  </div></div>;
+  </div>;
 }
 
 function LoadingAssignments() {
   const params = useSearchParams();
-  const applied = searchValues(new URLSearchParams(params));
-  const [columns,setColumns]=useState<ReturnType<typeof readColumnPreferences>|null>(null);
-  useEffect(()=>setColumns(readColumnPreferences("/dashboard/assignments",["Row",...ASSIGNMENT_COLUMNS])),[]);
+  const applied = Object.fromEntries(params.entries());
   return <>
     <AssignmentStats assignee={applied.assignee} state={applied.state} loading />
     <AssignmentFilters applied={applied} loading />
-    {Object.entries(applied).some(([key, value]) => value && FILTER_LABELS[key]) && <div className="applied-filters">{Object.entries(applied).flatMap(([key,values]) => FILTER_LABELS[key]?filterValues(values).map(value=>[key,value]):[]).map(([key, value]) => <button type="button" className="filter-tag" key={`${key}:${value}`} disabled>{filterLabel(key, "/dashboard/assignments")}: {filterValue(key, value)}<span>×</span></button>)}<button type="button" className="btn-text" disabled>Clear filters</button></div>}
-    <AssignmentNotices />
+    {Object.entries(applied).some(([key, value]) => value && FILTER_LABELS[key]) && <div className="applied-filters">{Object.entries(applied).filter(([key, value]) => value && FILTER_LABELS[key]).map(([key, value]) => <button type="button" className="filter-tag" key={key} disabled>{filterLabel(key, "/dashboard/assignments")}: {filterValue(key, value)}<span>×</span></button>)}<button type="button" className="btn-text" disabled>Clear filters</button></div>}
     <div className="assignment-summary"><Placeholder width={135} /><span>Newest first</span></div>
     <div className="gridwrap"><table className="sheet log-sheet assignment-sheet loading-log">
-      <AssignmentColumns widths={columns?.widths} hidden={columns?.hiddenColumns}/><AssignmentHeaders hidden={columns?.hiddenColumns}/>
+      <AssignmentColumns /><AssignmentHeaders />
       <tbody>{Array.from({ length: 10 }, (_, row) => <tr className="skeleton-row" key={row}>
-        <td className="rownum"><Placeholder width={10} /></td>{ASSIGNMENT_COLUMNS.map(label => <td key={label} className={`${columns?.hiddenColumns.includes(label)?"column-hidden ":""}${label === "Assignee" ? "assignment-person" : label === "Actions" ? "actions" : ""}`}>{label === "Assignee" ? <><span className="assignee-name"><Placeholder width={110} height={14} /></span><span className="assignee-email"><Placeholder width={140} /></span></> : <Placeholder width={label === "Who" || label === "Notes" || label === "Brief" ? "80%" : label === "Phone" ? 120 : 45} />}</td>)}
+        <td className="rownum"><Placeholder width={10} /></td>{ASSIGNMENT_COLUMNS.map(label => <td key={label} className={label === "Assignee" ? "assignment-person" : label === "Actions" ? "actions" : undefined}>{label === "Assignee" ? <><span className="assignee-name"><Placeholder width={110} height={14} /></span><span className="assignee-email"><Placeholder width={140} /></span></> : <Placeholder width={label === "Who" || label === "Notes" || label === "Brief" ? "80%" : label === "Phone" ? 120 : 45} />}</td>)}
       </tr>)}</tbody>
     </table></div>
     <LoadingPager />
@@ -195,12 +189,10 @@ export function GridLoading({ view }: { view: View }) {
     <div className="loading-page" data-loading-view={view} aria-hidden="true" inert>
       {view === "home" ? <HubCards isAdmin={isAdmin} loading /> : <>
         <LoadingTitle view={view} />
-        {view === "raw" && <WalletBalance placeholder />}
-        {view === "calls" && <AiReviewNotice count="…" />}
         {view === "my" ? <LoadingWork /> : view === "team" ? <LoadingTeam /> : view === "assignments" ? <LoadingAssignments /> : <>
           <LoadingFilters view={view} admin={isAdmin} />
           {(view === "raw" || isAdmin) && <div className="selection-summary">Select rows for bulk actions</div>}
-          {view === "calls" && <CallGridHint />}
+          {view === "calls" && <p className="grid-hint">Availability is the AI result. Call Status, Called By, Added and WH ID track the shared call record; assigned staff log their own verification in My Work.</p>}
           <LoadingSheet view={view} admin={isAdmin} />
           <LoadingPager />
         </>}

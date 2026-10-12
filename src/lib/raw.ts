@@ -1,18 +1,13 @@
-import {rawSearch,matchesSearch} from "./search";
-import {cityWhere} from "./filter-values";
-import type {PoolClient} from 'pg';
-import { categoryWhere,filterValues,type FilterValue } from "./filter-values";
 import { ApiError } from "./api";
 import { unstable_cache } from "next/cache";
 import { query } from "@/lib/db";
 import { deriveCat, normNum, type QueueSel } from "@/lib/queue";
-import { assignmentScope, currentAssignmentLateral, contactTargets, ownershipFilter,verificationFilters, type Viewer } from "@/lib/scope";
+import { assignmentScope, currentAssignmentLateral, type Viewer } from "@/lib/scope";
 
 // Read layer for the raw master warehouse dataset (raw_records). Mirrors lib/calls.ts.
 // Powers the raw listing view and server-validated batch selection.
 
 export type RawRow = {
-  ai_attempt_count:number;ai_inbound_count:number;ai_conversation_count:number;
   id: string;
   source: string | null;
   source_record_id: string | null;
@@ -40,43 +35,39 @@ export type RawRow = {
   calls_history: { at: string | null; status: string | null; availability: string | null }[] | null;
   // current assignment — the human-calling channel, parallel to the AI calls above
   assigned_to: string | null;
-  assignment_assignee: string | null;
   // bigint → pg hands these back as strings, not numbers (same reason area_sqft and
   // the count(*) columns are read as text). Only ever used as a URL segment.
   assignment_id: string | null;
   assignment_state: string | null;
-  assignment_closure_reason: string | null;
   assignment_outcome: string | null;
   assignment_remarks: string | null;
   assignment_note: string | null;
   assignment_added_to_db: boolean | null;
   assignment_wh_id: string | null;
-  manual_attempt_count:number|null;
-  manual_disposition:string|null;
-  manual_next_due_at:string|null;
-  manual_last_attempt_at:string|null;
 };
 
 export type RawFilters = {
   q?: string;
-  source?: FilterValue;
-  state?: FilterValue;
+  source?: string;
+  state?: string;
   city?: string;
-  warehouse_type?: FilterValue;
-  contact?: FilterValue;              // "broker" | "owner"
+  warehouse_type?: string;
+  contact?: string;              // "broker" | "owner"
   called?: string;              // "yes" | "no" — already called or not
-  last_result?: FilterValue;        // most-recent call availability: Available | Unavailable | Unclear
+  last_result?: string;        // most-recent call availability: Available | Unavailable | Unclear
   min_area?: number;
   max_area?: number;
   has_phone?: boolean;
-  manual_outcome?:FilterValue;onboarded?:"yes"|"no";
-  assignment_state?: string;
-  assignee?: FilterValue;             // admin-only: filter by owner ("none" = unassigned)
+  assignee?: string;             // admin-only: filter by owner ("none" = unassigned)
   page?: number;
   pageSize?: number;
 };
 
-
+const SEARCH_COLS = [
+  "r.owner_name", "r.owner_first_name", "r.source", "r.city", "r.state",
+  "r.address", "r.warehouse_type", "r.source_record_id",
+  "r.metadata->>'email'", "r.metadata->>'pincode'",
+];
 
 export const RAW_PAGE_SIZE = 50;
 
@@ -97,48 +88,35 @@ const SELECT_LIST = `
   calls.last_recording_url             as last_recording_url,
   calls.last_notes                     as last_notes,
   calls.calls_history                  as calls_history,
-  asg.current_assignee                 as assigned_to,
-  asg.assignee                         as assignment_assignee,
+  asg.assignee                         as assigned_to,
   asg.assignment_id                    as assignment_id,
   asg.state                            as assignment_state,
   asg.outcome                          as assignment_outcome,
   asg.remarks                          as assignment_remarks,
   asg.note                             as assignment_note,
   asg.asg_added                        as assignment_added_to_db,
-  asg.asg_wh                           as assignment_wh_id,
-  (select count(*)::int from bolna_ai_attempts ai where ai.direction='outbound' and ai.phone_last10 in (select p.phone_last10 from raw_phones rp join raw_phone_numbers p using(phone_id) where rp.master_id=r.id)) as ai_attempt_count,
-  (select count(*)::int from bolna_ai_attempts ai where ai.direction='inbound' and ai.phone_last10 in (select p.phone_last10 from raw_phones rp join raw_phone_numbers p using(phone_id) where rp.master_id=r.id)) as ai_inbound_count,
-  (select count(*)::int from bolna_ai_attempts ai where ai.confirmed_conversation and ai.phone_last10 in (select p.phone_last10 from raw_phones rp join raw_phone_numbers p using(phone_id) where rp.master_id=r.id)) as ai_conversation_count,
-  asg.closure_reason as assignment_closure_reason,asg.manual_attempt_count,asg.disposition as manual_disposition,asg.next_due_at::text as manual_next_due_at,asg.last_attempt_at::text as manual_last_attempt_at`;
+  asg.asg_wh                           as assignment_wh_id`;
 
 // Call history aggregated across all of a record's phone numbers.
 const CALLS_JOIN = `
   left join lateral (
     select totals.call_count, recent.last_called_at, recent.last_status, recent.last_availability,
            recent.last_transcript, recent.last_recording_url, recent.last_notes, history.calls_history
-    from (select count(*) as call_count from raw_phones rp join bolna_call_logs cl on cl.phone_id = rp.phone_id where rp.master_id = r.id and cl.status is distinct from 'balance-low') totals
+    from (select count(*) as call_count from raw_phones rp join bolna_call_logs cl on cl.phone_id = rp.phone_id where rp.master_id = r.id) totals
     left join lateral (
       select cl.call_created_at as last_called_at, cl.status as last_status,
              bolna_availability(cl.status, cl.llm_availability) as last_availability,
              cl.transcript as last_transcript, cl.recording_url as last_recording_url, cl.notes as last_notes
       from raw_phones rp join bolna_call_logs cl on cl.phone_id = rp.phone_id
-      where rp.master_id = r.id and cl.status is distinct from 'balance-low' order by cl.call_created_at desc nulls last, cl.id desc limit 1
+      where rp.master_id = r.id order by cl.call_created_at desc nulls last, cl.id desc limit 1
     ) recent on true
     left join lateral (
       select jsonb_agg(jsonb_build_object('at', at, 'status', status, 'availability', availability) order by at desc nulls last, id desc) as calls_history
       from (select cl.id, cl.call_created_at as at, cl.status, bolna_availability(cl.status, cl.llm_availability) as availability
         from raw_phones rp join bolna_call_logs cl on cl.phone_id = rp.phone_id
-        where rp.master_id = r.id and cl.status is distinct from 'balance-low' order by cl.call_created_at desc nulls last, cl.id desc limit 20) recent_calls
+        where rp.master_id = r.id order by cl.call_created_at desc nulls last, cl.id desc limit 20) recent_calls
     ) history on true
   ) calls on true`;
-
-// Grid rows keep a short preview. Full evidence is fetched by Details or CSV.
-const GRID_SELECT = SELECT_LIST
-  .replace('calls.last_transcript                as last_transcript', 'left(calls.last_transcript, 240)     as last_transcript')
-  .replace('calls.last_notes                     as last_notes', 'left(calls.last_notes, 240)          as last_notes')
-  .replace('calls.calls_history                  as calls_history', 'null::jsonb                         as calls_history');
-const GRID_CALLS_JOIN = CALLS_JOIN.replace('history.calls_history', 'null::jsonb as calls_history')
-  .replace(/    left join lateral \(\n      select jsonb_agg[\s\S]*?\) history on true/, '');
 
 // The current assignment (human-calling channel). Same shape and precedence as the
 // one baked into bolna_call_analysis, so both grids answer "who owns this" alike.
@@ -158,32 +136,48 @@ function buildFilter(viewer: Viewer, f: RawFilters): { whereSql: string; params:
   for (const term of terms) {
     params.push(term);
     const pp = `$${params.length}`;
-    where.push(`r.id in (select rs.id from raw_records rs where ${matchesSearch(rawSearch('rs'),pp)}
-      union select rp.master_id from raw_phone_numbers p join raw_phones rp using(phone_id) where p.phone ilike '%'||${pp}||'%')`);
+    const subs = SEARCH_COLS.map((c) => `coalesce(${c}::text,'') ilike '%'||${pp}||'%'`);
+    const fuzzy = ["r.owner_name", "r.owner_first_name", "r.city"].map(
+      (c) => `word_similarity(${pp}, coalesce(${c},'')) > 0.5`,
+    );
+    // phone match via EXISTS (no join → no row multiplication)
+    const phone = `exists (select 1 from raw_phones rp join raw_phone_numbers p on p.phone_id = rp.phone_id
+                   where rp.master_id = r.id and p.phone ilike '%'||${pp}||'%')`;
+    where.push(`(${[...subs, ...fuzzy, phone].join(" or ")})`);
   }
 
-  for(const [column,value] of [["r.source",f.source],["r.state",f.state],["r.warehouse_type",f.warehouse_type]] as const){const clause=categoryWhere(column,value,params);if(clause)where.push(clause);}
-  if(f.city)where.push(cityWhere("r.city",f.city,params));
-  const contacts=filterValues(f.contact),contactChoices:string[]=[];
-  if(contacts.includes('broker'))contactChoices.push("r.contact_type='probable broker'");
-  if(contacts.includes('owner'))contactChoices.push("r.contact_type is null");
-  if(contactChoices.length)where.push(`(${contactChoices.join(' or ')})`);
-  where.push(...verificationFilters('record','r.id',viewer,f,params));
+  if (f.source) { params.push(f.source); where.push(`r.source = $${params.length}`); }
+  if (f.state) { params.push(f.state); where.push(`r.state = $${params.length}`); }
+  if (f.city) { params.push(f.city); where.push(`r.city ilike $${params.length}`); }
+  if (f.warehouse_type) { params.push(f.warehouse_type); where.push(`r.warehouse_type = $${params.length}`); }
+  if (f.contact === "broker") { where.push(`r.contact_type = 'probable broker'`); }
+  if (f.contact === "owner") { where.push(`r.contact_type is null`); }
   if (f.min_area != null) { params.push(f.min_area); where.push(`r.area_sqft >= $${params.length}`); }
   if (f.max_area != null) { params.push(f.max_area); where.push(`r.area_sqft <= $${params.length}`); }
   if (f.has_phone) { where.push(`exists (select 1 from raw_phones rp join raw_phone_numbers p using (phone_id) where rp.master_id = r.id and nullif(trim(p.phone), '') is not null)`); }
   // already-called filter: does any of the record's numbers have a call_log?
-  const calledExists = `exists (select 1 from raw_phones rp join bolna_call_logs cl on cl.phone_id = rp.phone_id where rp.master_id = r.id and cl.status is distinct from 'balance-low')`;
+  const calledExists = `exists (select 1 from raw_phones rp join bolna_call_logs cl on cl.phone_id = rp.phone_id where rp.master_id = r.id)`;
   if (f.called === "yes") { where.push(calledExists); }
   if (f.called === "no") { where.push(`not ${calledExists}`); }
   // most-recent call's result (self-contained subquery → works in count + rows)
-  if (filterValues(f.last_result).length) {
-    const clause=categoryWhere(`(select bolna_availability(cl.status, cl.llm_availability) from raw_phones rp join bolna_call_logs cl
-                 on cl.phone_id = rp.phone_id where rp.master_id = r.id and cl.status is distinct from 'balance-low'
-                 order by cl.call_created_at desc nulls last, cl.id desc limit 1)`,f.last_result,params,"none");
-    if(clause)where.push(clause);
+  if (f.last_result) {
+    params.push(f.last_result);
+    where.push(`(select bolna_availability(cl.status, cl.llm_availability) from raw_phones rp join bolna_call_logs cl
+                 on cl.phone_id = rp.phone_id where rp.master_id = r.id
+                 order by cl.call_created_at desc nulls last, cl.id desc limit 1) = $${params.length}`);
   }
-  if (viewer.isAdmin) where.push(...ownershipFilter("record", "r.id", f, params));
+  // Admin-only in practice: an employee already sees only their own rows.
+  // "none" means no OPEN owner (a finished record is available to hand out again),
+  // while a named assignee matches their open or completed work.
+  if (viewer.isAdmin && f.assignee === "none") {
+    where.push(`not exists (select 1 from bolna_assignments a
+                  where a.entity_type = 'record' and a.entity_id = r.id and a.state = 'open')`);
+  } else if (viewer.isAdmin && f.assignee) {
+    params.push(f.assignee.toLowerCase());
+    where.push(`exists (select 1 from bolna_assignments a
+                 where a.entity_type = 'record' and a.entity_id = r.id
+                   and a.state <> 'dropped' and a.assignee = $${params.length})`);
+  }
 
   const whereSql = where.length ? `where ${where.join(" and ")}` : "";
   return { whereSql, params, terms };
@@ -203,11 +197,10 @@ export async function getRawRecords(viewer: Viewer, f: RawFilters) {
   const offset = (page - 1) * pageSize;
 
   const rowsRes = await query<RawRow>(
-    `with page_rows as materialized (select r.* from raw_records r ${whereSql}
-       order by r.area_sqft desc nulls last, r.id limit ${pageSize} offset ${offset})
-     select ${GRID_SELECT}
-       from page_rows r ${GRID_CALLS_JOIN} ${currentAssignmentLateral("record", "r.id", viewer, params)}
-       order by r.area_sqft desc nulls last, r.id`,
+    `select ${SELECT_LIST}
+       from raw_records r ${CALLS_JOIN} ${currentAssignmentLateral("record", "r.id", viewer, params)} ${whereSql}
+       order by r.area_sqft desc nulls last, r.id
+       limit ${pageSize} offset ${offset}`,
     params,
   );
   return { rows: rowsRes.rows, total, page, pageSize, pages: Math.max(1, Math.ceil(total / pageSize)), terms };
@@ -285,7 +278,7 @@ const QUEUE_CAP = 20000; // safety ceiling; Delhi (largest city set) is ~2.5k
 // unit-tested deriveCat() so server and client tag identically.
 type QueueRowSql = {
   id: string; name: string; contact: string | null; area: string; state: string;
-  call_count: string; last_avail: string | null; phones:string[]; owners:NonNullable<QueueSel["owners"]>;
+  call_count: string; last_avail: string | null;
 };
 
 // Shared projection: primary phone, name/area/state, and last-call info for cat.
@@ -297,12 +290,6 @@ const QUEUE_SELECT = `
             where rp.master_id = r.id and nullif(trim(pp.phone), '') is not null order by rp.is_primary desc, rp.phone_id limit 1) as contact,
          coalesce(r.city, '')  as area,
          coalesce(r.state, '') as state,
-         array(select p.phone_last10 from raw_phones rp join raw_phone_numbers p using(phone_id) where rp.master_id=r.id order by p.phone_last10) as phones,
-         coalesce((select jsonb_agg(jsonb_build_object('email',x.assignee,'name',x.name,'state',x.state,'outcome',x.outcome)) from (
-          select a.assignee,max(u.name) name,a.state,string_agg(distinct a.outcome,', ') outcome
-          from bolna_assignments a join bolna_app_users u on u.email=a.assignee
-          where a.state in ('open','done') and (a.entity_type,a.entity_id) in (${contactTargets("'record'",'r.id')})
-          group by a.assignee,a.state order by a.assignee,a.state) x),'[]') as owners,
          coalesce(c.n, 0)::text as call_count,
          c.last_avail           as last_avail
     from raw_records r
@@ -310,7 +297,7 @@ const QUEUE_SELECT = `
       select count(*) n,
              (array_agg(bolna_availability(cl.status, cl.llm_availability) order by cl.call_created_at desc nulls last))[1] as last_avail
       from raw_phones rp join bolna_call_logs cl on cl.phone_id = rp.phone_id
-      where rp.master_id = r.id and cl.status is distinct from 'balance-low'
+      where rp.master_id = r.id
     ) c on true`;
 
 function toQueueSel(r: QueueRowSql, queued: Set<string>): QueueSel {
@@ -318,14 +305,13 @@ function toQueueSel(r: QueueRowSql, queued: Set<string>): QueueSel {
   return {
     id: r.id, name: r.name, contact, area: r.area, state: r.state,
     cat: deriveCat(r.call_count, r.last_avail),
-    phones:r.phones,owners:r.owners,aiCalls:Number(r.call_count),
-    queued: r.phones.some(phone=>queued.has(phone)),
+    queued: queued.has(normNum(contact)),
   };
 }
 
 // Include both active/uncertain batches and durable phone reservations.
-export async function getQueuedNumberSet(client?:Pick<PoolClient,"query">): Promise<Set<string>> {
-  const res = await (client??{query}).query<{ contact_number: string }>(
+export async function getQueuedNumberSet(): Promise<Set<string>> {
+  const res = await query<{ contact_number: string }>(
     `select distinct i.contact_number
        from call_batch_items i join call_batches b on b.id = i.batch_id
       where b.state in ('sending', 'creating', 'scheduling', 'scheduled', 'uncertain')
@@ -358,15 +344,15 @@ export async function getRawQueueRows(viewer: Viewer, f: RawFilters): Promise<{ 
 
 // Re-fetch specific records by id — the dispatch path uses this so the numbers sent
 // to Bolna come from the DB, never from client-supplied data.
-export async function getRawQueueRowsByIds(viewer: Viewer, ids: string[], client?:Pick<PoolClient,"query">): Promise<QueueSel[]> {
+export async function getRawQueueRowsByIds(viewer: Viewer, ids: string[]): Promise<QueueSel[]> {
   if (ids.length === 0) return [];
   const { whereSql, params } = buildFilter(viewer, {});
   params.push(ids.slice(0, QUEUE_CAP));
   const idClause = `r.id = any($${params.length})`;
   const where = whereSql ? `${whereSql} and ${idClause}` : `where ${idClause}`;
   const [res, queued] = await Promise.all([
-    (client??{query}).query<QueueRowSql>(`${QUEUE_SELECT} ${where} order by r.area_sqft desc nulls last, r.id`, params),
-    getQueuedNumberSet(client),
+    query<QueueRowSql>(`${QUEUE_SELECT} ${where} order by r.area_sqft desc nulls last, r.id`, params),
+    getQueuedNumberSet(),
   ]);
   return res.rows.map((r) => toQueueSel(r, queued));
 }
@@ -400,19 +386,4 @@ export function rawExportQuery(viewer: Viewer, f: RawFilters, ids?: string[]): i
   const join = currentAssignmentLateral("record", "r.id", viewer, params);
   return { sql: `select ${SELECT_LIST}, r.metadata from raw_records r ${CALLS_JOIN} ${join} ${where} order by r.area_sqft desc nulls last, r.id`,
     countSql: `select count(*)::text n from raw_records r ${where}`, params, countParams };
-}
-
-/** Source-property context for one authorized task; never includes other callers' notes. */
-export async function getRelatedListings(viewer: Viewer, entity: "record" | "call", id: string) {
-  const params: unknown[] = [id];
-  const scope = assignmentScope(viewer, entity, "seed.id", params);
-  const table = entity === "record" ? "raw_records" : "bolna_call_logs";
-  return (await query<{ id: string; owner_name: string | null; city: string | null; state: string | null; area_sqft: string | null; address: string | null; source: string }>(
-    `select distinct r.id,r.owner_name,r.city,r.state,r.area_sqft::text,r.address,r.source
-       from ${table} seed
-       join bolna_assignment_contacts target on target.entity_type='${entity}' and target.entity_id=seed.id
-       join raw_phone_numbers p on p.phone_last10=target.phone_last10
-       join raw_phones rp on rp.phone_id=p.phone_id join raw_records r on r.id=rp.master_id
-      where seed.id=$1::uuid${scope ? ` and ${scope}` : ""}
-      order by r.id limit 101`, params)).rows;
 }

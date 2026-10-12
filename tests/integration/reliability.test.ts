@@ -1,4 +1,3 @@
-import {seedLegacyAssignments,seedConnectedCalls} from './fixtures';
 import { beforeAll, beforeEach, afterAll, afterEach, describe, it, expect, vi } from "vitest";
 import { randomUUID, createHash } from "node:crypto";
 import { NextRequest } from "next/server";
@@ -34,7 +33,7 @@ beforeAll(async () => {
 });
 beforeEach(async () => {
   // These tests deliberately reset only the app-owned fixture tables.
-  await query("truncate bolna_ai_attempts, bolna_assignments, bolna_app_users, bolna_webhook_events, bolna_call_logs, raw_phones, raw_records, raw_phone_numbers, call_batch_items, call_batches, bolna_dispatch_requests restart identity cascade");
+  await query("truncate bolna_assignments, bolna_app_users, bolna_webhook_events, bolna_call_logs, raw_phones, raw_records, raw_phone_numbers, call_batch_items, call_batches, bolna_dispatch_requests restart identity cascade");
   await query(`insert into bolna_app_users(email, role) values ($1,'admin'),($2,'employee'),($3,'employee')`, [admin.email, a.email, b.email]);
   callId = randomUUID(); recordId = randomUUID();
   const phone = (await query(`insert into raw_phone_numbers(phone_last10, phone) values ('9876543210', '+919876543210') returning phone_id`)).rows[0].phone_id;
@@ -53,13 +52,12 @@ afterAll(async () => { await getPool().end(); });
 describe("assignment isolation and writes", () => {
   it("shows A's completed assignment and B's open assignment only to their respective owners", async () => {
     for (const [entity, id] of [["call", callId], ["record", recordId]]) {
-      await seedLegacyAssignments(`insert into bolna_assignments(entity_type, entity_id, assignee, assigned_by, state, remarks, note,outcome)
-        values ($1,$2,$3,$5,'done','A private','A brief','Unavailable'),($1,$2,$4,$5,'open','B private','B brief',null)`, [entity, id, a.email, b.email, admin.email]);
+      await query(`insert into bolna_assignments(entity_type, entity_id, assignee, assigned_by, state, remarks, note)
+        values ($1,$2,$3,$5,'done','A private','A brief'),($1,$2,$4,$5,'open','B private','B brief')`, [entity, id, a.email, b.email, admin.email]);
     }
     const rows = (await getCalls(a, {})).rows;
     expect(rows[0].assignment_remarks).toBe("A private");
-    expect(rows[0].assigned_to).toBeNull();
-    expect(rows[0].assignment_assignee).toBe(a.email);
+    expect(rows[0].assigned_to).toBe(a.email);
     expect((await getCalls(b, {})).rows[0].assignment_remarks).toBe("B private");
     expect((await getRawRecordsByIds(a, [recordId]))[0].assignment_note).toBe("A brief");
     const spec = callsExportQuery(a, {});
@@ -87,8 +85,7 @@ describe("assignment isolation and writes", () => {
   it("serializes competing owners and refuses reopening when another owner is open", async () => {
     await Promise.all([a, b].map(owner => assignEntities({ entity: "call", ids: [callId], assignee: owner.email, assignedBy: admin.email })));
     expect((await query("select count(*) n from bolna_assignments where state = 'open'")).rows[0].n).toBe("1");
-    await seedConnectedCalls();
-    await query("update bolna_assignments set state = 'done',outcome='Unavailable'");
+    await query("update bolna_assignments set state = 'done'");
     const previous = (await query("select id from bolna_assignments")).rows[0].id;
     await assignEntities({ entity: "call", ids: [callId], assignee: b.email, assignedBy: admin.email });
     await expect(updateAssignment(previous, admin, { state: "open", revision: 0 })).rejects.toMatchObject({ code: "23505" });
@@ -103,7 +100,7 @@ describe("assignment isolation and writes", () => {
     } finally { await query("drop function audit_reject_assignment() cascade"); }
   });
   it("allows only an open owner to edit shared call fields", async () => {
-    await seedLegacyAssignments(`insert into bolna_assignments(entity_type,entity_id,assignee,assigned_by,state,outcome) values ('call',$1,$2,$3,'done','Unavailable')`, [callId, a.email, admin.email]);
+    await query(`insert into bolna_assignments(entity_type,entity_id,assignee,assigned_by,state) values ('call',$1,$2,$3,'done')`, [callId, a.email, admin.email]);
     const response = await patchCall(new NextRequest("http://localhost", { method: "PATCH", body: JSON.stringify({ called_by: "old owner", revision: 0 }) }), { params: Promise.resolve({ id: callId }) });
     expect(response.status).toBe(409);
     expect((await query("select called_by from bolna_call_logs where id = $1", [callId])).rows[0].called_by).toBeNull();

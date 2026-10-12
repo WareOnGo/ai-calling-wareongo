@@ -93,17 +93,3 @@ export async function getWorkload(): Promise<Workload[]> {
   );
   return res.rows.map((r) => ({ ...r, n: Number(r.n) }));
 }
-
-export type AssigneeWorkload={email:string;name:string|null;open:number;manual_open:number;ai_open:number;done_today:number};
-/** Today's valid completions use Indian calendar boundaries, independent of server TZ. */
-export async function getAssigneeWorkloads(asOf = new Date()):Promise<AssigneeWorkload[]> {
-  return (await query<AssigneeWorkload>(`select u.email,u.name,
-    count(a.id) filter(where a.state='open')::int as open,
-    count(a.id) filter(where a.state='open' and a.entity_type='record')::int as manual_open,
-    count(a.id) filter(where a.state='open' and a.entity_type='call')::int as ai_open,
-    count(a.id) filter(where a.state='done' and a.completed_at >= date_trunc('day',$1::timestamptz at time zone 'Asia/Kolkata') at time zone 'Asia/Kolkata'
-      and a.completed_at < (date_trunc('day',$1::timestamptz at time zone 'Asia/Kolkata')+interval '1 day') at time zone 'Asia/Kolkata'
-      and bolna_assignment_quality(a.state,a.outcome,a.wh_id,a.remarks,a.disposition,a.closure_reason) is null)::int as done_today
-    from bolna_app_users u left join bolna_assignments a on a.assignee=u.email where u.active
-    group by u.email,u.name order by coalesce(nullif(u.name,''),u.email)`,[asOf.toISOString()])).rows;
-}

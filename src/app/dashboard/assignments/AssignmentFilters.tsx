@@ -1,6 +1,3 @@
-import { firstValue, type SearchValues } from "@/lib/filter-values";
-import { MultiSelect } from "../MultiSelect";
-import { ColumnResize } from "../ColumnResize";
 import { FilterForm } from "../FilterForm";
 import { FiltersToggle } from "../FiltersToggle";
 import { ApplyButton } from "../ApplyButton";
@@ -8,23 +5,35 @@ import { IconFilter } from "../icons";
 import { OUTCOMES } from "@/lib/scope";
 
 export function AssignmentFilters({ applied, assignees = [], loading = false }: {
-  applied: SearchValues; assignees?: { email: string; name: string | null }[]; loading?: boolean;
+  applied: Record<string, string | undefined>; assignees?: { email: string; name: string | null }[]; loading?: boolean;
 }) {
   const moreCount = ["type", "outcome"].filter(key => applied[key]).length;
+  const people = applied.assignee && !assignees.some(person => person.email === applied.assignee)
+    ? [...assignees, { email: applied.assignee, name: null }] : assignees;
   const controls = <>
-    {["batch_id","quality_review","follow_up"].map(key=>firstValue(applied[key])&&<input type="hidden" key={key} name={key} value={firstValue(applied[key])}/>)}
-    <MultiSelect name="assignee" label="Assignee" value={applied.assignee} disabled={loading} options={assignees.map(p=>({value:p.email,label:p.name||p.email}))}/>
-    <MultiSelect name="state" label="Status" value={applied.state} disabled={loading} options={[{value:"open",label:"Open"},{value:"done",label:"Done"},{value:"dropped",label:"Unassigned"}]}/>
+    <label className={`assignment-filter chip${applied.assignee ? " active" : ""}`}>
+      <span>Assignee</span><select name="assignee" aria-label="assignee" defaultValue={applied.assignee || ""} disabled={loading}>
+        <option value="">All assignees</option>{people.map(person => <option key={person.email} value={person.email}>{person.name || person.email}</option>)}
+      </select>
+    </label>
+    <label className={`assignment-filter chip${applied.state ? " active" : ""}`}>
+      <span>Status</span><select name="state" aria-label="state" defaultValue={applied.state || ""} disabled={loading}>
+        <option value="">Any status</option><option value="open">Open</option><option value="done">Done</option><option value="dropped">Unassigned</option>
+      </select>
+    </label>
     <div className="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
-      <input name="q" defaultValue={firstValue(applied.q)||""} disabled={loading} aria-label="Search assignments" placeholder="Search people, notes, phone…" />
+      <input name="q" defaultValue={applied.q || ""} disabled={loading} aria-label="Search assignments" placeholder="Search people, notes, phone…" />
     </div>
     {loading ? <button type="button" className={`filters-toggle${moreCount ? " active" : ""}`} disabled><IconFilter size={15} />More filters{moreCount > 0 && <span className="fbadge">{moreCount}</span>}</button> : <FiltersToggle count={moreCount} label="More filters" />}
     {loading ? <button type="button" className="btn apply-button" disabled>Apply</button> : <ApplyButton />}
-    {loading ? <details className="column-menu"><summary>Columns</summary></details> : <ColumnResize/>}<span className="spacer" /><a className="btn-text" href={loading ? undefined : "/dashboard/assignments"}>Reset</a>
+    <span className="spacer" /><a className="btn-text" href={loading ? undefined : "/dashboard/assignments"}>Reset</a>
     {!loading && <div className="filters-panel" id="filters-panel">
-      <MultiSelect name="type" label="Channel" value={applied.type} options={[{value:"record",label:"Manual (listing)"},{value:"call",label:"AI call follow-up"}]}/>
-      <MultiSelect name="outcome" label="Manual result" value={applied.outcome} options={[...OUTCOMES,{value:"none",label:"No result yet"}]}/>
-
+      <div className={`chip${applied.type ? " active" : ""}`}><select aria-label="type" name="type" defaultValue={applied.type || ""}>
+        <option value="">Both channels</option><option value="record">Manual (listing)</option><option value="call">AI call follow-up</option>
+      </select></div>
+      <div className={`chip${applied.outcome ? " active" : ""}`}><select aria-label="outcome" name="outcome" defaultValue={applied.outcome || ""}>
+        <option value="">Any result</option><option value="none">No result yet</option>{OUTCOMES.map(outcome => <option key={outcome}>{outcome}</option>)}
+      </select></div>
     </div>}
   </>;
   return loading ? <div className="filterbar assignment-filters">{controls}<details className="column-menu views-menu"><summary>Views</summary></details></div>

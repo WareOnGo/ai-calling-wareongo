@@ -17,16 +17,8 @@ export function GroupToggle({ group, label }: { group: string; label: string }) 
     setExpanded(value);
     ref.current?.closest("table")?.classList.toggle(`${group}-collapsed`, !value);
     const reset = () => { setExpanded(false); ref.current?.closest("table")?.classList.add(`${group}-collapsed`); };
-    const expand=(event:Event)=>{
-      if((event as CustomEvent<string>).detail!==group)return;
-      setExpanded(true);ref.current?.closest("table")?.classList.remove(`${group}-collapsed`);
-      try{localStorage.setItem(key,"true");}catch{/* unavailable */}
-      element.dispatchEvent(new Event("columns-changed"));
-    };
     element.addEventListener("reset-columns", reset);
-    element.addEventListener("expand-column-group",expand);
-    element.dispatchEvent(new Event("columns-changed"));
-    return () => {element.removeEventListener("reset-columns", reset);element.removeEventListener("expand-column-group",expand);};
+    return () => element.removeEventListener("reset-columns", reset);
   }, [group, root]);
   return (
     <th

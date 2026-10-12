@@ -3,7 +3,6 @@ export type SaveSnapshot<T extends Values> = {
   values: T;
   status: "idle" | "dirty" | "saving" | "saved" | "error";
   error: string;
-  field?: string;
   dirty: boolean;
 };
 
@@ -18,7 +17,7 @@ export class Autosave<T extends Values> {
   private running = false;
   private requested = false;
   private snapshot: SaveSnapshot<T>;
-  constructor(initial: T, private send: (patch: Partial<T>) => Promise<void>, private rollback: (keyof T)[] = [], private validationDrafts: (keyof T)[] = []) {
+  constructor(initial: T, private send: (patch: Partial<T>) => Promise<void>, private rollback: (keyof T)[] = []) {
     this.baseline = { ...initial };
     this.desired = { ...initial };
     this.snapshot = { values: { ...initial }, status: "idle", error: "", dirty: false };
@@ -29,8 +28,8 @@ export class Autosave<T extends Values> {
   private diff(): Partial<T> {
     return Object.fromEntries(Object.entries(this.desired).filter(([key, value]) => this.uncertain.has(key) || value !== this.baseline[key])) as Partial<T>;
   }
-  private publish(status: SaveSnapshot<T>["status"], error = "", field = this.snapshot.field) {
-    this.snapshot = { values: { ...this.desired }, status, error, field,
+  private publish(status: SaveSnapshot<T>["status"], error = "") {
+    this.snapshot = { values: { ...this.desired }, status, error,
       dirty: this.running || Object.keys(this.diff()).length > 0 || Object.keys(this.failed).length > 0 };
     this.listeners.forEach(fn => fn());
   }
@@ -72,19 +71,16 @@ export class Autosave<T extends Values> {
         this.publish(Object.keys(this.failed).length ? "error" : Object.keys(this.diff()).length ? "dirty" : "saved", this.snapshot.error);
       } catch (error) {
         this.running = false;
-        const validationError=error instanceof Error && 'field' in error && !!error.field;
         for (const key of Object.keys(patch) as (keyof T)[]) {
           // A lost response may follow a successful database write. Send a later
           // restoration even when it equals the previously confirmed baseline.
           this.uncertain.add(key);
           if (this.desired[key] === patch[key]) {
             this.failed[key] = patch[key];
-            // A dependent field (for example an Unclear closure reason) must
-            // remain visible while the caller repairs a validation error.
-            if (this.rollback.includes(key) && !(validationError && this.validationDrafts.includes(key))) this.desired[key] = this.baseline[key];
+            if (this.rollback.includes(key)) this.desired[key] = this.baseline[key];
           }
         }
-        this.publish("error", error instanceof Error ? error.message : "Couldn't save. Try again.", error instanceof Error && "field" in error ? String(error.field) : undefined);
+        this.publish("error", error instanceof Error ? error.message : "Couldn't save. Try again.");
       }
     }
   }
