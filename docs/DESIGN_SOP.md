@@ -24,6 +24,10 @@ Optional columns stay next to their related default columns. Keep exact identifi
 
 For calling previews, show a single eligible count and only nonzero skip reasons. Put per-contact evidence, duplicate counts, routing explanations and balance timestamps behind named disclosures. Contact inspection keeps names and phones together, with one eligibility reason per contact. An empty batch offers a clear next step and Close; a nonempty batch retains an explicit confirmation before placing calls. Changing outcomes or language resets that confirmation. Keep the footer outside the scrollable review content.
 
+For human assignments, offer One caller and Split across callers beside the caller controls. Split mode shows an explicit checklist, each selected caller's share and a confirmation such as “Split 90 calls across 3 callers”. Use eligible tasks after the ownership and duplicate checks for the call count. Require at least two selected callers for a split, preserve selections while searching, and keep reassignment as a separate option.
+
+Record details keep the contact's name, phone and call action visible above Overview, AI activity and Manual activity tabs. Group property facts and the latest AI call separately in Overview; keep linked source listings distinct because the same phone can refer to different properties. Load AI history when its tab is visited. Keep recordings, transcripts, manual corrections and verification history accessible in their named sections.
+
 ## 2. Use shared components and tokens
 
 - Use `theme.css` for semantic colors, spacing, radii and font sizes. Add a role to the shared system before adding a one-off color.
@@ -48,6 +52,8 @@ Normal text needs at least 4.5:1 contrast against its actual background. Check s
 
 Keep a visible keyboard focus ring. Dialogs must retain reachable close/save controls, contain focus, and restore focus on dismissal. Escape first closes an open filter choice, then the containing panel. Buttons and inputs retain readable labels on narrow screens.
 
+Toolbar menus must fit inside the viewport even when their trigger is against an edge or wraps to another line. Check both bounds and hit testing: an ancestor can clip a menu whose own width looks correct. Views and Columns recalculate their position on opening, scrolling and resizing, and use internal scrolling when vertical room is limited.
+
 ## 5. Review density and responsive behavior
 
 - At 1366 × 768, inspect the actual number of complete records visible. The representative Raw Dataset fixture must show at least six. Counts vary with the content and viewport; do not force a fixed row height that clips controls.
@@ -64,4 +70,4 @@ Keep a visible keyboard focus ring. Dialogs must retain reachable close/save con
 5. Fix shared causes in tokens/components first. Rebuild and rerun affected checks after a change. Run the full browser suite before concluding a broad overhaul.
 6. Record actual results and remaining limits in [the visual audit](VISUAL_OVERHAUL.md). Preserve representative synthetic screenshots. Never use production contacts in committed audit images.
 
-The automated coverage includes rendered text contrast (`29` and the catalog), loading geometry (`12`, `14`), controls/density (`30`, `31`), field/focus contrast and filter continuity (`32`), and calling-preview eligibility, confirmation, contact pagination and balance recovery (`33`). Human screenshot review remains required; automated checks do not establish that a workflow is easy to understand.
+The automated coverage includes rendered text contrast (`29` and the catalog), loading geometry (`12`, `14`), controls/density (`30`, `31`), field/focus contrast and filter continuity (`32`), calling-preview eligibility, confirmation, contact pagination and balance recovery (`33`), and multiple-caller selection, detail tabs and menu clipping (`34`). Human screenshot review remains required; automated checks do not establish that a workflow is easy to understand.

@@ -21,8 +21,8 @@ test('legacy records show unknown counts and load history lazily; employee canno
  await page.goto('/dashboard/my');await expect(page.locator('[data-entity="record"] tbody').first()).toContainText('Attempt count unknown');
  const other=await page.request.get('/api/details/call/c0000000-0000-4000-8000-000000000003/ai');expect(other.status()).toBe(404);
  const own=await (await page.request.get(`/api/details/call/${call}/ai?scope=contact`)).json();expect(own.scope).toBe('execution');expect(own.total).toBe(0);expect(own.unknownExecutions).toBe(1);
- await page.locator('[data-entity="record"] tbody tr').filter({hasText:'Raghav'}).getByRole('button',{name:'Details for record'}).click();await expect(page.getByRole('button',{name:'Load AI attempt history'})).toBeVisible();
- await page.getByRole('button',{name:'Load AI attempt history'}).click();await expect(page.getByRole('dialog')).toContainText('no identifiable provider attempt');
+ await page.locator('[data-entity="record"] tbody tr').filter({hasText:'Raghav'}).getByRole('button',{name:'Details for record'}).click();
+ await page.getByRole('tab',{name:'AI activity',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('no identifiable provider attempt');
 });
 test('balance blocks stay available explicitly, while no-answer is not a dead number',async({adminPage:page})=>{
  await page.goto('/dashboard/calls');await expect(page.locator('table.sheet tbody').first()).not.toContainText('dead number');

@@ -28,14 +28,14 @@ test('preview reconciles missing phones, active owners, AI history and round-rob
   await expect(modal.getByRole('region',{name:'Assignment preview'})).toContainText('2 eligible of 6 rows');
   await expect(modal).toContainText('1 missing valid phone');
   await expect(modal.locator('select')).toContainText('done today');
-  await modal.getByText('Assignment options', {exact:true}).click();await modal.getByLabel('Round-robin across selected callers').check();
+  await modal.getByRole('radio', {name:'Split across callers',exact:true}).check();
   await modal.getByLabel(/Raj Eval/).check();
-  await expect(modal).toContainText('New work for priya@eval.test: 1');
-  await expect(modal).toContainText('New work for raj@eval.test: 1');
+  await expect(modal.locator('.caller-choice').filter({hasText:'priya@eval.test'}).locator('.caller-share')).toHaveText('1 call');
+  await expect(modal.locator('.caller-choice').filter({hasText:'raj@eval.test'}).locator('.caller-share')).toHaveText('1 call');
   await modal.getByText('Inspect selected records and planned actions').click();
   await expect(modal.locator('.allocation-record')).toHaveCount(6);
   await shot(page,'handoff-b-preview');
-  await modal.getByRole('button',{name:'Assign 2',exact:true}).click();
+  await modal.getByRole('button',{name:'Split 2 calls across 2 callers',exact:true}).click();
   await expect(modal.locator('.assign-done')).toContainText('Assigned 2');
   const link=modal.getByRole('link',{name:'View this assignment batch'});
   const target=await link.getAttribute('href');expect(target).toMatch(/^\/dashboard\/batches\/manual\/[0-9a-f-]+$/);

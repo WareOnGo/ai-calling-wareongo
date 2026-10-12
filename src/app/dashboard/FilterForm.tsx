@@ -24,6 +24,17 @@ export function FilterForm({ action, applied, children, className = "", preserve
         const left=Math.max(8,Math.min(rect.left,width-rect.width-8));
         panel.style.setProperty('--filter-menu-offset',`${left-rect.left}px`);
       }
+      for(const panel of form?.querySelectorAll<HTMLElement>('details.column-menu[open] > .column-options')??[]){
+        panel.style.removeProperty('--column-menu-offset');
+        const anchor=panel.parentElement!.querySelector('summary')!.getBoundingClientRect();
+        const below=innerHeight-anchor.bottom-12,above=anchor.top-12;
+        const opensAbove=below<180&&above>below;
+        panel.dataset.side=opensAbove?'above':'below';
+        panel.style.setProperty('--column-menu-height',`${Math.max(0,Math.min(360,opensAbove?above:below))}px`);
+        const rect=panel.getBoundingClientRect(),width=document.documentElement.clientWidth;
+        const left=Math.max(12,Math.min(rect.left,width-rect.width-12));
+        panel.style.setProperty('--column-menu-offset',`${left-rect.left}px`);
+      }
     };
     const close=(event:PointerEvent|KeyboardEvent)=>{
       if(event instanceof KeyboardEvent&&event.key!=="Escape")return;

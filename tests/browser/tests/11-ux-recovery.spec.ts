@@ -130,6 +130,9 @@ test('details are scoped, contain readable transcript and restore keyboard focus
   const trigger = page.locator('.worklist').nth(1).getByRole('button',{name:'Details for call'});
   await trigger.click();
   await expect(page.getByRole('dialog')).toHaveAccessibleName('Raghav Sharma');
+  await page.getByRole('tab',{name:'AI activity',exact:true}).click();
+  await page.locator('dialog .detail-evidence > summary').filter({hasText:'Transcript'}).click();
+  await expect(page.locator('dialog .transcript')).toBeVisible();
   await expect(page.locator('dialog .transcript')).toContainText('haan ji available hai');
   await expect(page.locator('dialog audio')).toHaveAttribute('preload','none');
   for(let i=0;i<8;i++){await page.keyboard.press('Tab'); expect(await page.evaluate(()=>!!document.activeElement?.closest('dialog'))).toBe(true);}

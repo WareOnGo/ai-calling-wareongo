@@ -85,6 +85,11 @@ for (const width of [1366, 390]) for (const theme of ['light', 'dark']) {
         await page.locator('.people-group').first().scrollIntoViewIfNeeded();
         await capture(page, 'team-access', 'Team: access and roles');
       }
+      if (name === 'assignments') {
+        await page.locator('.views-menu > summary').click();
+        await capture(page, 'saved-views', 'Saved views: menu at the page edge');
+        await page.keyboard.press('Escape');
+      }
     }
 
     await page.goto('/dashboard/raw');
@@ -100,6 +105,10 @@ for (const width of [1366, 390]) for (const theme of ['light', 'dark']) {
     await page.getByRole('button', { name: 'Assign', exact: true }).click();
     await expect(page.getByRole('region', { name: 'Assignment preview' })).toBeVisible();
     await capture(page, 'assign-summary', 'Assign records: decision summary');
+    await page.getByRole('radio', { name: 'Split across callers', exact: true }).check();
+    await page.getByRole('checkbox', { name: 'Priya Eval (priya@eval.test)', exact: true }).check();
+    await expect(page.locator('.allocation-split-title')).toBeVisible();
+    await capture(page, 'assign-split', 'Assign records: split calls across multiple callers');
     await page.getByText('Inspect selected records and planned actions', { exact: true }).click();
     await page.locator('.allocation-record').first().scrollIntoViewIfNeeded();
     await capture(page, 'assign-inspection', 'Assign records: optional inspection');
@@ -113,8 +122,16 @@ for (const width of [1366, 390]) for (const theme of ['light', 'dark']) {
     await capture(page, 'ai-evidence', 'AI attempts: optional provider evidence');
     await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'Details for record', exact: true }).click();
-    await expect(page.locator('.detail-facts')).toBeVisible();
+    await expect(page.locator('.detail-facts').first()).toBeVisible();
     await capture(page, 'record-details', 'Record details: property and history');
+    await page.locator('.detail-listings').first().locator('summary').click();
+    await page.locator('.detail-listing').first().scrollIntoViewIfNeeded();
+    await capture(page, 'record-listings', 'Record details: separate source listings');
+    await page.getByRole('tab', { name: 'AI activity', exact: true }).click();
+    await expect(page.locator('.record-details-dialog .history-summary')).toBeVisible();
+    await capture(page, 'record-ai', 'Record details: AI activity and recording');
+    await page.getByRole('tab', { name: 'Manual activity', exact: true }).click();
+    await capture(page, 'record-manual', 'Record details: manual calls and verification');
     await page.keyboard.press('Escape');
 
     await page.goto('/dashboard/raw?q=Latha');

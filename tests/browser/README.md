@@ -37,6 +37,10 @@ The queue captures include no eligible contacts, a ready summary, outcome
 choices, contact inspection and the final confirmation. `33-queue-ux.spec.ts`
 also checks queued-only selections, language/outcome changes, a paginated
 contact review, completed ownership details and compact balance recovery.
+`34-assignment-details-menus.spec.ts` checks multiple-caller selection and
+allocation counts, detail tabs and history pagination, and actual hit testing
+of Views/Columns menus at the viewport edges. The gallery includes each new
+detail section and the split-caller and saved-view states in both themes.
 
 The sibling `bolna-eval` harness also provides `npm run render:dashboard`; its
 wrapper uses `APP_DIR` to run this checkout's scenarios. Thus the renderer stays

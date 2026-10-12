@@ -26,6 +26,30 @@
 .chip:not(:has(select))::after { display: none; }
 
 .app-dialog.assignment-dialog { width: 640px; }
+.assignment-dialog .assignment-mode, .assignment-dialog .caller-picker { border: 0; padding: 0; margin: 20px 0; min-width: 0; }
+.assignment-mode legend, .caller-picker legend { padding: 0; margin-bottom: 10px; color: var(--heading); font-size: var(--text-body); font-weight: 500; }
+.assignment-mode > div { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.assignment-mode label { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 10px 12px; border: 1px solid var(--field-border); border-radius: var(--radius-input); cursor: pointer; }
+.assignment-mode label:has(:checked) { color: var(--accent); border-color: var(--accent); background: var(--accent-bg); }
+.assignment-mode input, .caller-choice input { width: 16px; height: 16px; margin: 0; flex: none; accent-color: var(--accent); }
+.caller-picker legend span { margin-left: 8px; color: var(--muted); font-size: var(--text-caption); font-weight: 400; }
+.caller-list { max-height: 260px; overflow-y: auto; border: 1px solid var(--border-strong); border-radius: var(--radius-input); }
+.caller-choice { display: flex; align-items: center; gap: 12px; padding: 12px; cursor: pointer; border-bottom: 1px solid var(--border); }
+.caller-choice:last-child { border-bottom: 0; }
+.caller-choice:hover { background: var(--hover); }
+.caller-choice.is-selected { background: var(--surface-subtle); }
+.caller-identity { flex: 1; min-width: 0; display: grid; gap: 2px; overflow-wrap: anywhere; }
+.caller-identity strong { color: var(--heading); font-size: var(--text-body); font-weight: 500; }
+.caller-identity > span, .caller-metrics small { color: var(--muted); font-size: var(--text-caption); }
+.caller-metrics { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; max-width: 45%; text-align: right; }
+.caller-share { flex: none; padding: 4px 8px; border-radius: var(--radius-pill); background: var(--accent-bg); color: var(--accent); font-size: var(--text-support); font-variant-numeric: tabular-nums; }
+.caller-help { color: var(--muted); font-size: var(--text-support); margin: 8px 0 0; }
+.caller-list > p { margin: 16px; }
+.caller-search { display: grid; gap: 6px; margin-bottom: 12px; color: var(--muted); font-size: var(--text-support); }
+.caller-search input { width: 100%; border: 1px solid var(--field-border); border-radius: var(--radius-input); background: var(--field-bg); color: var(--text); padding: 10px 12px; font: inherit; }
+.allocation-split-title { margin: 0 0 8px; font-size: var(--text-section); font-weight: 600; color: var(--heading); }
+.allocation-split-title + .allocation-summary strong { font-size: var(--text-body); font-weight: 500; }
+.assignment-dialog .modal-foot .btn-primary { max-width: 100%; white-space: normal; text-align: center; }
 .assignment-options { margin: 4px 0 20px; }
 .assignment-options > summary, .allocation-inspection > summary, .evidence-details > summary { cursor: pointer; color: var(--accent); padding: 10px 0; font-size: var(--text-support); }
 .assignment-options[open] > summary { margin-bottom: 8px; }
@@ -50,6 +74,44 @@
 .evidence-details dt { margin-bottom: 4px; color: var(--muted); font-size: var(--text-caption); }
 .evidence-details dd { margin: 0; overflow-wrap: anywhere; }
 .allocation-audit p { font-size: var(--text-support); color: var(--muted); }
+
+/* Record details keep identity visible and separate property, AI and human work. */
+.record-details-dialog .detail-contact-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 20px; flex: none; }
+.detail-contact-bar > div { min-width: 0; }
+.detail-label { display: block; margin-bottom: 4px; font-size: var(--text-caption); color: var(--muted); }
+.detail-tabs { display: flex; gap: 4px; flex: none; padding: 0 16px; border-bottom: 1px solid var(--border); }
+.detail-tabs button { background: transparent; color: var(--muted); border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 12px; font: inherit; font-size: var(--text-support); font-weight: 500; }
+.detail-tabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+.record-details-dialog .detail-body { padding: 20px; }
+.detail-panel { display: grid; gap: 16px; }
+.detail-panel[hidden] { display: none; }
+.detail-section { border: 1px solid var(--border); border-radius: var(--radius-panel); padding: 16px; background: var(--surface); min-width: 0; }
+.detail-section h3 { margin: 0 0 16px; color: var(--heading); font-size: var(--text-section); font-weight: 600; }
+.detail-section h4 { margin: 0 0 8px; color: var(--heading); font-size: var(--text-body); font-weight: 500; }
+.detail-section .detail-facts { margin: 0; padding: 0; border: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.detail-section .detail-facts .pill { white-space: normal; max-width: 100%; line-height: 1.5; }
+.detail-facts > div { min-width: 0; }
+.detail-facts > .detail-fact-wide { grid-column: 1 / -1; }
+.detail-facts dd { font-variant-numeric: tabular-nums; }
+.detail-address { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
+.detail-address p { margin: 0; }
+.detail-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.detail-section-heading h3 { margin: 0; }
+.detail-section-heading .btn-text { padding: 4px 0; font-size: var(--text-support); }
+.detail-count, .detail-listings > summary > span { color: var(--muted); font-size: var(--text-caption); font-weight: 400; margin-left: 8px; }
+.detail-description { color: var(--muted); font-size: var(--text-support); margin: 0 0 16px; }
+.detail-listings > summary { cursor: pointer; color: var(--heading); font-size: var(--text-body); font-weight: 500; }
+.detail-listings[open] > summary { margin-bottom: 16px; }
+.detail-listing { border-top: 1px solid var(--border); padding-top: 16px; margin-top: 16px; overflow-wrap: anywhere; }
+.detail-listing > strong { display: block; margin-bottom: 12px; }
+.detail-source { color: var(--muted); font-size: var(--text-caption); }
+.detail-listing-address { margin: 12px 0 0; font-size: var(--text-support); }
+.detail-evidence { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
+.detail-evidence > p:last-child { margin-bottom: 0; }
+.detail-evidence > summary { cursor: pointer; font-weight: 500; color: var(--accent); }
+.detail-section > .detail-description:last-child { margin-top: 16px; margin-bottom: 0; }
+.detail-section .detail-history:last-child { border-bottom: 0; padding-bottom: 0; }
+.detail-section nav { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 16px; font-size: var(--text-support); }
 
 .ai-history-panel .ai-timeline > h3 { display: none; }
 .history-record-name { margin: 0 0 20px; font-size: var(--text-section); font-weight: 600; color: var(--heading); }
@@ -134,6 +196,15 @@ table.sheet { position: relative; }
 }
 
 @media (max-width: 600px) {
+  .record-details-dialog .detail-contact-bar { padding: 14px 16px; }
+  .record-details-dialog .detail-body { padding: 16px; }
+  .detail-tabs { padding-inline: 8px; gap: 0; }
+  .detail-tabs button { flex: 1; padding: 12px 8px; }
+  .detail-section { padding: 14px; }
+  .detail-section-heading { flex-wrap: wrap; gap: 8px; }
+  .assignment-mode label { padding: 10px 8px; font-size: var(--text-support); }
+  .caller-choice { gap: 8px; padding: 10px; }
+  .assignment-dialog .modal-foot .btn-primary { flex-basis: 100%; justify-content: center; }
   .wallet-balance { grid-template-columns: minmax(0, 1fr) auto; min-height: 0; }
   .wallet-balance .wallet-meta { grid-column: 1 / -1; grid-row: 2; justify-self: start; }
   .wallet-balance > button { grid-column: 2; }
@@ -147,3 +218,9 @@ table.sheet { position: relative; }
   .allocation-record-heading { flex-direction: column; gap: 8px; }
   .history-summary { gap: 8px; padding: 12px; }
 }
+
+/* Keep toolbar menus within the viewport when controls wrap or sit at its edge. */
+.column-options { max-width: calc(100vw - 24px); max-height: var(--column-menu-height, 360px); transform: translateX(var(--column-menu-offset, 0px)); background: var(--surface); }
+.views-menu > .column-options { left: auto; right: 0; }
+.column-options[data-side="above"] { top: auto; bottom: calc(100% + 4px); }
+.view-option.btn-text, .view-option .btn-text:first-child { min-width: 0; white-space: normal; overflow-wrap: anywhere; text-align: left; }

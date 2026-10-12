@@ -8,7 +8,7 @@ export function dateTime(value: string | Date | null) {
 export function rent(value: string | null) {
   if (!value) return "—";
   const digits = value.replace(/[,\s₹]/g, "");
-  return /^\d+$/.test(digits) ? `₹${Number(digits).toLocaleString("en-IN")}` : value;
+  return /^\d+(?:\.\d+)?$/.test(digits) && Number.isFinite(Number(digits)) ? `₹${Number(digits).toLocaleString("en-IN", { maximumFractionDigits: 2 })}` : value;
 }
 export function area(value: string | number | null) {
   return value && Number.isFinite(Number(value)) ? `${Number(value).toLocaleString("en-IN")} sqft` : "—";
