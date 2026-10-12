@@ -4,6 +4,7 @@ import "./globals.css";
 import "./tables.css";
 import "./typography.css";
 import "./workflows.css";
+import "./queue.css";
 
 const inter = localFont({
   src: "./fonts/InterVariable.woff2",

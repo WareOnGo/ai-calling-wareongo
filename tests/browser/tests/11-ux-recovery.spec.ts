@@ -88,8 +88,9 @@ test('all matching selection carries through export, assignment and queue', asyn
   await expect(page.locator('.assign-scope input').nth(1)).toBeChecked(); await page.keyboard.press('Escape');
   const response = page.waitForResponse(r => r.url().includes('/api/raw/queue'));
   await page.getByRole('button',{name:/Queue for calling/}).click(); expect((await response).status()).toBe(200);
-  await expect(page.getByRole('dialog')).toContainText('6 records →');
-  await expect(page.getByRole('dialog')).toContainText('duplicate');
+  await expect(page.getByRole('dialog')).toContainText('6 records selected');
+  await page.getByRole('dialog').getByText('Selection details', {exact:true}).click();
+  await expect(page.getByRole('dialog')).toContainText('Duplicate numbers removed');
 });
 
 test('filters keep the existing grid visible while fetching and use client navigation', async ({adminPage:page,shot}) => {

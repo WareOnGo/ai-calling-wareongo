@@ -1,15 +1,15 @@
 "use client";
 import { searchValues } from "@/lib/filter-values";
 
+import { QueueContacts } from "./QueueContacts";
 import { WalletBalance } from "./WalletBalance";
 import { useCallback, useMemo, useState, useRef } from "react";
-import { IconPhoneOutgoing, IconDownload, IconX, IconAlert, IconPlus } from "./icons";
+import { IconPhoneOutgoing, IconDownload, IconAlert } from "./icons";
 import {
   type CallCat,
   type QueueSel as Sel,
   PROPERTY_TYPE,
   CALLED_CATS,
-  CAT_TAG_LABEL,
   buildCsv,
   dedupByNumber,
 } from "@/lib/queue";
@@ -19,7 +19,7 @@ import { useDashboardUI } from "./DashboardUI";
 import { BatchActivity } from "./BatchActivity";
 import { requestJson } from "./requests";
 import { dateTime } from "@/lib/display";
-import { routeLanguage, LANGUAGE_LABELS, CALL_LANGUAGES, type CallLanguage, type RoutingMode } from "@/lib/routing";
+import { LANGUAGE_LABELS, CALL_LANGUAGES, type CallLanguage, type RoutingMode } from "@/lib/routing";
 import { assembleBatch } from "@/lib/dispatch-plan";
 import type { DispatchResult } from "@/lib/dispatch-service";
 
@@ -35,10 +35,9 @@ import type { DispatchResult } from "@/lib/dispatch-service";
 //   • "Select all N matching" banner → every record matching the filters across
 //     ALL pages (fetched from /api/raw/queue)
 //
-// The modal previews the CSV that would go to Bolna and DEDUPS by phone number.
-// Already-called numbers are NOT blocked — instead the modal warns how many are in
-// the batch, broken down by last outcome (dead / unclear / available / unavailable),
-// with a per-category toggle. Sending requires explicit confirmation before live calls.
+// The modal leads with the eligible count; contact review and selection accounting
+// remain available in disclosures. Previously called categories can be excluded.
+// Sending requires explicit confirmation before live calls.
 // Pure preprocessing (dedup, CSV, classification) lives in @/lib/queue (unit-tested).
 
 export function QueueForCalling({ availableLanguages }: { availableLanguages: CallLanguage[] }) {
@@ -77,19 +76,17 @@ export function QueueForCalling({ availableLanguages }: { availableLanguages: Ca
     } catch {setError("Couldn't load the calling preview. Try again.");} finally {setLoading(false);}
   }, [allMatching,uncertain,ids]);
 
-  // Category counts across ALL called rows (stable — chips stay visible when toggled off).
+  // Category counts stay stable while outcomes are excluded or re-included.
   const catCounts = useMemo(() => {
     const m: Record<string, number> = {};
     for (const r of rows) if (r.cat) m[r.cat] = (m[r.cat] ?? 0) + 1;
     return m;
   }, [rows]);
   const presentCats = CALLED_CATS.filter((c) => catCounts[c.key]);
-  // The live batch = deduped rows minus rows whose category is toggled off.
-  const active = useMemo(() => rows.filter((r) => !(r.cat && offCats.has(r.cat))), [rows, offCats]);
-  const calledInBatch = active.filter((r) => r.cat).length;
   const calledTotal = rows.filter((r) => r.cat).length;
 
   const toggleCat = useCallback((cat: CallCat) => {
+    setConfirming(false);
     setOffCats((prev) => {
       const next = new Set(prev);
       if (next.has(cat)) next.delete(cat);
@@ -100,13 +97,13 @@ export function QueueForCalling({ availableLanguages }: { availableLanguages: Ca
   const allOff = presentCats.length > 0 && presentCats.every((c) => offCats.has(c.key));
   const toggleAllCalled = useCallback(() => {
     // If everything's already excluded, re-include all; otherwise exclude all.
+    setConfirming(false);
     setOffCats(allOff ? new Set() : new Set(presentCats.map((c) => c.key)));
   }, [allOff, presentCats]);
 
   // Use the same routing and validation as the server. Dedup happens before splitting.
   const summary = assembleBatch(rows, [...offCats], { mode: routingMode, availableLanguages });
   const { heldRegion, callable, alreadyQueued, groups } = summary;
-  const callableIds = new Set(callable.map(row => row.id));
   const plannedLanguages = CALL_LANGUAGES.filter(language => groups[language].length > 0);
   const routeSummary = plannedLanguages.map(language => `${groups[language].length.toLocaleString()} ${LANGUAGE_LABELS[language]}`).join(" + ");
 
@@ -168,185 +165,112 @@ export function QueueForCalling({ availableLanguages }: { availableLanguages: Ca
   const btnCount = allMatching ? total : ids.length;
   const dupes = rawCount - rows.length;
   const missing = summary.skippedNoNumber;
-  return (
-    <>
-      <button
-        type="button"
-        className="btn-export btn-dispatch"
-        onClick={openModal}
-        disabled={(!hasSelection && !uncertain) || pending}
-        title={btnCount === 0 ? "Select records to queue" : `Queue ${btnCount} record(s) for a Bolna batch`}
-      >
-        <IconPhoneOutgoing size={15} /> Queue for calling
-        {btnCount > 0 ? <span className="fbadge">{btnCount.toLocaleString()}</span> : null}
-      </button>
-
-      {open && (
-        <Dialog wide title={<><IconPhoneOutgoing size={16} />Queue for calling</>} onClose={() => setOpen(false)} busy={sending || loading}>
-            {!result && (
-              <p className="modal-sub">
-                <strong>{matchingCount.toLocaleString()} records → {rawCount.toLocaleString()} with numbers → {rows.length.toLocaleString()} unique numbers → {callable.length.toLocaleString()} calls</strong>
-                {dupes > 0 ? <span className="warn"> {dupes.toLocaleString()} duplicate number(s) removed.</span> : null}
-                {missing + noPhone > 0 ? <span className="warn"> {(missing + noPhone).toLocaleString()} row(s) have no usable number and will be skipped.</span> : null}
-                {alreadyQueued > 0 ? <span className="warn"> {alreadyQueued.toLocaleString()} already queued in a live batch — skipped.</span> : null}
-                {capped ? <span className="warn"> Showing the first {rows.length.toLocaleString()} — narrow filters to include the rest.</span> : null}
-              </p>
-            )}
-
-            {!result && <div className="modal-sub">
-              <label>Call language <select aria-label="Call language" value={routingMode} disabled={sending || uncertain || loading}
-                onChange={event => { setRoutingMode(event.target.value as RoutingMode); intent.current = crypto.randomUUID(); setConfirming(false); }}>
-                <option value="auto">Automatic — by state</option>
-                <option value="hindi" disabled={!availableLanguages.includes("hindi")}>Hindi only</option>
-                <option value="english" disabled={!availableLanguages.includes("english")}>English only</option>
-              </select></label>
-              <p className="muted">{routingMode === "auto" ? "Tamil Nadu, Kerala and Karnataka → English. Other or unspecified states → Hindi."
-                : routingMode === "hindi" ? "Tamil Nadu, Kerala and Karnataka remain excluded from Hindi calls." : "All callable records will use the English agent."}</p>
-              {plannedLanguages.length > 0 && <strong>{routeSummary} calls · {plannedLanguages.length} batch(es)</strong>}
-            </div>}
-
-            {!loading && !result && calledTotal > 0 && (
-              <div className="called-warn">
-                <div className="cw-head">
-                  <IconAlert size={16} />
-                  <span>
-                    <strong>{calledInBatch.toLocaleString()}</strong> previously called contact(s) in this preview
-                    {calledInBatch < calledTotal ? ` (${(calledTotal - calledInBatch).toLocaleString()} excluded)` : ""}.
-                    Toggle a category to exclude or re-include it:
-                  </span>
-                </div>
-                <div className="cat-chips">
-                  {presentCats.map((c) => {
-                    const off = offCats.has(c.key);
-                    return (
-                      <button
-                        key={c.key}
-                        type="button"
-                        className={`cat-chip cat-${c.key}${off ? " off" : ""}`}
-                        aria-pressed={!off}
-                        disabled={sending}
-                        onClick={() => toggleCat(c.key)}
-                      >
-                        {c.label} · {catCounts[c.key].toLocaleString()}
-                        {off ? <IconPlus size={12} /> : <IconX size={12} />}
-                      </button>
-                    );
-                  })}
-                  <button type="button" className="btn-text cw-all" disabled={sending} onClick={toggleAllCalled}>
-                    {allOff ? "Re-include all called" : "Exclude all called"}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {!loading && !result && heldRegion > 0 && (
-              <div className="held-warn">
-                <div className="cw-head">
-                  <IconAlert size={16} />
-                  <span>
-                    <strong>{heldRegion.toLocaleString()}</strong> number(s) are <strong>held</strong> because their
-                    region needs an agent that is unavailable under this language choice. Review the language selection
-                    and configured agents. They are excluded from the CSV download.
-                  </span>
-                </div>
-              </div>
-            )}
-
-            <div className="modal-body"><WalletBalance/>
-              {!loading&&!result&&<section aria-label="Calling ownership preview">
-                <p><strong>{summary.humanOwned} contacts held for open human assignments</strong> · {rows.filter(r=>r.aiCalls).length} contacts previously called by AI. Shared primary/alternate numbers are grouped before dispatch.</p>
-                {[...new Set(rows.flatMap(r=>(r.owners||[]).map(o=>o.email)))].map(email=>{const owned=rows.filter(r=>r.owners?.some(o=>o.email===email));const person=owned[0]?.owners?.find(o=>o.email===email);return <p key={email}>{owned.length} contacts assigned to {person?.name||email}: {[...new Set(owned.flatMap(r=>r.owners?.filter(o=>o.email===email).map(o=>`${o.state}${o.outcome?' · '+o.outcome:''}`)||[]))].join('; ')}</p>;})}
+  const showLanguage = callable.length > 0 || heldRegion > 0 || summary.excludedByCat > 0;
+  const skipped = [
+    [alreadyQueued, "already queued"],
+    [summary.humanOwned, "assigned to callers"],
+    [heldRegion, "held for language"],
+    [summary.excludedByCat, "excluded by outcome"],
+    [missing + noPhone, "without a usable number"],
+  ].filter(([count]) => Number(count) > 0);
+  const languageSettings = <div className="queue-language">
+    <label><span>Call language</span><select aria-label="Call language" value={routingMode} disabled={sending || uncertain || loading}
+      onChange={event => { setRoutingMode(event.target.value as RoutingMode); intent.current = crypto.randomUUID(); setConfirming(false); }}>
+      <option value="auto">Automatic — by state</option>
+      <option value="hindi" disabled={!availableLanguages.includes("hindi")}>Hindi only</option>
+      <option value="english" disabled={!availableLanguages.includes("english")}>English only</option>
+    </select></label>
+    <details className="queue-routing"><summary>Routing rules</summary><p>{routingMode === "auto" ? "Tamil Nadu, Kerala and Karnataka → English. Other or unspecified states → Hindi."
+      : routingMode === "hindi" ? "Tamil Nadu, Kerala and Karnataka remain excluded from Hindi calls." : "All callable records will use the English agent."}</p></details>
+  </div>;
+  return <>
+    <button type="button" className="btn-export btn-dispatch" onClick={openModal} disabled={(!hasSelection && !uncertain) || pending}
+      title={btnCount === 0 ? "Select records to queue" : `Queue ${btnCount} record(s) for a Bolna batch`}>
+      <IconPhoneOutgoing size={15} /> Queue for calling
+      {btnCount > 0 ? <span className="fbadge">{btnCount.toLocaleString()}</span> : null}
+    </button>
+    {open && <Dialog wide className="queue-dialog" title={<><IconPhoneOutgoing size={16} />Queue for calling</>} onClose={() => setOpen(false)} busy={sending || loading}>
+      <div className="modal-body queue-body">
+        {result ? <div className="dispatch-ok">
+          <div className="ok-badge">{result.scheduled ? "✓" : "!"}</div>
+          <div className="ok-title">{result.scheduled ? "Batches scheduled" : "Batches need review"} — {result.callable.toLocaleString()} call(s)</div>
+          {result.batches.map(batch => <article className="detail-history" key={batch.batchId}>
+            <strong>{batch.agentLabel} · {batch.callable.toLocaleString()} calls</strong>
+            <p>{batch.scheduled ? `Scheduled for ${dateTime(batch.scheduledAt)}` : `Status: ${batch.state} — check Recent batches before retrying.`}</p>
+            <small>Batch {batch.bolnaBatchId || batch.batchId}</small>
+          </article>)}
+          {result.heldRegion > 0 && <p className="muted">{result.heldRegion.toLocaleString()} held for language routing.</p>}
+          {!result.scheduled && <p role="alert" className="warn">Already scheduled batches will continue. Review the other batches individually in Recent batches.</p>}
+        </div> : loading ? <div className="grid-loading" role="status" style={{ margin: 0, border: "none" }}>
+          <span className="spinner" aria-hidden="true" /><span className="muted">Loading all matching records…</span>
+        </div> : <>
+          {error && <div role="alert" className="assign-error"><p>{error}</p>{uncertain ? <BatchActivity /> : <button type="button" className="btn-row" onClick={openModal}>Retry loading</button>}</div>}
+          {(!error || rows.length > 0) && <>
+            <section className="queue-overview" aria-label="Calling summary" aria-live="polite">
+              <h2>{callable.length > 0 ? <><span>{callable.length.toLocaleString()}</span> ready to call</> : "No contacts ready to call"}</h2>
+              <p>{matchingCount.toLocaleString()} {matchingCount === 1 ? "record" : "records"} selected{plannedLanguages.length > 0 && <> · {routeSummary}</>}</p>
+              {skipped.length > 0 && <ul className="queue-skipped">{skipped.map(([count, label]) => <li key={label}><strong>{Number(count).toLocaleString()}</strong> {label}</li>)}</ul>}
+              {callable.length === 0 && <p className="queue-next-step">{alreadyQueued > 0 ? "Queued contacts will continue in their existing batches."
+                : heldRegion > 0 ? "Review the call language to include contacts with an available agent."
+                : summary.excludedByCat > 0 ? "Review the previous outcomes below to include contacts again."
+                : summary.humanOwned > 0 ? "Contacts with open manual assignments are held automatically."
+                : "Choose records with a usable phone number to prepare a batch."}</p>}
+              {alreadyQueued > 0 && <BatchActivity />}
+              {capped && <p className="queue-limit">Showing the first {rows.length.toLocaleString()} — narrow filters to include the rest.</p>}
+            </section>
+            {showLanguage && languageSettings}
+            {calledTotal > 0 && <details className="queue-disclosure queue-previous">
+              <summary>Previous AI calls <span>{calledTotal.toLocaleString()} {calledTotal === 1 ? "contact" : "contacts"}</span></summary>
+              <p>Choose which previous outcomes to include. Queued contacts and open manual assignments stay excluded.</p>
+              <div className="queue-outcomes">{presentCats.map(category => <label key={category.key}>
+                <input type="checkbox" checked={!offCats.has(category.key)} disabled={sending || uncertain} onChange={() => toggleCat(category.key)} />
+                <span>{category.label}</span><small>{catCounts[category.key].toLocaleString()}</small>
+              </label>)}</div>
+              <button type="button" className="btn-text" disabled={sending || uncertain} onClick={toggleAllCalled}>{allOff ? "Re-include all called" : "Exclude all called"}</button>
+            </details>}
+            {rows.length > 0 && <QueueContacts rows={rows} excluded={offCats} routingMode={routingMode} availableLanguages={availableLanguages} />}
+            <details className="queue-disclosure queue-audit">
+              <summary>Selection details</summary>
+              <dl className="queue-counts">
+                <div><dt>Records selected</dt><dd>{matchingCount.toLocaleString()}</dd></div>
+                <div><dt>With numbers</dt><dd>{rawCount.toLocaleString()}</dd></div>
+                <div><dt>Unique contacts</dt><dd>{rows.length.toLocaleString()}</dd></div>
+                {dupes > 0 && <div><dt>Duplicate numbers removed</dt><dd>{dupes.toLocaleString()}</dd></div>}
+              </dl>
+              <p>Shared primary/alternate numbers are grouped before dispatch. Property type: {PROPERTY_TYPE}.</p>
+              {rows.some(row => row.owners?.length || row.aiCalls) && <section aria-label="Calling ownership preview">
+                {summary.humanOwned > 0 && <p><strong>{summary.humanOwned} contacts held for open human assignments</strong></p>}
+                {rows.some(row => row.aiCalls) && <p>{rows.filter(row => row.aiCalls).length} contacts previously called by AI.</p>}
+                {[...new Set(rows.flatMap(row => (row.owners || []).map(owner => owner.email)))].map(email => {
+                  const owned = rows.filter(row => row.owners?.some(owner => owner.email === email));
+                  const person = owned[0]?.owners?.find(owner => owner.email === email);
+                  return <p key={email}>{owned.length} contacts assigned to {person?.name || email}: {[...new Set(owned.flatMap(row => row.owners?.filter(owner => owner.email === email).map(owner => `${owner.state}${owner.outcome ? ' · ' + owner.outcome : ''}`) || []))].join('; ')}</p>;
+                })}
               </section>}
-              {result ? (
-                <div className="dispatch-ok">
-                  <div className="ok-badge">{result.scheduled ? "✓" : "!"}</div>
-                  <div className="ok-title">{result.scheduled ? "Batches scheduled" : "Batches need review"} — {result.callable.toLocaleString()} call(s)</div>
-                  {result.batches.map(batch => <article className="detail-history" key={batch.batchId}>
-                    <strong>{batch.agentLabel} · {batch.callable.toLocaleString()} calls</strong>
-                    <p>{batch.scheduled ? `Scheduled for ${dateTime(batch.scheduledAt)}` : `Status: ${batch.state} — check Recent batches before retrying.`}</p>
-                    <small>Batch {batch.bolnaBatchId || batch.batchId}</small>
-                  </article>)}
-                  {result.heldRegion > 0 && <p className="muted">{result.heldRegion.toLocaleString()} held for language routing.</p>}
-                  {!result.scheduled && <p role="alert" className="warn">Already scheduled batches will continue. Review the other batches individually in Recent batches.</p>}
-                </div>
-              ) : loading ? (
-                <div className="grid-loading" role="status" style={{ margin: 0, border: "none" }}>
-                  <span className="spinner" aria-hidden="true" />
-                  <span className="muted">Loading all matching records…</span>
-                </div>
-              ) : error ? (
-                <div role="alert" className="assign-error"><p>{error}</p>{uncertain ? <BatchActivity /> : <button type="button" className="btn-row" onClick={openModal}>Retry loading</button>}</div>
-              ) : active.length === 0 ? (
-                <p className="muted" style={{ padding: 16 }}>No records left in the batch.</p>
-              ) : (
-                <table className="preview">
-                  <thead>
-                    <tr>{["Name", "Phone number", "Area", "Property type", "Agent"].map((h) => <th key={h}>{h}</th>)}</tr>
-                  </thead>
-                  <tbody>
-                    {active.map((r) => {
-                      const language = routeLanguage(r.state, routingMode);
-                      const held = !language || !availableLanguages.includes(language);
-                      const skip = !callableIds.has(r.id);
-                      return (
-                        <tr key={r.id} className={skip ? "row-skip" : undefined}>
-                          <td>
-                            {r.name}
-                            {r.cat ? <span className={`cat-tag cat-${r.cat}`}>{CAT_TAG_LABEL[r.cat]}</span> : null}
-                            {held ? <span className="cat-tag cat-held">held</span> : null}
-                            {r.queued ? <span className="cat-tag cat-queued">queued</span> : null}
-                          </td>
-                          <td>{r.contact || <span className="muted">—</span>}</td>
-                          <td>{r.area}</td>
-                          <td>{PROPERTY_TYPE}</td>
-                          <td>{language ? LANGUAGE_LABELS[language] : "Held"}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </div>
-
-            <div className="modal-foot">
-              {result ? (
-                <>
-                  <span className="spacer" />
-                  <BatchActivity /><button type="button" className="btn-primary" onClick={() => setOpen(false)}>Done</button>
-                </>
-              ) : confirming ? (
-                <>
-                  <span className="confirm-msg">
-                    <IconAlert size={15} /> Place <strong>{routeSummary}</strong> calls in {plannedLanguages.length} batch(es)? Phones will ring.
-                  </span>
-                  <span className="spacer" />
-                  <button type="button" className="btn-text" onClick={() => setConfirming(false)} disabled={sending}>Back</button>
-                  <button type="button" className="btn-danger" disabled={sending} onClick={dispatch}>
-                    {sending ? <span className="spinner spinner-sm" aria-hidden="true" /> : <IconPhoneOutgoing size={15} />}
-                    {sending ? " Sending…" : " Yes, place calls"}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button type="button" className="btn-text" onClick={download} disabled={loading || sending || callable.length === 0}>
-                    <IconDownload size={15} /> Download CSV ({callable.length.toLocaleString()})
-                  </button>
-                  <span className="spacer" />
-                  <button type="button" className="btn-text" disabled={loading || sending} onClick={() => setOpen(false)}>Cancel</button>
-                  <button
-                    type="button"
-                    className="btn-primary"
-                    disabled={loading || sending || !!error || uncertain || callable.length === 0}
-                    title="Send this batch to Bolna (live calls)"
-                    onClick={() => setConfirming(true)}
-                  >
-                    <IconPhoneOutgoing size={15} /> Send to Bolna ({callable.length.toLocaleString()})
-                  </button>
-                </>
-              )}
-            </div>
-        </Dialog>
-      )}
-    </>
-  );
+              {!showLanguage && languageSettings}
+            </details>
+            <WalletBalance compact />
+          </>}
+        </>}
+      </div>
+      <div className="modal-foot">
+        {result ? <><span className="spacer" /><BatchActivity /><button type="button" className="btn-primary" onClick={() => setOpen(false)}>Done</button></>
+          : confirming ? <>
+            <span className="confirm-msg"><IconAlert size={15} /> Place <strong>{routeSummary}</strong> calls in {plannedLanguages.length} batch(es)? Phones will ring.</span>
+            {callable.some(row => row.cat) && <span className="queue-repeat-confirm">Includes {callable.filter(row => row.cat).length} previously called contacts.</span>}
+            <span className="spacer" /><button type="button" className="btn-text" onClick={() => setConfirming(false)} disabled={sending}>Back</button>
+            <button type="button" className="btn-danger" disabled={sending} onClick={dispatch}>
+              {sending ? <span className="spinner spinner-sm" aria-hidden="true" /> : <IconPhoneOutgoing size={15} />}{sending ? " Sending…" : " Yes, place calls"}
+            </button>
+          </> : callable.length === 0 ? <><span className="spacer" /><button type="button" className="btn secondary" disabled={loading || sending} onClick={() => setOpen(false)}>Close</button></>
+          : <>
+            <button type="button" className="btn-text queue-download" onClick={download} disabled={loading || sending || uncertain}><IconDownload size={15} /> Download CSV ({callable.length.toLocaleString()})</button>
+            <span className="spacer" /><button type="button" className="btn-text" disabled={loading || sending} onClick={() => setOpen(false)}>Cancel</button>
+            <button type="button" className="btn-primary" disabled={loading || sending || !!error || uncertain} title="Send this batch to Bolna (live calls)" onClick={() => setConfirming(true)}>
+              <IconPhoneOutgoing size={15} /> Send to Bolna ({callable.length.toLocaleString()})
+            </button>
+          </>}
+      </div>
+    </Dialog>}
+  </>;
 }

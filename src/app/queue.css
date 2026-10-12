@@ -1,0 +1,57 @@
+/* Calling preview: one decision, optional evidence, a stable action footer. */
+.app-dialog.queue-dialog { width: min(660px, calc(100vw - 32px)); }
+.queue-dialog .queue-body { display: flex; flex-direction: column; gap: 20px; padding: 24px; }
+.queue-overview h2 { margin: 0; color: var(--heading); font-size: var(--text-title); font-weight: 600; line-height: 1.4; }
+.queue-overview h2 > span { font-size: var(--text-metric); font-variant-numeric: tabular-nums; }
+.queue-overview p { margin: 8px 0 0; color: var(--muted); font-size: var(--text-support); }
+.queue-skipped { display: flex; flex-wrap: wrap; gap: 6px 16px; list-style: none; margin: 16px 0 0; padding: 0; font-size: var(--text-support); }
+.queue-skipped strong { font-weight: 600; }
+.queue-overview .queue-next-step { color: var(--text); }
+.queue-overview > .btn-row { margin-top: 12px; }
+.queue-overview .queue-limit { color: var(--fill-yel-tx); }
+.queue-language { display: flex; flex-direction: column; gap: 8px; }
+.queue-language > label { display: flex; align-items: center; justify-content: space-between; gap: 16px; font-size: var(--text-body); }
+.queue-language select { width: 250px; max-width: 100%; min-height: 40px; border: 1px solid var(--field-border); border-radius: var(--radius-input); background: var(--field-bg); padding: 8px 10px; color: var(--text); font: inherit; }
+.queue-routing { color: var(--muted); font-size: var(--text-caption); }
+.queue-routing > summary { cursor: pointer; width: fit-content; padding: 2px 0; }
+.queue-routing p { margin: 8px 0 0; }
+.queue-disclosure { padding-top: 16px; border-top: 1px solid var(--border); }
+.queue-disclosure > summary { cursor: pointer; color: var(--text); font-size: var(--text-body); font-weight: 500; padding: 2px 0; }
+.queue-disclosure > summary span { margin-left: 8px; color: var(--muted); font-size: var(--text-caption); font-weight: 400; }
+.queue-disclosure > p, .queue-audit section p { margin: 14px 0 0; color: var(--muted); font-size: var(--text-support); }
+.queue-outcomes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; margin: 16px 0 8px; }
+.queue-outcomes label { display: flex; align-items: center; gap: 8px; min-height: 36px; font-size: var(--text-body); }
+.queue-outcomes input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+.queue-outcomes small { color: var(--muted); font-size: var(--text-caption); }
+.queue-previous > .btn-text { padding-left: 0; }
+.queue-contact-list { list-style: none; padding: 0; margin: 12px 0 0; }
+.queue-contact { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--grid-line); }
+.queue-contact:last-child { border-bottom: 0; padding-bottom: 0; }
+.queue-contact > div { min-width: 0; }
+.queue-contact strong { display: block; color: var(--heading); font-weight: 600; font-size: var(--text-body); overflow-wrap: anywhere; }
+.queue-contact-phone { display: block; margin-top: 4px; font-size: var(--text-support); font-variant-numeric: tabular-nums; }
+.queue-contact small { display: block; margin-top: 4px; color: var(--muted); font-size: var(--text-caption); }
+.queue-contact-status { max-width: 45%; border-radius: var(--radius-pill); padding: 3px 9px; background: var(--surface-subtle); color: var(--muted); font-size: var(--text-caption); line-height: 1.5; overflow-wrap: anywhere; }
+.queue-contact-status.is-ready { background: var(--fill-green-bg); color: var(--fill-green-tx); }
+.queue-contact-pages { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 16px; font-size: var(--text-caption); }
+.queue-counts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 24px; margin: 16px 0 0; font-size: var(--text-support); }
+.queue-counts > div { display: flex; justify-content: space-between; gap: 12px; }
+.queue-counts dt { color: var(--muted); }
+.queue-counts dd { margin: 0; font-weight: 500; font-variant-numeric: tabular-nums; }
+.queue-audit .queue-language { margin-top: 16px; }
+.wallet-balance.wallet-compact { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; min-height: 0; padding: 16px 0 0; border-bottom: 0; border-top: 1px solid var(--border); background: transparent; font-size: var(--text-caption); color: var(--muted); }
+.wallet-compact .wallet-readout { gap: 4px; }
+.wallet-compact .wallet-readout strong { font-weight: 500; }
+.wallet-balance.wallet-compact > button { grid-column: 2; padding: 4px 0 4px 8px; font-size: var(--text-caption); }
+.wallet-expanded { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.wallet-balance.wallet-compact .wallet-meta { justify-self: start; }
+.queue-repeat-confirm { flex: 1 1 100%; font-size: var(--text-support); color: var(--muted); }
+@media (max-width: 520px) {
+  .queue-dialog .queue-body { padding: 20px 16px; gap: 16px; }
+  .queue-language > label { align-items: flex-start; flex-direction: column; gap: 8px; }
+  .queue-language select { width: 100%; font-size: 1rem; }
+  .queue-disclosure > summary span { display: block; margin: 4px 0 0 16px; }
+  .queue-counts { grid-template-columns: 1fr; }
+  .queue-dialog .queue-download { flex-basis: 100%; justify-content: flex-start; padding-left: 0; }
+  .queue-dialog .modal-foot .confirm-msg { align-items: flex-start; display: block; }
+}

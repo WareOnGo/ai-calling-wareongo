@@ -13,6 +13,7 @@ The subsequent UX requests expand this beyond a theme swap. Routes, navigation a
 - **Filters:** a focused side panel with named categories replaces the desktop wall of controls. Fields have consistent labels and boundaries. Values remain in the containing form across closed panels and hidden tabs; search, Apply, saved views and repeated-value filters retain their behavior.
 - **AI history:** a timeline drawer replaces an expanded table row. Attempt time, direction, status and duration are readable first; provider identifiers and counting limitations remain available in disclosures. Dismissing the drawer restores focus and the list position.
 - **Assignment dialog:** selection and caller choice lead into an eligibility summary. Optional reassignment/round-robin controls and inspection are closed initially. Inspection uses named record cards instead of a cramped multi-column table. Full ownership, completion and provider evidence remain accessible. A zero-eligible selection cannot submit an empty assignment batch.
+- **Queue for calling:** one ready-to-call count and nonzero skip reasons replace the count chain and overlapping warning blocks. Language stays visible when it can affect eligibility. Previous outcomes, contact review, detailed accounting and balance metadata open on demand. Contact review shows name/phone/context beside one eligibility reason, with pagination for long selections. Empty batches offer Close and, when relevant, Recent batches. CSV export rechecks ownership; live calls retain an explicit confirmation that resets when language or outcome choices change. The action footer stays outside the scrollable content.
 - **Empty history:** zero-count AI/manual history buttons are omitted from record rows; result/count text and Details remain. A zero known AI count does not establish that no historical call ever happened. Legacy and incomplete evidence remain in Details.
 - **Calling assignments:** shared typography, compact property facts, labeled mobile cards, clearer manual-result/latest-call grouping and reachable controls. Further restructuring of this screen is deferred at the user's request.
 - **Other pages:** sign-in, overview, assignment management, AI/manual batches and detail pages, team reporting/access, loading states, forms and dialogs use the same tokens and controls.
@@ -23,7 +24,7 @@ The application's content and data remain accessible. Some labels are made more 
 
 [DESIGN_SOP.md](DESIGN_SOP.md) records the review procedure and its primary sources. It covers reading order, reusable components, spacing, contrast, density, responsive behavior and screenshot review.
 
-`src/app/theme.css` owns the color, type, spacing and radius tokens. `globals.css` holds the base components; `tables.css`, `typography.css` and `workflows.css` cover records, readable type and focused interactions. All font loading is local: Inter v4.1 and its SIL Open Font License are included in `src/app/fonts/`.
+`src/app/theme.css` owns the color, type, spacing and radius tokens. `globals.css` holds the base components; `tables.css`, `typography.css`, `workflows.css` and `queue.css` cover records, readable type and focused interactions. All font loading is local: Inter v4.1 and its SIL Open Font License are included in `src/app/fonts/`.
 
 Normal body text uses 14px at the default root size; supporting text is 13px and captions are 12px. Sizes use relative units. Changing density does not shrink body text. Field boundaries and focus indicators are checked separately from text contrast. Completed records retain readable text instead of a row-wide opacity reduction.
 
@@ -50,7 +51,19 @@ Validation completed on 12 October 2026:
 | Full browser suite after table reordering | 236 passed; 2 opt-in volume/performance scenarios skipped |
 | Layout, assignment, contrast, record UX and render follow-up after phone/status sizing | 43 passed |
 | Final render after the mobile batch-table correction | 4 passed; 100 captures (25 page/interaction states × 2 themes × 2 widths) |
-| Local preview on port 3000 | Latest production build started; HTTP 200 |
+| Local preview on port 3000 | Initially production; now the live development server with hot reload |
+
+Calling-preview follow-up completed on 13 October 2026:
+
+| Check | Result |
+| --- | --- |
+| Final production build, including type checking | Passed |
+| Workflow, ownership, CSV, wallet, theme and gallery regressions | 56 passed |
+| Final focused queue checks after retaining completed ownership details | 8 passed |
+| Expanded visual gallery | 116 captures (29 states × 2 themes × 2 widths) |
+| Live development preview | Port 3000, hot reload, isolated `.next-preview` output |
+
+Desktop/mobile queue screenshots were inspected in both themes. Checks cover empty batches, queued contacts, eligibility changes, explicit confirmation, scroll containment, contact pagination, completed ownership metadata and balance refresh. Representative follow-up images: [queue summary](visual-overhaul/queue-ready-1366-light.png), [mobile dark summary](visual-overhaul/queue-ready-390-dark.png), [contact review](visual-overhaul/queue-contacts-1366-dark.png).
 
 Representative synthetic screenshots: [Raw light](visual-overhaul/raw-1366-light.png), [Raw dark](visual-overhaul/raw-1366-dark.png), [Calls](visual-overhaul/calls-1366-light.png), [Assignments light](visual-overhaul/assignments-1366-light.png), [Assignments dark](visual-overhaul/assignments-1366-dark.png), [mobile filters](visual-overhaul/filters-property-390-light.png), [assignment summary](visual-overhaul/assign-summary-1366-light.png), [AI history](visual-overhaul/ai-history-1366-dark.png), [mobile batch members](visual-overhaul/manual-batch-members-390-light.png).
 
@@ -62,12 +75,12 @@ From the sibling `bolna-eval` directory, `npm run render:dashboard` delegates to
 
 The canonical implementation is in `tests/browser/scripts/render-dashboard.mjs` and `tests/browser/tests/31-render-dashboard.spec.ts`. The sibling wrapper and npm script are installed in `bolna-eval`; this sibling folder is not itself a Git repository. See [browser setup and commands](../tests/browser/README.md) and the sibling harness README for the disposable-database settings.
 
-For this review, the complete [100-capture gallery](../../bolna-eval/shots/visual-overhaul/index.html) is in the sibling eval directory. The manifest records actual viewport row/control counts to aid review. Selected synthetic screenshots are retained alongside this document.
+For this review, the complete [116-capture gallery](../../bolna-eval/shots/visual-overhaul/index.html) is in the sibling eval directory. The queue follow-up adds four states per theme/width: the eligible summary, outcome choices, contact review and final confirmation. The manifest records actual viewport row/control counts to aid review. Selected synthetic screenshots are retained alongside this document.
 
 ## Local preview
 
 ```bash
-node --env-file=../bolna-processing/.env.local node_modules/next/dist/bin/next start --port 3000
+BOLNA_PREVIEW_DIST_DIR=.next-preview node --env-file=../bolna-processing/.env.local --run dev -- --port 3000
 ```
 
-Run that from this worktree after building. The current preview has been started already. No changes have been pushed, merged or deployed.
+Run that from this worktree with Node 22. The current preview is already running with hot reload on port 3000, using the original checkout's local configuration. The `.next-preview` directory keeps it independent of production builds in `.next` used by the browser harness on port 3131. No changes have been pushed, merged or deployed.

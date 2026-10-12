@@ -33,6 +33,10 @@ prints a searchable HTML gallery plus a JSON manifest under `shots/dashboard-*`.
 `EVAL_RENDER_DIR` selects a fixed output directory. It covers every page type and
 filter, assignment, history, details, queue and manual-call states at desktop and
 mobile widths in both themes. Only synthetic eval data appears in the images.
+The queue captures include no eligible contacts, a ready summary, outcome
+choices, contact inspection and the final confirmation. `33-queue-ux.spec.ts`
+also checks queued-only selections, language/outcome changes, a paginated
+contact review, completed ownership details and compact balance recovery.
 
 The sibling `bolna-eval` harness also provides `npm run render:dashboard`; its
 wrapper uses `APP_DIR` to run this checkout's scenarios. Thus the renderer stays

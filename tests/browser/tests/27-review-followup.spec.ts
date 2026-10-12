@@ -58,11 +58,11 @@ test('UTC provider timestamps show IST times and readable intervals on desktop a
 
 test('Queue CSV excludes human-owned contacts and checks ownership again at download',async({adminPage:page,shot})=>{
  await page.goto('/dashboard/raw');await page.locator('.selall').check();await page.getByRole('button',{name:/Queue for calling/}).click();const dialog=page.getByRole('dialog');
- await expect(dialog.getByLabel('Calling ownership preview')).toContainText('2 contacts held');await expect(dialog.getByRole('button',{name:'Download CSV (2)'})).toBeEnabled();await shot(page,'review2-queue-ownership');await detailShot(dialog,'changelog-queue-dialog');
+ await dialog.getByText('Selection details',{exact:true}).click();await expect(dialog.getByLabel('Calling ownership preview')).toContainText('2 contacts held');await expect(dialog.getByRole('button',{name:'Download CSV (2)'})).toBeEnabled();await shot(page,'review2-queue-ownership');await detailShot(dialog,'changelog-queue-dialog');
  const [download]=await Promise.all([page.waitForEvent('download'),dialog.getByRole('button',{name:'Download CSV (2)'}).click()]);const csv=readFileSync((await download.path())!,'utf8');
  expect(csv).toContain('9811100002');expect(csv).toContain('9811100005');expect(csv).not.toContain('9811100001');expect(csv).not.toContain('9811100003');
  sql("insert into bolna_assignments(entity_type,entity_id,assignee,assigned_by,state) values('record','a0000000-0000-4000-8000-000000000002','priya@eval.test','admin@eval.test','open'),('record','a0000000-0000-4000-8000-000000000005','raj@eval.test','admin@eval.test','open')");
- let downloaded=false;page.on('download',()=>downloaded=true);await dialog.getByRole('button',{name:'Download CSV (2)'}).click();await expect(dialog.getByRole('alert')).toContainText('No eligible contacts remain');await expect(dialog.getByRole('button',{name:'Download CSV (0)'})).toBeDisabled();expect(downloaded).toBe(false);
+ let downloaded=false;page.on('download',()=>downloaded=true);await dialog.getByRole('button',{name:'Download CSV (2)'}).click();await expect(dialog.getByRole('alert')).toContainText('No eligible contacts remain');await expect(dialog.getByRole('button',{name:/Download CSV/})).toHaveCount(0);expect(downloaded).toBe(false);
 });
 
 test('legacy call-row onboarding is visible and retained in CSV',async({adminPage:page,shot})=>{

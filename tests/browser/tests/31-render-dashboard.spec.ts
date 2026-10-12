@@ -120,8 +120,27 @@ for (const width of [1366, 390]) for (const theme of ['light', 'dark']) {
     await page.goto('/dashboard/raw?q=Latha');
     await page.locator('.rowsel').check();
     await page.getByRole('button', { name: /^Queue for calling/ }).click();
-    await expect(page.getByRole('dialog')).toBeVisible();
-    await capture(page, 'queue-review', 'Queue for calling: review only');
+    await expect(page.getByRole('region', { name: 'Calling summary' })).toBeVisible();
+    await expect(page.locator('dialog .wallet-readout')).toContainText('42.42');
+    await capture(page, 'queue-review', 'Queue for calling: no eligible contacts');
+    await page.keyboard.press('Escape');
+
+    await page.goto('/dashboard/raw');
+    await page.locator('.selall').check();
+    await page.getByRole('button', { name: /^Queue for calling/ }).click();
+    await expect(page.getByRole('region', { name: 'Calling summary' })).toBeVisible();
+    await expect(page.locator('dialog .wallet-readout')).toContainText('42.42');
+    await capture(page, 'queue-ready', 'Queue for calling: eligibility summary');
+    await page.locator('.queue-previous summary').click();
+    await capture(page, 'queue-outcomes', 'Queue for calling: optional previous outcomes');
+    await page.locator('.queue-previous summary').click();
+    await page.locator('.queue-contacts summary').click();
+    await page.locator('.queue-contact').first().scrollIntoViewIfNeeded();
+    await capture(page, 'queue-contacts', 'Queue for calling: optional contact review');
+    await page.locator('.queue-contacts summary').click();
+    await page.getByRole('button', { name: /Send to Bolna/ }).click();
+    await page.locator('.queue-overview').scrollIntoViewIfNeeded();
+    await capture(page, 'queue-confirm', 'Queue for calling: explicit call confirmation');
     await page.keyboard.press('Escape');
 
     await employeePage.goto('/dashboard/my');

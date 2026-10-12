@@ -20,8 +20,10 @@ test('raw calling preview deduplicates selected source listings before dispatch'
   for(const name of ['Suresh Kumar','Anil Broker']) await page.locator('tbody tr').filter({hasText:name}).locator('input.rowsel').check();
   await page.getByRole('button',{name:/Queue for calling/}).click();
   const dialog=page.getByRole('dialog');
-  await expect(dialog).toContainText('2 records → 2 with numbers → 1 unique numbers');
-  await expect(dialog).toContainText('1 duplicate number(s) removed');
+  await expect(dialog).toContainText('2 records selected');
+  await dialog.getByText('Selection details', {exact:true}).click();
+  await expect(dialog.locator('.queue-counts > div').filter({hasText:'Unique contacts'}).locator('dd')).toHaveText('1');
+  await expect(dialog.locator('.queue-counts > div').filter({hasText:'Duplicate numbers removed'}).locator('dd')).toHaveText('1');
 });
 
 test('manual assignment groups duplicate contacts and keeps related listings visible to the owner',async({adminPage:page,employeePage})=>{

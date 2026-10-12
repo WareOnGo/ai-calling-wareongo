@@ -3,7 +3,7 @@ import type { Page } from '@playwright/test';
 // Check the rendered foreground against its actual layered background, including
 // opacity. Token-only checks miss transparent buttons, tinted cells and hover states.
 export async function unreadableText(page: Page) {
-  return page.locator('.topnav a, .muted, .freshness, .grid-hint, .pill, .cell-status, .who-name, .btn, .btn-primary, .btn-row, .btn-export, .btn-assign, .field, .btn-done, td.cf-green, td.cf-red, td.cf-yel, .person-email, .filter-panel summary, .filter-panel label, .allocation-impact, .history-scope, .attempt-contact, .attempt-interval').evaluateAll(elements => {
+  return page.locator('.topnav a, .muted, .freshness, .grid-hint, .pill, .cell-status, .who-name, .btn, .btn-primary, .btn-row, .btn-export, .btn-assign, .field, .btn-done, td.cf-green, td.cf-red, td.cf-yel, .person-email, .filter-panel summary, .filter-panel label, .allocation-impact, .history-scope, .attempt-contact, .attempt-interval, .queue-overview p, .queue-disclosure > summary, .queue-disclosure > summary span, .queue-disclosure > p, .queue-contact small, .queue-contact-status, .queue-routing, .queue-counts dt, .wallet-compact, .wallet-compact .btn-text, .queue-repeat-confirm').evaluateAll(elements => {
     const rgba = (value: string) => {
       const numbers = value.match(/[\d.]+/g)?.map(Number) || [0, 0, 0, 0];
       return [numbers[0], numbers[1], numbers[2], numbers[3] ?? 1];

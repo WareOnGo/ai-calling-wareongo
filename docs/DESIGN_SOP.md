@@ -17,10 +17,12 @@ Within a row, identify the subject first. Keep its phone beside its name and put
 | Assignments | Contact and phone → assignee and status → AI/manual results and follow-up notes → actions |
 | My Work | Contact and property → phone and AI context → manual result and notes → onboarding and completion |
 | Batch members | Contact and phone → location and ownership → state, result and attempts → details |
-| Queue review | Contact and phone → location and property type → agent |
+| Queue review | Ready count and skipped reasons → language → optional contact/outcome review → explicit confirmation |
 | Team metrics | Caller → attempts, connection and duration → availability and onboarding |
 
 Optional columns stay next to their related default columns. Keep exact identifiers and legacy metadata secondary. Column visibility preferences are keyed by label and survive a change in reading order.
+
+For calling previews, show a single eligible count and only nonzero skip reasons. Put per-contact evidence, duplicate counts, routing explanations and balance timestamps behind named disclosures. Contact inspection keeps names and phones together, with one eligibility reason per contact. An empty batch offers a clear next step and Close; a nonempty batch retains an explicit confirmation before placing calls. Changing outcomes or language resets that confirmation. Keep the footer outside the scrollable review content.
 
 ## 2. Use shared components and tokens
 
@@ -62,4 +64,4 @@ Keep a visible keyboard focus ring. Dialogs must retain reachable close/save con
 5. Fix shared causes in tokens/components first. Rebuild and rerun affected checks after a change. Run the full browser suite before concluding a broad overhaul.
 6. Record actual results and remaining limits in [the visual audit](VISUAL_OVERHAUL.md). Preserve representative synthetic screenshots. Never use production contacts in committed audit images.
 
-The automated coverage includes rendered text contrast (`29` and the catalog), loading geometry (`12`, `14`), controls/density (`30`, `31`), field/focus contrast and filter continuity (`32`). Human screenshot review remains required; automated checks do not establish that a workflow is easy to understand.
+The automated coverage includes rendered text contrast (`29` and the catalog), loading geometry (`12`, `14`), controls/density (`30`, `31`), field/focus contrast and filter continuity (`32`), and calling-preview eligibility, confirmation, contact pagination and balance recovery (`33`). Human screenshot review remains required; automated checks do not establish that a workflow is easy to understand.

@@ -25,7 +25,7 @@ test('saved column preferences migrate Called By to hidden, labelled and read-on
 test('Bolna preview shows alternate-number human ownership before any send',async({adminPage:page})=>{
  sql("insert into raw_phones(master_id,phone_id,is_primary) select 'a0000000-0000-4000-8000-000000000005',phone_id,false from raw_phone_numbers where phone_last10='9811100001'");
  await page.goto('/dashboard/raw');await page.locator('tbody tr').filter({hasText:'Latha Menon'}).locator('.rowsel').check();await page.getByRole('button',{name:/Queue for calling/}).click();
- const dialog=page.getByRole('dialog');await expect(dialog.getByLabel('Calling ownership preview')).toContainText('1 contacts held');await expect(dialog.getByLabel('Calling ownership preview')).toContainText('Priya Eval');await expect(dialog.getByRole('button',{name:/Send to Bolna/})).toBeDisabled();
+ const dialog=page.getByRole('dialog');await dialog.getByText('Selection details',{exact:true}).click();await expect(dialog.getByLabel('Calling ownership preview')).toContainText('1 contacts held');await expect(dialog.getByLabel('Calling ownership preview')).toContainText('Priya Eval');await expect(dialog.getByRole('button',{name:/Send to Bolna/})).toHaveCount(0);
 });
 test('Bangalore matches Bengaluru and the five-metric Team view discloses unknown history',async({adminPage:page})=>{
  await page.goto('/dashboard/raw?city=Bangalore');await expect(page.locator('tbody tr')).toHaveCount(1);await expect(page.locator('tbody')).toContainText('Anil Broker');
