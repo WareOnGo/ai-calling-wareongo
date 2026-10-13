@@ -886,9 +886,13 @@ as strings by `pg` for bigint columns.
 
 ### Deploy the service
 
-Set the project root to `bolna-processing` when deploying this combined workspace.
+The Git repository contains the app at its root; use `.` as the Vercel project
+root. The `bolna-processing` directory name is only for the surrounding local workspace.
 The application uses `npm run build` and `npm run start`; for Vercel, set variables
 in the project environment configuration.
+
+See [Vercel preview setup](docs/VERCEL_PREVIEW.md) for the review branch, Google
+callback and environment settings.
 
 Provision the schema separately, register the deployed Google callback, and
 configure both Bolna agents' execution webhooks to send to:

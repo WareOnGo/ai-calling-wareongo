@@ -2,6 +2,9 @@
   "name": "bolna-processing",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "22.x"
+  },
   "description": "Bolna Processing — receives Bolna post-call webhooks, enriches them with OpenAI, and stores results in Supabase Postgres.",
   "scripts": {
     "dev": "next dev --webpack",

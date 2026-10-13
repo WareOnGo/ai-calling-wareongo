@@ -39,3 +39,5 @@ exports/
 # Reproducible browser harness scripts belong in version control.
 !/tests/browser/scripts/
 !/tests/browser/scripts/**
+.env*
+!.env.example
