@@ -116,3 +116,17 @@ it.each(['open','completed','repeat_available','quality','overdue','reopened','c
  expect(()=>parseTeamFilters({...f,metric})).toThrow();
  expect((await exportApi(new NextRequest('http://localhost/api/team/export?'+new URLSearchParams({...f,page:String(f.page),metric})))).status).toBe(400);
 });
+
+it('caller and access filters reconcile summaries, evidence and CSV; evidence criteria retain count parity',async()=>{
+ const a=await task(),b=await task('record',other);await attempt(a,'2026-08-02T01:00:00Z','connected',null,30);await attempt(b,'2026-08-02T02:00:00Z','no_answer');
+ await query('update bolna_app_users set active=false where email=$1',[other]);
+ const filters=parseTeamFilters({...f,person:employee.email,access:'active'});
+ expect((await teamSummary(admin,filters,asOf)).map(p=>p.email)).toEqual([employee.email]);
+ expect((await teamDetails(admin,filters,asOf)).total).toBe(1);
+ const detail={...filters,q:'Team warehouse',state:'open' as const};
+ expect((await teamDetails(admin,detail,asOf)).total).toBe(1);
+ const spec=teamDetailExport(admin,detail,asOf);expect((await query(spec.sql,spec.params)).rows).toHaveLength(1);
+ expect(Number((await query(spec.countSql,spec.countParams)).rows[0].n)).toBe(1);
+ expect((await teamDetails(admin,{...detail,state:'done'},asOf)).total).toBe(0);
+ expect((await teamSummary(admin,{...f,access:'removed'},asOf)).map(p=>p.email)).toEqual([other]);
+});

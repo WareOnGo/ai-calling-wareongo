@@ -45,7 +45,7 @@
 .toolbar-search { flex: 1; }
 .toolbar-search .search { flex: 1; max-width: 340px; min-width: 160px; }
 .toolbar-search .search input { width: 100%; background: var(--surface); }
-.toolbar-search .apply-button { border-color: transparent; background: transparent; padding-inline: 8px; }
+.toolbar-search > .apply-button { border-color: transparent; background: transparent; padding-inline: 8px; }
 .records-toolbar:not(.has-filters):not(.has-changes) .toolbar-reset { display: none; }
 .toolbar-view { padding-inline: 16px; border-inline: 1px solid var(--border); gap: 4px; }
 .toolbar-view .column-menu > summary { border: 0; background: transparent; box-shadow: none; font-size: var(--text-support); padding: 8px; }

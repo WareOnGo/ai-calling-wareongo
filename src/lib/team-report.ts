@@ -7,7 +7,7 @@ import type {ExportQuery} from './export';
 export const TEAM_METRICS={attempts:'Recorded attempts',connected:'Connected attempts',duration:'Timed connected attempts',available:'First Available targets',onboarded:'Warehouse references onboarded'} as const;
 export type TeamMetric=keyof typeof TEAM_METRICS;
 const metricKeys=Object.keys(TEAM_METRICS) as [TeamMetric,...TeamMetric[]];
-export const teamReportSchema=z.object({date_from:z.string().date(),date_to:z.string().date(),caller:z.string().email().max(320).optional(),metric:z.enum(metricKeys).default('attempts'),page:z.coerce.number().int().min(1).max(1000000).default(1)})
+export const teamReportSchema=z.object({person:z.string().email().max(320).optional(),access:z.enum(['active','removed']).optional(),q:z.string().trim().max(1000).optional(),state:z.enum(['open','done','dropped']).optional(),date_from:z.string().date(),date_to:z.string().date(),caller:z.string().email().max(320).optional(),metric:z.enum(metricKeys).default('attempts'),page:z.coerce.number().int().min(1).max(1000000).default(1)})
  .refine(f=>f.date_from<=f.date_to,'Start date cannot follow end date');
 export type TeamFilters=z.infer<typeof teamReportSchema>;
 export function teamDates(now=new Date()){
@@ -76,21 +76,32 @@ export function teamEvidenceSql(metrics:TeamMetric[]){
  return 'with '+Object.entries(REPORT_CTES).filter(([name])=>needed.has(name)).map(([,sql])=>sql).join(',')+',events(metric,assignee,assignment_id,event_id,occurred_at,detail,duration_seconds) as ('+events+')';
 }
 export type TeamSummary={email:string;name:string|null;active:boolean;counts:Partial<Record<TeamMetric,number>>;average_seconds:number|null;duration_coverage:number};
+function rosterWhere(f:TeamFilters,params:unknown[],userAlias='u') {
+ const where:string[]=[];
+ if(f.person){params.push(f.person.toLowerCase());where.push(`${userAlias}.email=$${params.length}`);}
+ if(f.access)where.push(`${userAlias}.active=${f.access==='active'?'true':'false'}`);
+ return where;
+}
 export async function teamSummary(viewer:Viewer,f:TeamFilters,now=new Date()):Promise<TeamSummary[]>{
- adminOnly(viewer);const params=[f.date_from,f.date_to,now.toISOString()];const evidence=teamEvidenceSql(PRIMARY_TEAM_METRICS);
+ adminOnly(viewer);const params:unknown[]=[f.date_from,f.date_to,now.toISOString()];const evidence=teamEvidenceSql(PRIMARY_TEAM_METRICS);const where=rosterWhere(f,params);
  return (await query<TeamSummary>(`${evidence},totals as(select assignee,metric,count(*)::int n,avg(duration_seconds) average_seconds from events  group by assignee,metric),
  grouped as(select assignee,jsonb_object_agg(metric,n) counts,max(average_seconds) filter(where metric='duration')::float8 average_seconds,max(n) filter(where metric='duration') duration_coverage from totals group by assignee)
  select u.email,u.name,u.active,coalesce(g.counts,'{}'::jsonb) counts,g.average_seconds,coalesce(g.duration_coverage,0)::int duration_coverage
- from bolna_app_users u left join grouped g on g.assignee=u.email order by coalesce(nullif(u.name,''),u.email)`,params)).rows;
+ from bolna_app_users u left join grouped g on g.assignee=u.email ${where.length?'where '+where.join(' and '):''} order by coalesce(nullif(u.name,''),u.email)`,params)).rows;
 }
 export type TeamDetail={metric:TeamMetric;assignee:string;assignment_id:string;event_id:string;occurred_at:string|null;detail:string;duration_seconds:number|null;entity_type:'record'|'call';entity_id:string;subject:string|null;current_state:string};
 export function teamDetailExport(viewer:Viewer,f:TeamFilters,now=new Date()):ExportQuery{
  adminOnly(viewer);const evidence=teamEvidenceSql([f.metric]);const params:unknown[]=[f.date_from,f.date_to,now.toISOString(),f.metric],where=['e.metric=$4'];
  if(f.caller){params.push(f.caller.toLowerCase());where.push(`e.assignee=$${params.length}`);}
- const selected=`${evidence} select e.*,e.occurred_at::text as occurred_at,a.entity_type,a.entity_id,a.state current_state,
- coalesce(r.owner_name,c.context_details#>>'{recipient_data,name}',a.entity_id::text) subject from events e join bolna_assignments a on a.id=e.assignment_id
+ where.push(...rosterWhere(f,params));
+ if(f.state){params.push(f.state);where.push(`a.state=$${params.length}`);}
+ if(f.q){params.push(f.q);where.push(`(coalesce(r.owner_name,c.context_details#>>'{recipient_data,name}',a.entity_id::text) ilike '%'||$${params.length}||'%' or e.detail ilike '%'||$${params.length}||'%')`);}
+ const from=`from events e join bolna_assignments a on a.id=e.assignment_id
+ left join bolna_app_users u on u.email=e.assignee
  left join raw_records r on a.entity_type='record' and r.id=a.entity_id left join bolna_call_logs c on a.entity_type='call' and c.id=a.entity_id where ${where.join(' and ')}`;
- return {sql:`${selected} order by e.occurred_at desc nulls last,e.assignee,e.event_id`,countSql:`${evidence} select count(*)::text n from events e where ${where.join(' and ')}`,params,countParams:params};
+ const selected=`${evidence} select e.*,e.occurred_at::text as occurred_at,a.entity_type,a.entity_id,a.state current_state,
+ coalesce(r.owner_name,c.context_details#>>'{recipient_data,name}',a.entity_id::text) subject ${from}`;
+ return {sql:`${selected} order by e.occurred_at desc nulls last,e.assignee,e.event_id`,countSql:`${evidence} select count(*)::text n ${from}`,params,countParams:params};
 }
 export async function teamDetails(viewer:Viewer,f:TeamFilters,now=new Date()){
  const spec=teamDetailExport(viewer,f,now),total=Number((await query(spec.countSql,spec.countParams)).rows[0].n),pages=Math.max(1,Math.ceil(total/50)),page=Math.min(f.page,pages);

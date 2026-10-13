@@ -2,6 +2,7 @@ export type FilterValue=string|string[]|undefined;
 export type SearchValues=Record<string,FilterValue>;
 export const filterValues=(value:FilterValue):string[]=>[...new Set((Array.isArray(value)?value:value?[value]:[]).map(v=>v.trim()).filter(Boolean))];
 export const firstValue=(value:FilterValue)=>filterValues(value)[0];
+export const countFilters = (values: SearchValues, keys: readonly string[]) => keys.filter(key => filterValues(values[key]).length > 0).length;
 export function searchValues(params:URLSearchParams):SearchValues {
   return Object.fromEntries([...new Set(params.keys())].map(key=>{const values=params.getAll(key);return [key,values.length===1?values[0]:values];}));
 }
@@ -18,6 +19,21 @@ export function categoryWhere(expression:string,value:FilterValue,params:unknown
   if(concrete.length){params.push(concrete);terms.push(`${expression} = any($${params.length}::text[])`);}
   if(includesNull)terms.push(`${expression} is null`);
   return `(${terms.join(" or ")})`;
+}
+
+/** Match a whole warehouse reference, including legacy comma-separated lists. */
+export function warehouseWhere(expression: string, value: string, params: unknown[]): string {
+  params.push(value.trim().toLowerCase());
+  return `$${params.length} = any(regexp_split_to_array(lower(coalesce(${expression},'')), '[,;[:space:]]+'))`;
+}
+
+export const hasText = (expression: string) => `nullif(trim(${expression}), '') is not null`;
+
+export function dateRangeWhere(expression: string, from: string | undefined, to: string | undefined, params: unknown[]): string[] {
+  const where: string[] = [];
+  if (from) { params.push(from); where.push(`${expression} >= ($${params.length}::date::timestamp at time zone 'Asia/Kolkata')`); }
+  if (to) { params.push(to); where.push(`${expression} < (($${params.length}::date + interval '1 day') at time zone 'Asia/Kolkata')`); }
+  return where;
 }
 
 // Source-name aliases, not substring matching between unrelated places.

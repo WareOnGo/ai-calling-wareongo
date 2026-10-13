@@ -10,11 +10,11 @@ const choices=async(page:any,label:string,values:string[])=>{
 };
 test('repeated Last Result filters, chips, saved view, exports, queue and preview keep both values',async({adminPage:page})=>{
  await page.goto('/dashboard/raw');await page.getByRole('button',{name:'Toggle filters',exact:true}).click();
- await choices(page,'Last result',['Unavailable','Unclear']);await page.getByRole('button',{name:'Apply',exact:true}).click();
+ await choices(page,'Latest AI result',['Unavailable','Unclear']);await page.getByRole('button',{name:'Apply',exact:true}).click();
  await expect(page).toHaveURL(/last_result=/);expect(new URL(page.url()).searchParams.getAll('last_result')).toEqual(['Unavailable','Unclear']);
  await expect(page.locator('table.sheet tbody').first().locator('tr')).toHaveCount(5);
  await page.locator('details.views-menu summary').click();await page.getByRole('button',{name:'Save current filters…'}).click();await page.getByLabel('View name').fill('Two results');await page.getByRole('button',{name:'Save view',exact:true}).click();
- await page.getByRole('button',{name:'Remove Last result filter: Unavailable',exact:true}).click();await expect(page).toHaveURL(/last_result=Unclear/);await expect(page.locator('.dashboard-content')).toHaveAttribute('aria-busy','false');
+ await page.getByRole('button',{name:'Remove Latest AI result filter: Unavailable',exact:true}).click();await expect(page).toHaveURL(/last_result=Unclear/);await expect(page.locator('.dashboard-content')).toHaveAttribute('aria-busy','false');
  await page.locator('details.views-menu summary').click();await page.getByRole('button',{name:'Two results',exact:true}).click();await expect(page.locator('table.sheet tbody').first().locator('tr')).toHaveCount(5);
  expect(new URL(page.url()).searchParams.getAll('last_result')).toHaveLength(2);
  const csv=await page.request.get('/api/raw/export?last_result=Unavailable&last_result=Unclear');expect(csv.status()).toBe(200);expect((await csv.text()).trim().split('\n')).toHaveLength(6);

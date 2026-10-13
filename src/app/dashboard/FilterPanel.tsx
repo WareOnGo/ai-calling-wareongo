@@ -15,6 +15,7 @@ export function FilterPanel({ groups }: { groups: { label: string; content: Reac
       if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) event.currentTarget.close();
     }}>
     <div className="modal-head"><h2 id={id} className="modal-title">Filters</h2><button type="button" className="modal-close" aria-label="Close filters" onClick={() => ref.current?.close()}>×</button></div>
+    <p className="filter-panel-hint">Combine filters to narrow the list. Changes take effect when you apply.</p>
     {groups.length > 1 && <div className="filter-categories" role="tablist" aria-label="Filter categories">{groups.map((group, index) => <button type="button" role="tab" key={group.label}
       id={`${id}-tab-${index}`} aria-controls={`${id}-panel-${index}`} aria-selected={index === active} tabIndex={index === active ? 0 : -1}
       onClick={() => setActive(index)} onKeyDown={event => {
@@ -25,6 +26,6 @@ export function FilterPanel({ groups }: { groups: { label: string; content: Reac
       aria-labelledby={groups.length > 1 ? `${id}-tab-${index}` : undefined} hidden={active !== index}>
       <h3>{group.label}</h3><div className="filter-fields">{group.content}</div>
     </section>)}</div>
-    <div className="modal-foot"><button type="button" className="btn secondary" onClick={() => ref.current?.close()}>Close</button><span className="spacer" /><ApplyButton /></div>
+    <div className="modal-foot"><button type="reset" className="btn-text">Clear all filters</button><span className="spacer" /><button type="button" className="btn secondary" onClick={() => ref.current?.close()}>Close</button><ApplyButton primary /></div>
   </dialog>;
 }

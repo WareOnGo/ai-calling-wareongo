@@ -1,3 +1,4 @@
+import type { VerificationFilters } from "./scope";
 import {matchesCallSearch,rawSearch,matchesSearch} from "./search";
 import {cityWhere} from "./filter-values";
 import { categoryWhere,filterValues,type FilterValue } from "./filter-values";
@@ -82,7 +83,7 @@ export type RawMatch = {
   is_primary: boolean | null;
 };
 
-export type CallFilters = {
+export type CallFilters = VerificationFilters & {
   ids?: string[];
   include_blocked?:boolean;batch_id?:string;
   q?: string;
@@ -96,6 +97,7 @@ export type CallFilters = {
   date_from?: string;     // YYYY-MM-DD (inclusive)
   date_to?: string;       // YYYY-MM-DD (inclusive)
   needs_review?: boolean;
+  has_recording?: "yes" | "no"; has_transcript?: "yes" | "no";
   city?:string;min_area?:number;max_area?:number;area_basis?:"source"|"built_up"|"carpet";
   manual_outcome?:FilterValue;rent_mentioned?:"yes"|"no";onboarded?:"yes"|"no";
   assignment_state?: string;
@@ -177,7 +179,10 @@ function buildFilter(viewer: Viewer, f: CallFilters): { whereSql: string; params
   where.push(...verificationFilters('call','bolna_call_analysis.id',viewer,f,params));
   if (f.date_from) { params.push(f.date_from); where.push(`call_created_at >= ($${params.length}::date::timestamp at time zone 'Asia/Kolkata')`); }
   if (f.date_to) { params.push(f.date_to); where.push(`call_created_at < (($${params.length}::date + interval '1 day') at time zone 'Asia/Kolkata')`); }
-  if (f.needs_review) { where.push(`needs_review = true`); }
+  if (f.needs_review !== undefined) { params.push(f.needs_review); where.push(`needs_review = $${params.length}`); }
+  for (const [column, value] of [["recording_url", f.has_recording], ["transcript", f.has_transcript]] as const) {
+    if (value) where.push(`${value === 'no' ? 'not ' : ''}(nullif(trim(${column}),'') is not null)`);
+  }
   if (viewer.isAdmin) where.push(...ownershipFilter("call", "bolna_call_analysis.id", f, params));
 
   const whereSql = where.length ? `where ${where.join(" and ")}` : "";

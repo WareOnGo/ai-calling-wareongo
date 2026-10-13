@@ -80,8 +80,10 @@ test('status tabs and clearing a filter preserve the rest of the view', async ({
 test('advanced filters and saved views restore the intended personal workload', async ({employeePage: page}) => {
   await page.goto('/dashboard/my?view=open');
   await page.getByRole('button', {name: 'Toggle filters'}).click();
+  await page.getByRole('tab', {name: /^Assignment/}).click();
   await page.getByRole('textbox', {name: 'Filter by city'}).fill('Rajkot');
   await page.getByRole('combobox', {name: 'Assigned by', exact: true}).selectOption('admin@eval.test');
+  await page.getByRole('tab', {name: /^Dates & order/}).click();
   await page.getByRole('combobox', {name: 'Sort my work'}).selectOption('oldest');
   await page.getByRole('button', {name: 'Apply', exact: true}).click();
   await expect(page.locator('.applied-filters')).toContainText('Sort: Oldest assigned');
@@ -110,6 +112,7 @@ test('personal filters cannot reveal another employee or dropped work', async ({
   await expect(page.locator('tbody tr')).toHaveCount(0);
   await page.goto('/dashboard/my');
   await page.getByRole('button', {name: 'Toggle filters'}).click();
+  await page.getByRole('tab', {name: /^Assignment/}).click();
   await expect(page.getByRole('combobox', {name: 'Assigned by', exact: true}).locator('option')).toHaveCount(2);
   await expect(page.getByRole('combobox', {name: 'Assigned by', exact: true})).not.toContainText('Raj Eval');
 });
@@ -127,6 +130,7 @@ test('filters apply to the entire workload and pagination keeps them', async ({e
   expect(params.get('city')).toBe('Pune');expect(params.get('sort')).toBe('oldest');expect(params.get('view')).toBe('open');
   await expect(page.locator('tbody .rownum').first()).toHaveText('26');
   await page.getByRole('button', {name: 'Toggle filters'}).click();
+  await page.getByRole('tab', {name: /^Assignment/}).click();
   await page.getByRole('textbox', {name: 'Filter by city'}).fill('Rajkot');
   await page.getByRole('button', {name: 'Apply', exact: true}).click();
   await expect(page.locator('tbody tr')).toHaveCount(1);

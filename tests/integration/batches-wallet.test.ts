@@ -101,3 +101,29 @@ it('wallet timeout is bounded and unauthorized users never contact the provider'
  await expect(getWallet(employee)).rejects.toMatchObject({status:403});expect(fetch).not.toHaveBeenCalled();
  const start=Date.now();expect(await getWallet(admin)).toMatchObject({balance:null,state:'unavailable',message:'Balance request timed out or failed.'});expect(Date.now()-start).toBeLessThan(6000);
 });
+
+it('batch list search, language and repeated statuses share the export predicate',async()=>{
+ const batch=await ai(),f=batchListSchema.parse({kind:'ai',q:batch.id.slice(0,8),language:'hindi',state:['scheduled','completed']});
+ expect((await listBatches(admin,f)).total).toBe(1);
+ const spec=batchListExport(admin,f);expect((await query(spec.sql,spec.params)).rows[0].id).toBe(batch.id);
+ expect((await listBatches(admin,{...f,language:'english'})).total).toBe(0);
+});
+
+it('member filters narrow rows and exports without changing whole-batch progress',async()=>{
+ const batch=await ai(),filters={q:'Person 0',outcome:['Available','Unavailable'],has_attempts:'no' as const};
+ const data=await batchMembers(admin,batch,'all',999,filters);
+ expect(data).toMatchObject({total:1,page:1,metrics:{all:4}});expect(data.rows[0].name).toBe('Person 0');
+ const spec=batchMembersExport(admin,batch,'all',filters);expect((await query(spec.sql,spec.params)).rows).toHaveLength(1);
+ expect(Number((await query(spec.countSql,spec.countParams)).rows[0].n)).toBe(1);
+ expect((await batchMembers(admin,batch,'unavailable',1,filters)).total).toBe(0);
+ expect(data.options.states).toContain('completed');
+});
+
+it('manual batch filters distinguish original caller from current owner',async()=>{
+ const batch=await manual();
+ await assignEntities({entity:'record',ids:[records[0]],assignee:admin.email,assignedBy:admin.email,reassign:true});
+ const filters={assignee:employee.email,current_owner:admin.email,state:'dropped'};
+ const data=await batchMembers(admin,batch,'all',1,filters);
+ expect(data.total).toBe(1);expect(data.rows[0]).toMatchObject({entity_id:records[0],assignee:employee.email,current_owner:admin.email});
+ const spec=batchMembersExport(admin,batch,'all',filters);expect((await query(spec.sql,spec.params)).rows).toHaveLength(1);
+});

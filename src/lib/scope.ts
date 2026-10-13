@@ -1,4 +1,4 @@
-import { filterValues,categoryWhere,type FilterValue } from "./filter-values";
+import { filterValues,categoryWhere,warehouseWhere,hasText,type FilterValue } from "./filter-values";
 // Row-level visibility scope. THE single chokepoint for "employees only see what
 // they've been assigned" — both grid filter builders (lib/calls.ts, lib/raw.ts) run
 // every query through this, so the CSV exports and the queue endpoint inherit the
@@ -139,11 +139,27 @@ export function isAssignmentState(v: unknown): v is AssignmentState {
 
 
 /** Manual verification belongs to the latest visible entity episode, not a phone match. */
-export function verificationFilters(entity:EntityType,idExpr:string,viewer:Viewer,f:{manual_outcome?:FilterValue;onboarded?:string},params:unknown[]){
-  const where:string[]=[];if(!filterValues(f.manual_outcome).length&&!f.onboarded)return where;let owner="";
+export type VerificationFilters = { manual_outcome?: FilterValue; onboarded?: "yes" | "no"; added_to_db?: "yes" | "no"; wh_id?: string; has_notes?: "yes" | "no"; has_manual_calls?: "yes" | "no" };
+export function verificationFilters(entity:EntityType,idExpr:string,viewer:Viewer,f:VerificationFilters,params:unknown[]){
+  const where:string[]=[];if(!filterValues(f.manual_outcome).length&&!f.onboarded&&!f.added_to_db&&!f.wh_id&&!f.has_notes&&!f.has_manual_calls)return where;let owner="";
   if(!viewer.isAdmin){params.push(viewer.email.toLowerCase());owner=` and a.assignee=$${params.length}`;}
   const latest=`from bolna_assignments a where a.entity_type='${entity}' and a.entity_id=${idExpr} and a.state<>'dropped'${owner} order by (a.state='open') desc,a.assigned_at desc,a.id desc limit 1`;
   const outcome=categoryWhere(`(select a.outcome ${latest})`,f.manual_outcome,params,'none');if(outcome)where.push(outcome);
   if(f.onboarded){const legacy=entity==='call'?`(select c.added_to_db and bolna_recorded_warehouse(c.wh_id) from bolna_call_logs c where c.id=${idExpr})`:'false';const verified=`coalesce((select a.added_to_db and bolna_recorded_warehouse(a.wh_id) ${latest}),${legacy},false)`;where.push(f.onboarded==='yes'?verified:`not ${verified}`);}
+  if (f.added_to_db) {
+    const legacy = entity === 'call' ? `(select c.added_to_db from bolna_call_logs c where c.id=${idExpr})` : 'false';
+    const added = `coalesce((select a.added_to_db ${latest}),${legacy},false)`;
+    where.push(f.added_to_db === 'yes' ? added : `not ${added}`);
+  }
+  if (f.wh_id) {
+    const legacy = entity === 'call' ? `(select c.wh_id from bolna_call_logs c where c.id=${idExpr})` : 'null::text';
+    const wh = `(case when (select a.id ${latest}) is null then ${legacy} else (select a.wh_id ${latest}) end)`;
+    where.push(warehouseWhere(wh, f.wh_id, params));
+  }
+  if (f.has_notes) { const notes = `(${hasText(`(select a.remarks ${latest})`)})`; where.push(f.has_notes === 'yes' ? notes : `not ${notes}`); }
+  if (f.has_manual_calls) {
+    const calls = `exists(select 1 from bolna_effective_manual_attempts e where e.assignment_id=(select a.id ${latest}))`;
+    where.push(f.has_manual_calls === 'yes' ? calls : `not ${calls}`);
+  }
   return where;
 }

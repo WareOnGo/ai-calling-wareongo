@@ -20,9 +20,10 @@ if (stage === "database") run(["database/migrate.mjs"]);
 else if (stage === "reset-database") { run(["tests/reset-stage-database.mjs"]); run(["database/migrate.mjs", "--init"]); }
 else if (stage === "integration") run(["node_modules/vitest/vitest.mjs", "run", "--config", "vitest.integration.config.ts", ...process.argv.slice(3)]);
 else if (stage === "browser-volume" || stage === "browser-volume-production") { env.EVAL_PERFORMANCE="1"; if(stage.endsWith('-production'))env.EVAL_PRODUCTION="1"; run(["node_modules/@playwright/test/cli.js", "test", "22-handoff-performance.spec.ts"],browser); }
+else if (stage === "render-filters") { env.EVAL_PRODUCTION="1"; run(["tests/browser/scripts/render-dashboard.mjs", "--filters", ...process.argv.slice(3)]); }
 else if (stage === "browser-production") { env.EVAL_PRODUCTION="1"; run(["node_modules/@playwright/test/cli.js", "test", ...process.argv.slice(3)],browser); }
 else if (stage === "browser") run(["node_modules/@playwright/test/cli.js", "test", ...process.argv.slice(3)], browser);
 else if (stage === "build") run(["node_modules/next/dist/bin/next", "build", "--webpack"]);
 else if (stage === "performance") { env.BENCH_LABEL = /^[a-z0-9-]+$/.test(process.argv[3] || "current") ? (process.argv[3] || "current") : "current"; run(["node_modules/vitest/vitest.mjs","run","--config","vitest.performance.config.ts"]); }
 else if (stage === "rehearsal") run(["tests/rehearse-migrations.mjs"]);
-else throw new Error("Choose database, reset-database, integration, browser, browser-production, browser-volume, browser-volume-production, build, performance, or rehearsal");
+else throw new Error("Choose database, reset-database, integration, browser, browser-production, render-filters, browser-volume, browser-volume-production, build, performance, or rehearsal");

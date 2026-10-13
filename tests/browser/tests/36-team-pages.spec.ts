@@ -26,7 +26,7 @@ for (const width of [1366, 390]) for (const theme of ['light', 'dark']) {
     await expect(page.locator('.person')).toContainText('priya@eval.test');
     await page.getByRole('searchbox', { name: 'Search team members' }).fill('no-such-person');
     await expect(page.locator('.team-no-matches')).toBeVisible();
-    await page.getByRole('button', { name: 'Clear search', exact: true }).click();
+    await page.getByRole('button', { name: 'Clear filters', exact: true }).click();
     await expect(page.locator('.person')).toHaveCount(4);
     expect(await bodyOverflowsX(page)).toBe(false);
     expect(await unreadableText(page)).toEqual([]);

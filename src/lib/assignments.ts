@@ -1,3 +1,4 @@
+import { warehouseWhere, dateRangeWhere, hasText } from "./filter-values";
 import { categoryWhere, filterValues, type FilterValue } from "./filter-values";
 import { ApiError } from "./api";
 import { query, transaction } from "@/lib/db";
@@ -152,7 +153,10 @@ export type HistoryFilters = {
   entity_type?: FilterValue;   // record | call
   outcome?: FilterValue;
   city?: string;
-  assigned_by?: string;
+  assigned_by?: FilterValue;
+  ai_result?: FilterValue;
+  wh_id?: string; has_notes?: "yes" | "no"; has_manual_calls?: "yes" | "no";
+  date_from?: string; date_to?: string;
   added_to_db?: "yes" | "no";
   sort?: "oldest" | "name";
   page?: number;
@@ -164,6 +168,7 @@ export const HISTORY_PAGE_SIZE = 50;
 // entity_id is polymorphic, so each side is joined on its own type guard. The
 // `and a.entity_type = '...'` in the join condition (not the WHERE) is what keeps
 // a record row from matching a call id and vice versa.
+const HISTORY_AI_RESULT = "case when cl.id is not null then bolna_availability(cl.status, cl.llm_availability) else rai.llm_availability end";
 const HISTORY_FROM = `
   from bolna_assignments a
   left join bolna_app_users u on u.email = a.assignee
@@ -185,8 +190,8 @@ const HISTORY_FROM = `
     select bolna_availability(cl2.status, cl2.llm_availability) as llm_availability
       from raw_phones rp2
       join bolna_call_logs cl2 on cl2.phone_id = rp2.phone_id
-     where rp2.master_id = r.id
-     order by cl2.call_created_at desc nulls last limit 1
+     where rp2.master_id = r.id and cl2.status is distinct from 'balance-low'
+     order by cl2.call_created_at desc nulls last, cl2.id desc limit 1
   ) rai on true`;
 
 function historyWhere(viewer: import("./scope").Viewer, f: HistoryFilters): { sql: string; params: unknown[] } {
@@ -205,7 +210,14 @@ function historyWhere(viewer: import("./scope").Viewer, f: HistoryFilters): { sq
     const predicate=categoryWhere(column,value,params,column==="a.outcome"?"none":undefined);
     if(predicate)where.push(predicate);
   }
-  if (f.assigned_by) { params.push(f.assigned_by.toLowerCase()); where.push(`a.assigned_by = $${params.length}`); }
+  const assigner = categoryWhere('a.assigned_by', filterValues(f.assigned_by).map(value => value.toLowerCase()), params);
+  if (assigner) where.push(assigner);
+  const ai = categoryWhere(`(${HISTORY_AI_RESULT})`, f.ai_result, params, 'none');
+  if (ai) where.push(ai);
+  if (f.wh_id) where.push(warehouseWhere('a.wh_id', f.wh_id, params));
+  if (f.has_notes) where.push(`${f.has_notes === 'no' ? 'not ' : ''}(${hasText('a.remarks')})`);
+  if (f.has_manual_calls) where.push(`${f.has_manual_calls === 'no' ? 'not ' : ''}exists(select 1 from bolna_effective_manual_attempts e where e.assignment_id=a.id)`);
+  where.push(...dateRangeWhere('a.assigned_at', f.date_from, f.date_to, params));
   if (f.city?.trim()) { params.push(f.city.trim()); where.push(`coalesce(r.city, cl.context_details -> 'recipient_data' ->> 'area', '') ilike '%' || $${params.length} || '%'`); }
   if (f.added_to_db) { params.push(f.added_to_db === "yes"); where.push(`a.added_to_db = $${params.length}`); }
   if (f.q?.trim()) {
@@ -218,7 +230,7 @@ function historyWhere(viewer: import("./scope").Viewer, f: HistoryFilters): { sq
               or coalesce(u.name,'') ilike '%'||${p}||'%'
               or coalesce(a.remarks,'') ilike '%'||${p}||'%'
               or coalesce(a.note,'') ilike '%'||${p}||'%'
-              or coalesce(cl.to_number,'') ilike '%'||${p}||'%'
+              or coalesce(case when cl.call_type='inbound' then cl.from_number else cl.to_number end,'') ilike '%'||${p}||'%'
               or coalesce(rphone.phone,'') ilike '%'||${p}||'%')`);
   }
   return { sql: where.length ? `where ${where.join(" and ")}` : "", params };
@@ -243,7 +255,7 @@ export async function listAssignments(viewer: import("./scope").Viewer, f: Histo
             a.assigned_at::text as assigned_at, a.note, a.state, a.outcome, a.remarks,
             a.added_to_db, a.wh_id, a.closure_reason, a.disposition, a.next_due_at::text, a.last_attempt_at::text,
             a.completed_at::text as completed_at,
-            case when cl.id is not null then bolna_availability(cl.status, cl.llm_availability) else rai.llm_availability end as ai_availability
+            ${HISTORY_AI_RESULT} as ai_availability
        ${HISTORY_FROM} ${whereSql}
        order by ${f.activeOnly ? "(a.state = 'open') desc," : ""} ${f.sort === "name" ? "lower(coalesce(r.owner_name, cl.context_details -> 'recipient_data' ->> 'name', '')) asc," : ""} a.assigned_at ${f.sort === "oldest" ? "asc" : "desc"}, a.id ${f.sort === "oldest" ? "asc" : "desc"}
        limit ${pageSize} offset ${(page - 1) * pageSize}`,
@@ -263,16 +275,15 @@ export async function matchingAssignmentTotals(viewer: import("./scope").Viewer,
   )).rows;
 }
 
-/** Headline counts for the history page, over the WHOLE table (not the page). */
-export async function assignmentTotals(viewer: import("./scope").Viewer, assignee?: FilterValue): Promise<{ open: number; done: number; dropped: number; people: number }> {
-  if (!viewer.isAdmin) assignee = viewer.email;
-  const people=filterValues(assignee).map(v=>v.toLowerCase());
+/** Status breakdown within the other applied criteria (never just the current page). */
+export async function assignmentTotals(viewer: import("./scope").Viewer, assignee?: FilterValue, filters: HistoryFilters = {}): Promise<{ open: number; done: number; dropped: number; people: number }> {
+  const { sql, params } = historyWhere(viewer, { ...filters, assignee, state: undefined });
   const res = await query<{ open: string; done: string; dropped: string; people: string }>(
-    `select count(*) filter (where state = 'open')::text     as open,
-            count(*) filter (where state = 'done')::text     as done,
-            count(*) filter (where state = 'dropped')::text  as dropped,
-            count(distinct assignee) filter (where state = 'open')::text as people
-       from bolna_assignments${people.length ? " where assignee = any($1::text[])" : ""}`, people.length ? [people] : []);
+    `select count(*) filter (where a.state = 'open')::text as open,
+            count(*) filter (where a.state = 'done')::text as done,
+            count(*) filter (where a.state = 'dropped')::text as dropped,
+            count(distinct a.assignee) filter (where a.state = 'open')::text as people
+       ${HISTORY_FROM} ${sql}`, params);
   const r = res.rows[0];
   return { open: Number(r.open), done: Number(r.done), dropped: Number(r.dropped), people: Number(r.people) };
 }

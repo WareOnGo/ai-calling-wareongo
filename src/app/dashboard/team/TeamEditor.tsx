@@ -29,6 +29,9 @@ export function TeamEditor({
   const [name, setName] = useState("");
   const [role, setRole] = useState("employee");
   const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("");
+  const [accessFilter, setAccessFilter] = useState("");
+  const filtered = !!(search.trim() || roleFilter || accessFilter);
 
   async function save(body: Record<string, unknown>, key: string) {
     if (busy || pending) return false;
@@ -58,7 +61,7 @@ export function TeamEditor({
     }
   }
 
-  const matching = people.filter(person => `${person.name || ""} ${person.email}`.toLowerCase().includes(search.trim().toLowerCase()));
+  const matching = people.filter(person => `${person.name || ""} ${person.email}`.toLowerCase().includes(search.trim().toLowerCase()) && (!roleFilter || person.role === roleFilter) && (!accessFilter || person.active === (accessFilter === "active")));
   const groups: { key: string; title: string; hint: string; rows: Person[] }[] = [
     {
       key: "admins", title: "Admins", hint: "Full access — can assign work and manage this list.",
@@ -123,11 +126,13 @@ export function TeamEditor({
 
       <div className="team-directory-tools">
         <label className="team-member-search"><span className="sr-only">Search team members</span><input type="search" placeholder="Search by name or email…" value={search} onChange={event => setSearch(event.target.value)}/></label>
-        <span role="status">{search.trim() ? `${matching.length} of ${people.length} members` : `${people.filter(person => person.active).length} with access · ${people.length} members`}</span>
-        {search && <button type="button" className="btn-text" onClick={() => setSearch("")}>Clear search</button>}
+        <label className="directory-filter"><span>Role</span><select aria-label="Filter by role" value={roleFilter} onChange={event => setRoleFilter(event.target.value)}><option value="">All roles</option><option value="admin">Admins</option><option value="employee">Employees</option></select></label>
+        <label className="directory-filter"><span>Access</span><select aria-label="Filter by access" value={accessFilter} onChange={event => setAccessFilter(event.target.value)}><option value="">All members</option><option value="active">Can sign in</option><option value="removed">Access removed</option></select></label>
+        <span role="status">{filtered ? `${matching.length} of ${people.length} members` : `${people.filter(person => person.active).length} with access · ${people.length} members`}</span>
+        {filtered && <button type="button" className="btn-text" onClick={() => { setSearch(""); setRoleFilter(""); setAccessFilter(""); }}>Clear filters</button>}
       </div>
-      {!matching.length && search.trim() && <p className="team-no-matches">No members match “{search}”. Try another name or email.</p>}
-      {groups.filter(group => !search.trim() || group.rows.length).map((g) => (
+      {!matching.length && filtered && <p className="team-no-matches">No members match these filters. Try another name, role or access status.</p>}
+      {groups.filter(group => !filtered || group.rows.length).map((g) => (
         <section key={g.key} className="people-group">
           <h2 className="group-head">
             {g.title} <span className="count">{g.rows.length}</span>

@@ -1,3 +1,4 @@
+import type { VerificationFilters } from "./scope";
 import {rawSearch,matchesSearch} from "./search";
 import {cityWhere} from "./filter-values";
 import type {PoolClient} from 'pg';
@@ -58,7 +59,7 @@ export type RawRow = {
   manual_last_attempt_at:string|null;
 };
 
-export type RawFilters = {
+export type RawFilters = VerificationFilters & {
   q?: string;
   source?: FilterValue;
   state?: FilterValue;
@@ -66,6 +67,7 @@ export type RawFilters = {
   warehouse_type?: FilterValue;
   contact?: FilterValue;              // "broker" | "owner"
   called?: string;              // "yes" | "no" — already called or not
+  ai_result?: FilterValue;
   last_result?: FilterValue;        // most-recent call availability: Available | Unavailable | Unclear
   min_area?: number;
   max_area?: number;
@@ -182,7 +184,7 @@ function buildFilter(viewer: Viewer, f: RawFilters): { whereSql: string; params:
   where.push(...verificationFilters('record','r.id',viewer,f,params));
   if (f.min_area != null) { params.push(f.min_area); where.push(`r.area_sqft >= $${params.length}`); }
   if (f.max_area != null) { params.push(f.max_area); where.push(`r.area_sqft <= $${params.length}`); }
-  if (f.has_phone) { where.push(`exists (select 1 from raw_phones rp join raw_phone_numbers p using (phone_id) where rp.master_id = r.id and nullif(trim(p.phone), '') is not null)`); }
+  if (f.has_phone !== undefined) { where.push(`${f.has_phone ? "" : "not "}exists (select 1 from raw_phones rp join raw_phone_numbers p using (phone_id) where rp.master_id = r.id and nullif(trim(p.phone), '') is not null)`); }
   // already-called filter: does any of the record's numbers have a call_log?
   const calledExists = `exists (select 1 from raw_phones rp join bolna_call_logs cl on cl.phone_id = rp.phone_id where rp.master_id = r.id and cl.status is distinct from 'balance-low')`;
   if (f.called === "yes") { where.push(calledExists); }
@@ -193,6 +195,14 @@ function buildFilter(viewer: Viewer, f: RawFilters): { whereSql: string; params:
                  on cl.phone_id = rp.phone_id where rp.master_id = r.id and cl.status is distinct from 'balance-low'
                  order by cl.call_created_at desc nulls last, cl.id desc limit 1)`,f.last_result,params,"none");
     if(clause)where.push(clause);
+  }
+  if (filterValues(f.ai_result).length) {
+    const clause = categoryWhere(`(select case max(case bolna_availability(cl.status,cl.llm_availability)
+      when 'Available' then 3 when 'Unavailable' then 2 when 'Unclear' then 1 end)
+      when 3 then 'Available' when 2 then 'Unavailable' when 1 then 'Unclear' end
+      from raw_phones rp join bolna_call_logs cl using(phone_id)
+      where rp.master_id=r.id and cl.status is distinct from 'balance-low')`, f.ai_result, params, 'none');
+    if (clause) where.push(clause);
   }
   if (viewer.isAdmin) where.push(...ownershipFilter("record", "r.id", f, params));
 

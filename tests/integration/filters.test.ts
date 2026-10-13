@@ -101,3 +101,59 @@ it('bounded page projections preserve order, distinct rows and employee visibili
  const all=[];for(let page=1;page<=4;page++)all.push((await getRawRecords(admin,{page,pageSize:1})).rows[0].id);
  expect(new Set(all).size).toBe(4);expect(all).toEqual([ids[2],ids[1],ids[0],ids[3]]);
 });
+
+it('assignment reporting filters compose with AI context, notes, warehouse references and IST dates', async () => {
+ for (let i=0;i<4;i++) await seedLegacyAssignments(`insert into bolna_assignments(entity_type,entity_id,assignee,assigned_by,state,outcome,added_to_db,wh_id,remarks,assigned_at)
+  values ('record',$1,$2,$3,$4,$5,$6,$7,$8,$9)`, [ids[i],employee.email,admin.email,i===0?'done':'open',i===0?'Available':null,i===0,['261,262,263','1261',null,null][i],i===0?'Verified with owner':i===1?'   ':null,`2026-08-0${i+1}T18:30:00Z`]);
+ const f={ai_result:['Available','Unavailable'],added_to_db:'yes' as const,wh_id:'262',has_notes:'yes' as const,assigned_by:[admin.email],date_from:'2026-08-02',date_to:'2026-08-02'};
+ expect((await listAssignments(admin,f)).rows.map(r=>r.entity_id)).toEqual([ids[0]]);
+ expect(await matchingAssignmentTotals(admin,f)).toEqual([{entity_type:'record',state:'done',n:'1'}]);
+ expect((await listAssignments(employee,{...f,assignee:admin.email})).total).toBe(0);
+ expect((await listAssignments(admin,{wh_id:'261'})).rows.map(r=>r.entity_id)).toEqual([ids[0]]);
+ expect((await listAssignments(admin,{has_notes:'no'})).total).toBe(3);
+ expect((await listAssignments(admin,{ai_result:['Unavailable'],added_to_db:'no'})).total).toBe(1);
+ expect((await listAssignments(admin,{q:"' OR true --"})).total).toBe(0);
+});
+
+it('recording, transcript and staff reporting filters match grids, exports and selected IDs', async () => {
+ await query("update bolna_call_logs set recording_url='https://example.test/call.mp3',transcript='Owner confirmed' where id=$1",[ids[0]]);
+ for (let i=0;i<2;i++) await seedLegacyAssignments("insert into bolna_assignments(entity_type,entity_id,assignee,assigned_by,added_to_db,wh_id,remarks) values ('call',$1,$2,$3,$4,$5,$6)",[ids[i],employee.email,admin.email,i===0,i===0?'261,262':null,i===0?'Notes here':null]);
+ const f=toCallFilters({has_recording:'yes',has_transcript:'yes',added_to_db:'yes',wh_id:'262',has_notes:'yes'});
+ expect((await getCalls(admin,f)).rows.map(r=>r.id)).toEqual([ids[0]]);
+ expect(await exported(callsExportQuery(admin,f))).toEqual([ids[0]]);
+ expect((await getCallIds(admin,f,100)).ids).toEqual([ids[0]]);
+ expect((await getCalls(employee,f)).total).toBe(1);
+ expect((await getCalls(admin,toCallFilters({has_recording:'no',has_transcript:'no'}))).total).toBe(3);
+});
+
+it('unassigned call reporting uses legacy DB fields; assigned rows use the visible assignment values', async () => {
+ await query("update bolna_call_logs set added_to_db=true,wh_id='9001' where id=any($1::uuid[])",[ids.slice(0,2)]);
+ await seedLegacyAssignments("insert into bolna_assignments(entity_type,entity_id,assignee,assigned_by,added_to_db) values ('call',$1,$2,$3,false)",[ids[1],employee.email,admin.email]);
+ expect((await getCalls(admin,{added_to_db:'yes',wh_id:'9001'})).rows.map(r=>r.id)).toEqual([ids[0]]);
+ expect((await getCalls(admin,{added_to_db:'no',wh_id:'9001'})).total).toBe(0);
+});
+
+it('raw AI history uses outcome precedence while latest result remains independently filterable', async () => {
+ await query("insert into bolna_call_logs(id,phone_id,to_number,call_type,status,call_created_at,llm_availability) select gen_random_uuid(),phone_id,to_number,'outbound','completed','2026-09-01T00:00:00Z','Unclear' from bolna_call_logs where id=any($1::uuid[])",[ids.slice(0,2)]);
+ const f=toRawFilters({ai_result:['Available','Unavailable'],last_result:'Unclear'});
+ const expected=ids.slice(0,2).sort();
+ expect((await getRawRecords(admin,f)).rows.map(r=>r.id).sort()).toEqual(expected);
+ expect(await exported(rawExportQuery(admin,f))).toEqual(expected);
+ expect((await getRawRecordIds(admin,f,100)).ids.sort()).toEqual(expected);
+ expect((await getRawQueueRows(admin,f)).rows.map(r=>r.id).sort()).toEqual(expected);
+ const request=await resolveAssignment(assignmentRequestSchema.parse({entity_type:'record',assignee:employee.email,filters:f}),admin);
+ expect(request.options.ids.sort()).toEqual(expected);
+ expect((await getRawRecords(admin,{ai_result:'Unavailable'})).rows[0].ai_history_result).toBe('Unavailable');
+});
+
+it('presence filters include zero-call and no-phone records without inventing activity', async () => {
+ await query('delete from raw_phones where master_id=$1',[ids[3]]);
+ expect((await getRawRecords(admin,toRawFilters({has_phone:'0',ai_result:'none'}))).rows.map(r=>r.id)).toEqual([ids[3]]);
+ expect((await getRawRecords(admin,toRawFilters({has_phone:'1'}))).total).toBe(3);
+ await seedLegacyAssignments("insert into bolna_assignments(entity_type,entity_id,assignee,assigned_by,added_to_db,wh_id,remarks) values ('record',$1,$2,$3,true,'123','Verified')",[ids[0],employee.email,admin.email]);
+ await query("insert into bolna_manual_attempts(id,assignment_id,actor,assignee,occurred_at,disposition,request_hash) select gen_random_uuid(),id,assignee,assignee,now(),'no_answer','fixture' from bolna_assignments");
+ const f=toRawFilters({added_to_db:'yes',wh_id:'123',has_notes:'yes',has_manual_calls:'yes'});
+ expect((await getRawRecords(admin,f)).total).toBe(1);expect(await exported(rawExportQuery(admin,f))).toEqual([ids[0]]);
+ expect((await listAssignments(admin,{has_manual_calls:'yes'})).total).toBe(1);
+ expect((await getRawRecords(admin,{has_manual_calls:'no'})).total).toBe(3);
+});

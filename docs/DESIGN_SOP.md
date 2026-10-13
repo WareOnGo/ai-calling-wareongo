@@ -84,3 +84,7 @@ Toolbar menus must fit inside the viewport even when their trigger is against an
 6. Record actual results and remaining limits in [the visual audit](VISUAL_OVERHAUL.md). Preserve representative synthetic screenshots. Never use production contacts in committed audit images.
 
 The automated coverage includes rendered text contrast (`29` and the catalog), loading geometry (`12`, `14`), controls/density (`30`, `31`), field/focus contrast and filter continuity (`32`), calling-preview eligibility, confirmation, contact pagination and balance recovery (`33`), multiple-caller selection, detail tabs and menu clipping (`34`), centered pagination and live batch updates (`35`), separate Team pages and member search (`36`), and slow navigation without home-screen flashes (`37`). Human screenshot review remains required; automated checks do not establish that a workflow is easy to understand.
+
+## 7. Keep filtering consistent
+
+Use the [filter audit and interaction rules](FILTER_AUDIT.md) when adding a column or a reporting surface. A filter must use the same field semantics as its column, retain access scope, and work before counting, pagination, export and bulk selection. Test Any, a specific value and an empty result. Keep secondary criteria grouped in the shared panel, show the applied state outside it, and verify both themes and mobile screenshots with `39-filter-audit.spec.ts` (`render-dashboard.mjs --filters -g @render`).

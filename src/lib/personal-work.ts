@@ -16,7 +16,7 @@ export type WorkItem = {
 export type WorkPage = { rows: WorkItem[]; total: number; page: number; pages: number };
 export type WorkTotals = { record: { open: number; done: number }; call: { open: number; done: number } };
 function criteria(filters: WorkFilters) {
-  return { follow_up:filters.follow_up,q: filters.q, city: filters.city, assigned_by: filters.assigned_by, outcome: filters.outcome, added_to_db: filters.added_to_db };
+  return { ai_result:filters.ai_result, wh_id:filters.wh_id, has_notes:filters.has_notes, has_manual_calls:filters.has_manual_calls, date_from:filters.date_from, date_to:filters.date_to, follow_up:filters.follow_up,q: filters.q, city: filters.city, assigned_by: filters.assigned_by, outcome: filters.outcome, added_to_db: filters.added_to_db };
 }
 export async function personalTotals(email: string, filters: WorkFilters = {}): Promise<WorkTotals> {
   const rows = hasWorkCriteria(filters)
@@ -42,7 +42,7 @@ export async function personalWork(user: Viewer, entity: "call" | "record", filt
         area: c?.carpet_area_sqft ? `${area(c.carpet_area_sqft)} carpet` : c?.built_up_area_sqft ? `${area(c.built_up_area_sqft)} built-up` : area(r?.area_sqft || c?.raw_area_sqft || null),
         rent: rent(r?.rent || c?.expected_rent || null),
       },
-      ai: r?.last_availability || c?.availability || null, aiCount: Number(r?.ai_attempt_count || c?.ai_attempt_count || 0), brief: a.note,
+      ai: a.ai_availability, aiCount: Number(r?.ai_attempt_count || c?.ai_attempt_count || 0), brief: a.note,
       assignedBy: a.assigned_by, assignedByName: a.assigned_by_name, assignedAt: a.assigned_at,
       closureReason:a.closure_reason,disposition:a.disposition,nextDueAt:a.next_due_at,
       state: a.state, outcome: a.outcome, remarks: a.remarks, addedToDb: a.added_to_db, whId: a.wh_id,

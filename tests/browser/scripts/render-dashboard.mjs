@@ -6,7 +6,8 @@ import { dirname, resolve } from 'node:path';
 const harness = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const output = resolve(process.env.EVAL_RENDER_DIR || resolve(harness, 'shots', `dashboard-${new Date().toISOString().replaceAll(':', '-')}`));
 mkdirSync(output, { recursive: true });
-const child = spawn(process.execPath, [resolve(harness, 'node_modules/@playwright/test/cli.js'), 'test', '31-render-dashboard.spec.ts', ...process.argv.slice(2)], {
+const args = process.argv.slice(2), filtersOnly = args.includes('--filters');
+const child = spawn(process.execPath, [resolve(harness, 'node_modules/@playwright/test/cli.js'), 'test', filtersOnly ? '39-filter-audit.spec.ts' : '31-render-dashboard.spec.ts', ...args.filter(arg => arg !== '--filters')], {
   cwd: harness, stdio: 'inherit', env: { ...process.env, EVAL_RENDER_DIR: output },
 });
 child.on('error', error => { console.error(error.message); process.exitCode = 1; });

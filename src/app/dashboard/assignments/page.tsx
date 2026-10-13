@@ -1,5 +1,6 @@
+import { assignmentFiltersSchema } from "@/lib/filters";
 import {dispositionLabel} from "@/lib/manual-dispositions";
-import { firstValue, filterValues, searchQuery, type SearchValues } from "@/lib/filter-values";
+import { countFilters, firstValue, filterValues, searchQuery, type SearchValues } from "@/lib/filter-values";
 import { RecordsPagination } from "../RecordsPagination";
 import { AssignmentNotices } from "../GridNotices";
 import { SelectionProvider } from "../Selection";
@@ -12,7 +13,7 @@ import { requireAdmin } from "@/lib/auth";
 import { listAssignments, assignmentTotals, HISTORY_PAGE_SIZE, type AssignmentHistoryRow } from "@/lib/assignments";
 import { listUsers } from "@/lib/users";
 import { AssignmentColumns, AssignmentHeaders, AssignmentStats } from "./AssignmentStructure";
-import { AssignmentFilters } from "./AssignmentFilters";
+import { AssignmentFilters, ASSIGNMENT_FILTER_KEYS } from "./AssignmentFilters";
 import { AssignmentNotes } from "./AssignmentNotes";
 import { ReopenAssignment } from "../ReopenAssignment";
 import { UnassignButton } from "../UnassignButton";
@@ -61,20 +62,19 @@ export default async function Assignments({
   const user = await requireAdmin();
   const sp=await searchParams;
 
-  const filters = {
-    q: firstValue(sp.q), assignee: sp.assignee, state: sp.state, batch_id: firstValue(sp.batch_id),
-    entity_type: sp.type, outcome: sp.outcome, quality_review:sp.quality_review === "1",follow_up:sp.follow_up === "due" ? "due" as const : sp.follow_up === "pending" ? "pending" as const : undefined,
-    page: Number(firstValue(sp.page)||1),
-  };
+  const parsed = assignmentFiltersSchema.safeParse(sp);
+  if (!parsed.success) return <p role="alert">Invalid filters. {parsed.error.issues.map(issue => issue.message).join("; ")} <Link href="/dashboard/assignments">Clear filters</Link></p>;
+  const { type, ...criteria } = parsed.data;
+  const filters = { ...criteria, entity_type: type, page: Number(firstValue(sp.page) || 1) };
 
   const [{ rows, total, page, pages }, totals, assignees] = await Promise.all([
     listAssignments(user, filters),
-    assignmentTotals(user, sp.assignee),
+    assignmentTotals(user, sp.assignee, filters),
     listUsers(),
   ]);
 
   const startRow = (page - 1) * HISTORY_PAGE_SIZE;
-  const activeFilters = ["assignee", "state", "type", "outcome"].filter((k) => sp[k]).length;
+  const activeFilters = countFilters(sp, ASSIGNMENT_FILTER_KEYS);
 
   return (
     <SelectionProvider total={total}>
@@ -82,9 +82,9 @@ export default async function Assignments({
         <span className="pt-icon"><IconClipboard size={18} /></span> Assignments <Freshness updatedAt={new Date().toISOString()} />
       </div>
 
-      <AssignmentStats totals={totals} assignee={sp.assignee} person={filterValues(sp.assignee).map(email=>assignees.find(p=>p.email===email)?.name||email).join(", ") || undefined} state={sp.state} />
+      <AssignmentStats applied={sp} totals={totals} assignee={sp.assignee} person={filterValues(sp.assignee).map(email=>assignees.find(p=>p.email===email)?.name||email).join(", ") || undefined} state={sp.state} />
       <AssignmentFilters applied={sp} assignees={assignees} /><AssignmentNotices />
-      <div className="assignment-summary"><span>{total.toLocaleString()} {total === 1 ? "assignment" : "assignments"}{activeFilters || sp.q ? " matching filters" : ""}</span><span>Newest first</span></div>
+      <div className="assignment-summary"><span>{total.toLocaleString()} {total === 1 ? "assignment" : "assignments"}{activeFilters || sp.q ? " matching filters" : ""}</span><span>{filters.sort === "oldest" ? "Oldest first" : filters.sort === "name" ? "Name A–Z" : "Newest first"}</span></div>
 
       <div className="gridwrap">
         <table className="sheet log-sheet assignment-sheet">

@@ -1,3 +1,4 @@
+import { ReportingFilters, REPORTING_FILTER_KEYS, SelectFilter, YesNoFilter, DateFilters } from "../FilterFields";
 import {AiHistoryButton} from '../AiTimeline';
 import { firstValue } from "@/lib/filter-values";
 import { MultiSelect } from "../MultiSelect";
@@ -83,7 +84,7 @@ export default async function Dashboard({
   const startRow = (page - 1) * pageSize;
 
   // active filter count (everything except free-text search) for the Filters badge
-  const activeFilters = ["availability", "call_type", "source", "state", "contact", "agent_id", "status", "date_from", "date_to", "needs_review", "assignee", "assignment_state", "manual_outcome", "rent_mentioned", "onboarded", "warehouse_type", "min_area", "max_area", "city"]
+  const activeFilters = ["availability", "call_type", "source", "state", "contact", "agent_id", "status", "date_from", "date_to", "needs_review", "assignee", "assignment_state", "manual_outcome", "rent_mentioned", "onboarded", "warehouse_type", "min_area", "max_area", "city", "area_basis", "include_blocked", "batch_id", "has_recording", "has_transcript", ...REPORTING_FILTER_KEYS]
     .filter((k) => sp[k]).length;
 
   return (
@@ -119,19 +120,21 @@ export default async function Dashboard({
             <MultiSelect name="contact" label="Contact" value={sp.contact} options={[{value:"owner",label:"Owner"},{value:"broker",label:"Probable broker"}]}/>
             <label className="filter-field"><span>Minimum square feet</span><input className="num-filter" type="number" aria-label="Minimum square feet" min="0" name="min_area" defaultValue={firstValue(sp.min_area)||""} placeholder="min sqft"/></label>
             <label className="filter-field"><span>Maximum square feet</span><input className="num-filter" type="number" aria-label="Maximum square feet" min="0" name="max_area" defaultValue={firstValue(sp.max_area)||""} placeholder="max sqft"/></label>
-            <label className="chip filter-field"><span>Square feet basis</span><select name="area_basis" aria-label="Square feet basis" defaultValue={firstValue(sp.area_basis)||"source"}><option value="source">Source sqft</option><option value="built_up">AI built-up sqft</option><option value="carpet">AI carpet sqft</option></select></label>
+            <label className="chip filter-field"><span>Square feet basis</span><select name="area_basis" aria-label="Square feet basis" defaultValue={firstValue(sp.area_basis)||""}><option value="">Source sqft</option><option value="built_up">AI built-up sqft</option><option value="carpet">AI carpet sqft</option></select></label>
             <label className="chip filter-field"><span>Rent mentioned</span><select name="rent_mentioned" aria-label="Rent mentioned" defaultValue={firstValue(sp.rent_mentioned)||""}><option value="">Any rent</option><option value="yes">Rent mentioned</option><option value="no">Rent missing / unknown</option></select></label>
           </> },
-          { label: "Call details", count: ["call_type", "agent_id", "date_from", "date_to", "include_blocked"].filter(key => sp[key]).length, content: <>
+          { label: "Call details", count: ["call_type", "agent_id", "date_from", "date_to", "include_blocked", "has_recording", "has_transcript"].filter(key => sp[key]).length, content: <>
             <MultiSelect name="call_type" label="Direction" value={sp.call_type} options={[{value:"inbound",label:"Inbound"},{value:"outbound",label:"Outbound"}]}/>
             <MultiSelect name="agent_id" label="Agent" value={sp.agent_id} options={opts.agents.map(v=>({value:v,label:agentLabel(v)}))}/>
-            <label className="datefld"><span>From</span><input type="date" name="date_from" defaultValue={firstValue(sp.date_from)||""}/></label>
-            <label className="datefld"><span>To</span><input type="date" name="date_to" defaultValue={firstValue(sp.date_to)||""}/></label>
+            <DateFilters applied={sp} label="Call date" />
+            <YesNoFilter name="has_recording" label="Recording" applied={sp} yes="Has recording" no="No recording" />
+            <YesNoFilter name="has_transcript" label="Transcript" applied={sp} yes="Has transcript" no="No transcript" />
             <label className="toggle"><input type="checkbox" name="include_blocked" value="1" defaultChecked={sp.include_blocked==="1"}/>Include balance-blocked executions</label>
           </> },
+          { label: "Reporting", count: REPORTING_FILTER_KEYS.filter(key => sp[key]).length, content: <ReportingFilters applied={sp} /> },
           { label: "Assignment", count: ["assignee", "assignment_state", "onboarded"].filter(key => sp[key]).length, content: <>
             {user.isAdmin && <MultiSelect name="assignee" label="Assigned to" value={sp.assignee} options={[{value:"none",label:"Unassigned now"},...assignees.map(a=>({value:a.email,label:a.name||a.email}))]}/>}
-            <label className="chip filter-field"><span>Ownership</span><select name="assignment_state" aria-label="Ownership" defaultValue={firstValue(sp.assignment_state)||""}><option value="">Any ownership</option><option value="unassigned">Unassigned now</option><option value="open">Open assignment</option><option value="done">Completed history</option><option value="never">Never assigned</option></select></label>
+            <label className="chip filter-field"><span>Ownership</span><select name="assignment_state" aria-label="Ownership" defaultValue={firstValue(sp.assignment_state)||""}><option value="">Any ownership</option><option value="unassigned">Unassigned now</option><option value="open">Open assignment</option><option value="done">Completed assignment</option><option value="never">Never assigned</option></select></label>
             <label className="chip filter-field"><span>Onboarded</span><select name="onboarded" aria-label="Onboarded" defaultValue={firstValue(sp.onboarded)||""}><option value="">Any onboarding</option><option value="yes">Onboarded with WH ID</option><option value="no">Not onboarded</option></select></label>
           </> },
         ]} />

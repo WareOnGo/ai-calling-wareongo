@@ -11,7 +11,7 @@ test('filter categories retain a draft across tabs and apply every field togethe
   await page.getByRole('tab', { name: 'Property', exact: true }).click();
   await dialog.getByLabel('City', { exact: true }).fill('Rajkot');
   await page.getByRole('tab', { name: 'Call outcome', exact: true }).click();
-  const result = dialog.locator('details').filter({ has: page.locator('.multi-control-label').filter({hasText:'Last result'}) });
+  const result = dialog.locator('details').filter({ has: page.locator('.multi-control-label').filter({hasText:'Latest AI result'}) });
   await result.locator('summary').click();
   await result.getByRole('checkbox', { name: 'Available', exact: true }).check();
   await result.getByRole('checkbox', { name: 'Unclear', exact: true }).check();

@@ -1,3 +1,4 @@
+import { ReportingFilters, REPORTING_FILTER_KEYS, SelectFilter, YesNoFilter, DateFilters } from "../FilterFields";
 import {dispositionLabel} from "@/lib/manual-dispositions";
 import {AiHistoryButton} from '../AiTimeline';
 import { firstValue } from "@/lib/filter-values";
@@ -70,7 +71,7 @@ export default async function RawDataset({
 
   const numCols = COLUMNS.length + 1; // + selection column
   const startRow = (page - 1) * pageSize;
-  const activeFilters = ["source", "state", "city", "contact", "called", "last_result", "min_area", "max_area", "has_phone", "assignee", "assignment_state", "manual_outcome", "onboarded", "warehouse_type"]
+  const activeFilters = ["source", "state", "city", "contact", "called", "last_result", "min_area", "max_area", "has_phone", "assignee", "assignment_state", "manual_outcome", "onboarded", "warehouse_type", "ai_result", ...REPORTING_FILTER_KEYS]
     .filter((k) => sp[k]).length;
 
   return (
@@ -90,8 +91,10 @@ export default async function RawDataset({
         <a className="btn-text toolbar-reset" href="/dashboard/raw">Reset</a>
 
         <FilterPanel groups={[
-          { label: "Call outcome", count: ["last_result", "manual_outcome", "called"].filter(key => sp[key]).length, content: <>
-            <MultiSelect name="last_result" label="Last result" value={sp.last_result} options={["Available","Unavailable","Unclear",{value:"none",label:"No AI result"}]}/>
+          { label: "Call outcome", count: ["ai_result", "last_result", "manual_outcome", "called"].filter(key => sp[key]).length, content: <>
+            <MultiSelect name="ai_result" label="AI history result" value={sp.ai_result} options={["Available", "Unavailable", "Unclear", {value:"none",label:"No AI result"}]} />
+            <p className="filter-explanation">AI history uses the best result across calls: Available, then Unavailable, then Unclear.</p>
+            <MultiSelect name="last_result" label="Latest AI result" value={sp.last_result} options={["Available","Unavailable","Unclear",{value:"none",label:"No AI result"}]}/>
             <MultiSelect name="manual_outcome" label="Manual result" value={sp.manual_outcome} options={["Available","Unavailable","Unclear",{value:"none",label:"No manual result"}]}/>
             <label className="chip filter-field"><span>Called</span><select aria-label="Called" name="called" defaultValue={firstValue(sp.called)||""}><option value="">Called?</option><option value="no">Not called</option><option value="yes">Already called</option></select></label>
           </> },
@@ -103,11 +106,12 @@ export default async function RawDataset({
             <MultiSelect name="warehouse_type" label="Warehouse type" value={sp.warehouse_type} options={opts.warehouseTypes}/>
             <label className="filter-field"><span>Minimum square feet</span><input className="num-filter" type="number" aria-label="Minimum square feet" min="0" name="min_area" defaultValue={firstValue(sp.min_area)||""} placeholder="min sqft"/></label>
             <label className="filter-field"><span>Maximum square feet</span><input className="num-filter" type="number" aria-label="Maximum square feet" min="0" name="max_area" defaultValue={firstValue(sp.max_area)||""} placeholder="max sqft"/></label>
-            <label className="toggle"><input type="checkbox" name="has_phone" value="1" defaultChecked={sp.has_phone==="1"}/>Has phone</label>
+            <SelectFilter name="has_phone" label="Has phone" applied={sp} options={[{value:"1",label:"Has a phone number"},{value:"0",label:"No phone number"}]} />
           </> },
+          { label: "Reporting", count: REPORTING_FILTER_KEYS.filter(key => sp[key]).length, content: <ReportingFilters applied={sp} /> },
           { label: "Assignment", count: ["assignee", "assignment_state", "onboarded"].filter(key => sp[key]).length, content: <>
             <MultiSelect name="assignee" label="Assigned to" value={sp.assignee} options={[{value:"none",label:"Unassigned now"},...assignees.map(a=>({value:a.email,label:a.name||a.email}))]}/>
-            <label className="chip filter-field"><span>Ownership</span><select name="assignment_state" aria-label="Ownership" defaultValue={firstValue(sp.assignment_state)||""}><option value="">Any ownership</option><option value="unassigned">Unassigned now</option><option value="open">Open assignment</option><option value="done">Completed history</option><option value="never">Never assigned</option></select></label>
+            <label className="chip filter-field"><span>Ownership</span><select name="assignment_state" aria-label="Ownership" defaultValue={firstValue(sp.assignment_state)||""}><option value="">Any ownership</option><option value="unassigned">Unassigned now</option><option value="open">Open assignment</option><option value="done">Completed assignment</option><option value="never">Never assigned</option></select></label>
             <label className="chip filter-field"><span>Onboarded</span><select name="onboarded" aria-label="Onboarded" defaultValue={firstValue(sp.onboarded)||""}><option value="">Any onboarding</option><option value="yes">Onboarded with WH ID</option><option value="no">Not onboarded</option></select></label>
           </> },
         ]} />

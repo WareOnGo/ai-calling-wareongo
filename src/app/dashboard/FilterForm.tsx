@@ -3,14 +3,15 @@ import { useEffect, useRef, useState } from "react";
 import { useDashboardUI } from "./DashboardUI";
 import { FILTER_LABELS as labels, filterLabel, filterValue } from "./filter-labels";
 import { filterValues,searchQuery,type SearchValues } from "@/lib/filter-values";
+import { filterFormSnapshot } from "./filter-form-state";
 import { SavedViews } from "./SavedViews";
 
 
-export function FilterForm({ action, applied, children, className = "", preserveKeys = [], labels: customLabels, formatValue = filterValue, viewTools, actions }: { action: string; applied: SearchValues; children: React.ReactNode; className?: string; preserveKeys?: string[]; labels?: Record<string, string>; formatValue?: (key: string, value: string) => string; viewTools?: React.ReactNode; actions?: React.ReactNode }) {
+export function FilterForm({ action, applied, children, className = "", preserveKeys = [], labels: customLabels, formatValue = filterValue, viewTools, actions, savedViews = true }: { action: string; applied: SearchValues; children: React.ReactNode; className?: string; preserveKeys?: string[]; labels?: Record<string, string>; formatValue?: (key: string, value: string) => string; viewTools?: React.ReactNode; actions?: React.ReactNode; savedViews?: boolean }) {
   const { navigate, pending, transitioning } = useDashboardUI();
   const formRef = useRef<HTMLFormElement>(null);
   const initial = useRef("");
-  const serialize = (form: HTMLFormElement) => JSON.stringify([...new FormData(form).entries()]);
+  const serialize = filterFormSnapshot;
   useEffect(() => {if(formRef.current) initial.current = serialize(formRef.current);}, []);
   const [dirty, setDirty] = useState(false);
   useEffect(()=>{
@@ -50,7 +51,7 @@ export function FilterForm({ action, applied, children, className = "", preserve
     form?.addEventListener('toggle',positionMenus,true);window.addEventListener('resize',positionMenus);document.addEventListener('scroll',positionMenus,true);
     return()=>{document.removeEventListener("pointerdown",close);document.removeEventListener("keydown",close);form?.removeEventListener('toggle',positionMenus,true);window.removeEventListener('resize',positionMenus);document.removeEventListener('scroll',positionMenus,true);};
   },[]);
-  const active = Object.entries(applied).flatMap(([key,v]) => (customLabels || labels)[key]?filterValues(v).map(value=>[key,value] as const):[]);
+  const active = Object.entries(applied).flatMap(([key,v]) => ({...labels, ...customLabels})[key]?filterValues(v).map(value=>[key,value] as const):[]);
   const labelFor = (key: string) => customLabels?.[key] || filterLabel(key, action);
   function remove(key?:string,value?:string) {
     const next:SearchValues={};
@@ -58,13 +59,19 @@ export function FilterForm({ action, applied, children, className = "", preserve
     const params=searchQuery(next);navigate(action+(params.size?`?${params}`:""));
   }
   return <>
-    <form ref={formRef} className={`filterbar ${className}${active.length ? " has-filters" : ""}${dirty ? " has-changes" : ""}${viewTools ? " records-toolbar" : ""}`} method="GET" action={action} onChange={e => {if ((e.target as HTMLElement).closest("dialog:not(.filter-panel)")) return; setDirty(serialize(e.currentTarget) !== initial.current);}} onSubmit={e => {
+    <form ref={formRef} className={`filterbar ${className}${active.length ? " has-filters" : ""}${dirty ? " has-changes" : ""}${viewTools ? " records-toolbar" : ""}`} method="GET" action={action} onReset={e => {
+      const form = e.currentTarget;
+      form.querySelector<HTMLDialogElement>('.filter-panel[open]')?.close();
+      // Native reset also clears an unapplied draft when the URL is already empty.
+      requestAnimationFrame(() => { if (form.isConnected) form.dispatchEvent(new Event('input', { bubbles: true })); });
+      remove();
+    }} onInput={e => {if ((e.target as HTMLElement).closest("dialog:not(.filter-panel)")) return; setDirty(serialize(e.currentTarget) !== initial.current);}} onSubmit={e => {
       e.preventDefault();
       const params = new URLSearchParams();
       new FormData(e.currentTarget).forEach((value,key) => { if (String(value).trim()) params.append(key, String(value).trim()); });
       e.currentTarget.querySelector<HTMLDialogElement>('.filter-panel[open]')?.close();
       navigate(action + (params.size ? `?${params}` : ""));
-    }} aria-busy={pending}>{viewTools ? <><div className="toolbar-search">{children}</div><div className="toolbar-view">{viewTools}<SavedViews path={action} applied={applied}/></div>{actions && <div className="toolbar-actions">{actions}</div>}</> : <>{children}<SavedViews path={action} applied={applied}/></>}</form>
+    }} aria-busy={pending}>{viewTools ? <><div className="toolbar-search">{children}</div><div className="toolbar-view">{viewTools}{savedViews && <SavedViews path={action} applied={applied}/>}</div>{actions && <div className="toolbar-actions">{actions}</div>}</> : <>{children}{savedViews && <SavedViews path={action} applied={applied}/>}</>}</form>
     {(active.length > 0 || dirty || transitioning) && <div className="applied-filters" aria-label="Applied filters">
       {active.map(([key,value]) => <button type="button" className="filter-tag" key={`${key}:${value}`} disabled={pending} onClick={() => remove(key,value)} aria-label={`Remove ${labelFor(key)} filter: ${value}`}>{labelFor(key)}: {formatValue(key, value!)}<span aria-hidden="true">×</span></button>)}
       {active.length > 0 && <button type="button" className="btn-text" disabled={pending} onClick={() => remove()}>Clear filters</button>}

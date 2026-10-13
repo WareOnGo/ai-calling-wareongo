@@ -1,4 +1,4 @@
-import { filterValues, searchQuery, type FilterValue } from "@/lib/filter-values";
+import { filterValues, searchQuery, type FilterValue, type SearchValues } from "@/lib/filter-values";
 import Link from "next/link";
 import { ASSIGNMENT_COLUMNS, ASSIGNMENT_WIDTHS } from "../sheet-columns";
 
@@ -14,9 +14,9 @@ export function AssignmentHeaders({hidden=[]}:{hidden?:string[]}={}) {
     title={label === "Notes" ? "Follow-up notes written by the assignee" : label === "Brief" ? "Instructions given when the work was assigned" : undefined}>{label}</th>)}</tr></thead>;
 }
 
-export function AssignmentStats({ totals, assignee, person, state, loading = false }: {
+export function AssignmentStats({ totals, assignee, person, state, applied = {}, loading = false }: {
   totals?: { open: number; done: number; dropped: number; people: number };
-  assignee?: FilterValue; person?: string; state?: FilterValue; loading?: boolean;
+  assignee?: FilterValue; person?: string; state?: FilterValue; applied?: SearchValues; loading?: boolean;
 }) {
   const all = totals ? totals.open + totals.done + totals.dropped : 0;
   const cards = [
@@ -26,13 +26,13 @@ export function AssignmentStats({ totals, assignee, person, state, loading = fal
     { value: assignee ? all : totals?.people, label: assignee ? "total assignments" : "people with open work", state: "" },
   ];
   return <>
-    <p className="section-foot">{assignee ? <>All work for <strong>{person || filterValues(assignee).join(", ")}</strong></> : "Across all assignments"}</p>
+    <p className="section-foot">{Object.keys(applied).some(key => !["page", "state", "assignee", "sort"].includes(key) && applied[key]) ? "Status breakdown within these filters" : assignee ? <>All work for <strong>{person || filterValues(assignee).join(", ")}</strong></> : "Across all assignments"}</p>
     <div className="stat-row">{cards.map((card, index) => {
-      const params = searchQuery({assignee});
+      const params = searchQuery({...applied, assignee, state: undefined, page: undefined});
       if (card.state) params.set("state", card.state);
       const content = <><span className="stat-n">{loading ? <span className="skeleton" style={{ width: 28, height: 22 }} /> : (card.value || 0).toLocaleString()}</span><span className="stat-l">{card.label}</span></>;
-      const className = `stat${index === 3 ? " stat-quiet" : ""}${state && state === card.state ? " stat-active" : ""}`;
-      return loading || (index === 3 && !assignee) ? <div className={className} key={card.label}>{content}</div> : <Link className={className} key={card.label} href={`/dashboard/assignments${params.size ? `?${params}` : ""}`} aria-current={state === card.state ? "page" : undefined}>{content}</Link>;
+      const className = `stat${index === 3 ? " stat-quiet" : ""}${filterValues(state).includes(card.state) ? " stat-active" : ""}`;
+      return loading || (index === 3 && !assignee) ? <div className={className} key={card.label}>{content}</div> : <Link className={className} key={card.label} href={`/dashboard/assignments${params.size ? `?${params}` : ""}`} aria-current={filterValues(state).includes(card.state) ? "page" : undefined}>{content}</Link>;
     })}</div>
   </>;
 }

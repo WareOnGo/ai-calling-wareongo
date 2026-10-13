@@ -16,24 +16,14 @@ export const dynamic='force-dynamic';
 
 export default async function Batches({searchParams}:{searchParams:Promise<SearchValues>}){
  const viewer=await requireAdmin(),sp=await searchParams;
- const parsed=batchListSchema.safeParse(Object.fromEntries(Object.entries(sp).map(([k,v])=>[k,firstValue(v)]).filter(([,v])=>v)));
+ const parsed=batchListSchema.safeParse(Object.fromEntries(Object.entries(sp).filter(([,v])=>v)));
  if(!parsed.success)return <p role="alert">Invalid batch filters. <Link href="/dashboard/batches">Clear filters</Link></p>;
  const f=parsed.data,[data,people]=await Promise.all([listBatches(viewer,f,Number(firstValue(sp.page)||1)),listUsers()]);
  const progress=await batchProgress(data.rows),active=data.rows.filter(b=>b.kind==='ai'&&!['completed','canceled','stubbed'].includes(b.state)).map(b=>b.id);
  return <>
   <RecordsHeader title="Batches" meta={f.kind==='ai'?<WalletBalance compact/>:undefined} actions={<><BatchLiveUpdates ids={active}/><Freshness updatedAt={new Date().toISOString()}/></>}
    tabs={<nav className="batch-tabs" aria-label="Batch type"><Link href="/dashboard/batches?kind=ai" aria-current={f.kind==='ai'?'page':undefined}>AI batches</Link><Link href="/dashboard/batches?kind=manual" aria-current={f.kind==='manual'?'page':undefined}>Manual batches</Link></nav>}/>
-  <BatchFilters key={JSON.stringify(sp)}><input type="hidden" name="kind" value={f.kind}/>
-   <div className="batch-primary-filters">
-    <label>From<input type="date" name="date_from" defaultValue={f.date_from}/></label><label>To<input type="date" name="date_to" defaultValue={f.date_to}/></label>
-    <label>{f.kind==='manual'?'Caller':'Created by'}<select name="caller" defaultValue={f.caller||''}><option value="">Anyone</option>{people.map(p=><option value={p.email} key={p.email}>{p.name||p.email}</option>)}</select></label>
-    <label>State<select name="state" defaultValue={f.state||''}><option value="">All states</option>{(f.kind==='manual'?['open','closed']:['creating','scheduling','scheduled','uncertain','completed','canceled','failed','stubbed']).map(v=><option key={v}>{v}</option>)}</select></label>
-    <button className="btn" type="submit">Filter batches</button><Link className="btn-text" href={'/dashboard/batches?kind='+f.kind}>Reset</Link>
-   </div>
-   <details className="batch-extra-filters" open={!!(f.agent||f.dispatch||f.origin)}><summary>More filters</summary><div>
-    {f.kind==='manual'?<label>Origin<select name="origin" defaultValue={f.origin||''}><option value="">Both origins</option><option value="record">Raw Dataset</option><option value="call">Calls</option></select></label>:<><label>Agent ID<input name="agent" defaultValue={f.agent}/></label><label>Dispatch ID<input name="dispatch" defaultValue={f.dispatch}/></label></>}
-   </div></details>
-  </BatchFilters>
+  <BatchFilters applied={sp} kind={f.kind} people={people} />
   <div className="batch-results-heading"><span>{data.total.toLocaleString()} matching {f.kind==='ai'?'AI':'manual'} batches <small>Dates use IST</small></span><a href={'/api/batches/export?'+searchQuery({...sp,kind:f.kind},['page'])}>Export batch list</a></div>
   {f.kind==='manual'&&<p className="batch-legacy"><Link href="/dashboard/batches/manual/legacy">Legacy / no recorded batch ({data.legacy} assignments)</Link></p>}
   <div className="batch-catalog">{data.rows.map(b=>{

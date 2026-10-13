@@ -1,3 +1,4 @@
+import { categoryWhere, warehouseWhere } from "./filter-values";
 import {z} from 'zod';
 import {query} from './db';
 import {ApiError,uuid} from './api';
@@ -5,7 +6,7 @@ import {TERMINAL_STATUSES} from './bolna';
 import type {Viewer} from './scope';
 import {contactTargets} from './scope';
 import type {ExportQuery} from './export';
-export const batchListSchema=z.object({kind:z.enum(['ai','manual']).default('ai'),date_from:z.string().date().optional(),date_to:z.string().date().optional(),caller:z.string().max(1000).optional(),agent:z.string().max(1000).optional(),origin:z.enum(['record','call']).optional(),state:z.string().max(100).optional(),dispatch:z.string().uuid().optional()}).refine(f=>!f.date_from||!f.date_to||f.date_from<=f.date_to,'Start date cannot follow end date');
+export const batchListSchema=z.object({kind:z.enum(['ai','manual']).default('ai'),q:z.string().trim().max(1000).optional(),language:z.enum(['english','hindi']).optional(),date_from:z.string().date().optional(),date_to:z.string().date().optional(),caller:z.string().max(1000).optional(),agent:z.string().max(1000).optional(),origin:z.enum(['record','call']).optional(),state:z.union([z.string().max(100),z.array(z.string().max(100)).max(30)]).optional(),dispatch:z.string().uuid().optional()}).refine(f=>!f.date_from||!f.date_to||f.date_from<=f.date_to,'Start date cannot follow end date');
 export type BatchListFilters=z.infer<typeof batchListSchema>;
 export type BatchRow={id:string;kind:'ai'|'manual';created_at:string;created_by:string|null;scheduled_at:string|null;state:string;entity_type:string|null;agent_id:string|null;agent_language:string|null;dispatch_request_id:string|null;bolna_batch_id:string|null;assignees:string[]|null;selection:unknown;last_error:string|null;resolution_note:string|null};
 export type BatchProgress={targeted:number;finished:number;attempts:number};
@@ -39,7 +40,10 @@ function listQuery(f:BatchListFilters){
  `select b.id,'manual'::text kind,b.created_at,b.created_by,null::timestamptz scheduled_at,
  case when exists(select 1 from bolna_assignments a where a.batch_id=b.id and a.state='open') then 'open' else 'closed' end state,
  entity_type,null::text agent_id,null::text agent_language,null::uuid dispatch_request_id,null::text bolna_batch_id,assignees,selection,null::text last_error,null::text resolution_note from bolna_assignment_batches b`;
- for(const [value,condition] of [[f.date_from,"created_at >= (?::date::timestamp at time zone 'Asia/Kolkata')"],[f.date_to,"created_at < ((?::date+interval '1 day') at time zone 'Asia/Kolkata')"],[f.state,'state=?'],[f.origin,'entity_type=?'],[f.agent,'agent_id=?'],[f.dispatch,'dispatch_request_id=?::uuid']] as const)if(value){params.push(value);where.push(condition.replace('?',`$${params.length}`));}
+ for(const [value,condition] of [[f.date_from,"created_at >= (?::date::timestamp at time zone 'Asia/Kolkata')"],[f.date_to,"created_at < ((?::date+interval '1 day') at time zone 'Asia/Kolkata')"],[f.origin,'entity_type=?'],[f.agent,'agent_id=?'],[f.dispatch,'dispatch_request_id=?::uuid']] as const)if(value){params.push(value);where.push(condition.replace('?',`$${params.length}`));}
+ const status = categoryWhere('state', f.state, params); if (status) where.push(status);
+ if (f.language) { params.push(f.language); where.push(`agent_language=$${params.length}`); }
+ if (f.q) { params.push(f.q); where.push(`(id::text ilike '%'||$${params.length}||'%' or coalesce(created_by,'') ilike '%'||$${params.length}||'%' or coalesce(bolna_batch_id,'') ilike '%'||$${params.length}||'%')`); }
  if(f.caller){params.push(f.caller.toLowerCase());where.push(kind==='manual'?`$${params.length}=any(assignees)`:`lower(created_by)=$${params.length}`);}
  return {base,params,where:where.length?'where '+where.join(' and '):''};
 }
@@ -109,15 +113,43 @@ function metricWhere(batch:BatchRow,metric:string){
  const allowed=(batch.kind==='ai'?AI_CARDS:MANUAL_CARDS).map(c=>c[0]);if(!(allowed as readonly string[]).includes(metric))throw new ApiError(400,'Unknown batch metric');
  return metric==='all'?'':metric==='quality'?'where quality_issue is not null':`where ${metric}=true`;
 }
-export function batchMembersExport(viewer:Viewer,batch:BatchRow,metric='all'):ExportQuery{
- adminOnly(viewer);const {sql,params}=membersBase(batch),where=metricWhere(batch,metric);
+const memberValues = z.union([z.string().max(1000), z.array(z.string().max(1000)).max(100)]).optional();
+export const batchMemberFiltersSchema = z.object({
+ q: z.string().trim().max(1000).optional(), city: z.string().trim().max(1000).optional(),
+ outcome: memberValues, state: memberValues, assignee: memberValues, current_owner: memberValues,
+ has_attempts: z.enum(['yes','no']).optional(), connected: z.enum(['yes','no']).optional(),
+ onboarded: z.enum(['yes','no']).optional(), wh_id: z.string().trim().max(1000).optional(),
+});
+export type BatchMemberFilters = z.infer<typeof batchMemberFiltersSchema>;
+function memberWhere(batch: BatchRow, metric: string, f: BatchMemberFilters, params: unknown[]) {
+ const selected = metricWhere(batch,metric).replace(/^where /, '');
+ const where = selected ? [selected] : [];
+ for (const [column, value] of [['outcome',f.outcome],['state',f.state],['assignee',f.assignee],['current_owner',f.current_owner]] as const) {
+  const clause = categoryWhere(column,value,params,'none'); if(clause)where.push(clause);
+ }
+ if(f.q){params.push(f.q);where.push(`(coalesce(name,'') ilike '%'||$${params.length}||'%' or coalesce(phone,'') ilike '%'||$${params.length}||'%')`);}
+ if(f.city){params.push(f.city);where.push(`coalesce(city,'') ilike '%'||$${params.length}||'%'`);}
+ if(f.has_attempts)where.push(f.has_attempts==='yes'?'attempts>0':'attempts=0');
+ for(const key of ['connected','onboarded'] as const)if(f[key])where.push(`${key}=${f[key]==='yes'?'true':'false'}`);
+ if(f.wh_id)where.push(warehouseWhere('wh_id',f.wh_id,params));
+ return where.length ? 'where '+where.join(' and ') : '';
+}
+export function batchMembersExport(viewer:Viewer,batch:BatchRow,metric='all',filters:BatchMemberFilters={}):ExportQuery{
+ adminOnly(viewer);const {sql,params}=membersBase(batch),where=memberWhere(batch,metric,filters,params);
  return {sql:`select * from (${sql}) members ${where} order by member_id`,countSql:`select count(*)::text n from (${sql}) members ${where}`,params,countParams:params};
 }
-export async function batchMembers(viewer:Viewer,batch:BatchRow,metric='all',requested=1){
- const spec=batchMembersExport(viewer,batch,metric),base=membersBase(batch);
+export async function batchMembers(viewer:Viewer,batch:BatchRow,metric='all',requested=1,filters:BatchMemberFilters={}){
+ const spec=batchMembersExport(viewer,batch,metric,filters),base=membersBase(batch);
  const fields=(batch.kind==='ai'?AI_CARDS:MANUAL_CARDS).filter(c=>c[0]!=='all').map(([key])=>`count(*) filter(${metricWhere(batch,key)})::int ${key}`);
- const metrics=(await query(`select count(*)::int "all",coalesce(sum(attempts),0)::int attempts,${fields.join(',')} from (${base.sql}) members`,base.params)).rows[0] as Record<string,number>;
- const total=metrics[metric],pages=Math.max(1,Math.ceil(total/50)),page=Math.min(pages,Math.max(1,Math.floor(Number.isFinite(requested)?requested:1)));
+ // Progress describes the whole batch; filtering members must not imply completion.
+ const summary=(await query(`select count(*)::int "all",coalesce(sum(attempts),0)::int attempts,${fields.join(',')},
+  array_agg(distinct state) states,array_agg(distinct assignee) callers,array_agg(distinct current_owner) owners
+  from (${base.sql}) members`,base.params)).rows[0];
+ const {states,callers,owners,...counts}=summary;
+ const metrics=counts as Record<string,number>;
+ const total=Object.values(filters).some(value=>Array.isArray(value)?value.length:!!value)
+  ? Number((await query(spec.countSql,spec.countParams)).rows[0].n) : metrics[metric];
+ const pages=Math.max(1,Math.ceil(total/50)),page=Math.min(pages,Math.max(1,Math.floor(Number.isFinite(requested)?requested:1)));
  const rows=(await query<BatchMember>(`${spec.sql} limit 50 offset ${(page-1)*50}`,spec.params)).rows;
- return {rows,total,page,pages,metrics};
+ return {rows,total,page,pages,metrics,options:{states:(states||[]).filter(Boolean) as string[],callers:(callers||[]).filter(Boolean) as string[],owners:(owners||[]).filter(Boolean) as string[]}};
 }
