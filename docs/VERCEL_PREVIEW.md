@@ -5,6 +5,8 @@ The review branch is `codex/bolna-visual-overhaul` in
 existing `wareongo/ai-calling-wareongo` Vercel project. `main` is the production
 branch. The preview uses the existing live data with normal editing and calling.
 
+Stable URL: https://ai-calling-wareongo-git-codex-bolna-visual-overhaul-wareongo.vercel.app
+
 ## Build settings
 
 - Repository root: `.` (the repository itself is the Next.js app).
@@ -19,23 +21,24 @@ branch. The preview uses the existing live data with normal editing and calling.
 
 The existing project already assigns the database, Google OAuth, session,
 provider and worker variables to Preview and Production. Preserve those values.
-The `BOLNA_ENGLISH_AGENT_ID` setting also needs a Preview value; scope it to this
-branch when adding it. All credentials stay server-side and outside Git.
+The missing `BOLNA_ENGLISH_AGENT_ID` was added to Preview specifically for this
+branch. All credentials stay server-side and outside Git.
 
 Register the preview host's exact callback in the existing Google OAuth web
 client's **Authorized redirect URIs**:
 
 ```text
-https://<stable-preview-host>/api/auth/google/callback
+https://ai-calling-wareongo-git-codex-bolna-visual-overhaul-wareongo.vercel.app/api/auth/google/callback
 ```
 
 Use a stable branch URL or an alias when sharing the preview. The app derives its
 callback from the current host; `GOOGLE_REDIRECT_URI` is not read. Adding an env
 value with that name cannot replace registration in Google Cloud.
 
-Vercel's existing deployment protection also applies to Preview. Team members
-need access through Vercel or a deployment share link, followed by the app's
-normal Google sign-in and Team access checks.
+This branch URL has a Vercel deployment protection exception so teammates reach
+the app's normal Google sign-in without needing Vercel accounts. The app's Google
+sign-in and Team access checks still apply. Other deployment URLs retain the
+project's existing protection settings.
 
 `BOLNA_PREVIEW_DIST_DIR` belongs only to the local development launcher and must
 not be added to Vercel. The local preview remains on port 3000.
@@ -45,6 +48,10 @@ not be added to Vercel. The local preview remains on port 3000.
 Preview edits affect the shared live database. Keep the existing production
 webhook and worker URLs; another dashboard URL does not require repointing them.
 Builds do not run migrations or backfills.
+
+A read-only check confirmed that baseline and migrations 001–008 are present
+with matching checksums. The existing rollback's two disabled assignment triggers
+were left as configured; no database migration or policy change was applied.
 
 This branch retains the handoff backend used during the UI overhaul. `main` has
 separate rollback and shared-phone fixes. Keep the preview separate; a later
