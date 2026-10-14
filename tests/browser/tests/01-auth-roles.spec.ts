@@ -31,7 +31,7 @@ test.describe("auth and role boundaries", () => {
     await page.goto("/dashboard");
     const nav = page.locator(".topnav");
     await expect(nav.getByRole("link", { name: "My Work" })).toBeVisible();
-    await expect(nav.getByRole("link", { name: "Call Analytics" })).toBeVisible();
+    await expect(nav.getByRole("link", { name: "AI Calls" })).toBeVisible();
     await expect(nav.getByRole("link", { name: "Raw Dataset" })).toBeVisible();
     await expect(nav.getByRole("link", { name: "Team" })).toBeVisible();
   });
@@ -40,7 +40,7 @@ test.describe("auth and role boundaries", () => {
     await page.goto("/dashboard");
     const nav = page.locator(".topnav");
     await expect(nav.getByRole("link", { name: "My Work" })).toBeVisible();
-    await expect(nav.getByRole("link", { name: "Call Analytics" })).toHaveCount(0);
+    await expect(nav.getByRole("link", { name: "AI Calls" })).toHaveCount(0);
     await expect(nav.getByRole("link", { name: "Raw Dataset" })).toHaveCount(0);
     await expect(nav.getByRole("link", { name: "Team" })).toHaveCount(0);
   });

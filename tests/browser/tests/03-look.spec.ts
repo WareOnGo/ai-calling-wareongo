@@ -5,7 +5,7 @@ test.describe("look and feel @shot", () => {
     await page.goto("/dashboard");
     await expect(page.locator(".hub-card")).toHaveCount(6);
     await expect(page.locator(".hub-card h2")).toHaveText(
-      ["My Work", "Call Analytics", "Raw Dataset", "Assignments", "Batches", "Team"]);
+      ["My Work", "AI Calls", "Raw Dataset", "Assignments", "Batches", "Team"]);
     // cards must be a grid, not stacked divs
     expect(await css(page, ".hub-grid", "display")).toBe("grid");
     await shot(page, "01-hub-admin");

@@ -1,8 +1,8 @@
 /* Quiet workspace navigation and one place for account settings. */
-.header.app-header { display: flex; flex-wrap: nowrap; min-height: 60px; padding: 0 24px; gap: 24px; position: relative; z-index: 25; }
+.header.app-header { display: flex; flex-wrap: nowrap; min-height: 60px; padding: 0 var(--page-gutter); gap: var(--space-6); position: relative; z-index: 25; }
 .header.app-header .brand { flex: 1; min-width: 0; align-self: stretch; gap: 32px; }
 .header.app-header .logo { width: 30px; height: 30px; border-radius: 9px; color: var(--on-accent); background: var(--accent); box-shadow: none; }
-.header.app-header h1 { font-size: 1.125rem; letter-spacing: -.025em; font-weight: 600; }
+.header.app-header .brand-name { font-size: 1.125rem; letter-spacing: -.025em; font-weight: 600; }
 .header.app-header .topnav { display: flex; align-self: stretch; align-items: stretch; gap: 4px; margin: 0; min-width: 0; overflow-x: auto; }
 .header.app-header .topnav a { display: inline-flex; align-items: center; padding: 0 12px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; box-shadow: none; color: var(--muted); background: transparent; font-size: var(--text-support); }
 .header.app-header .topnav a:hover { text-decoration: none; color: var(--heading); }
@@ -26,21 +26,24 @@
 .account-panel .view-mode button { flex: 1; min-height: 34px; }
 .account-panel > .btn { width: 100%; text-align: left; justify-content: flex-start; border: 0; border-top: 1px solid var(--border); border-radius: 0; background: transparent; }
 /* Group the page context, search, display preferences and work actions. */
-.records-header { display: flex; align-items: center; justify-content: space-between; gap: 16px 32px; flex: none; padding: 12px 24px; background: var(--surface); }
+.records-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4) var(--space-8); flex: none; min-height: 64px; padding: var(--space-3) var(--page-gutter); background: var(--surface); }
 .records-heading { min-width: 0; display: grid; gap: 8px; }
+.records-heading:has(> .wallet-balance, > .report-context) { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3) var(--space-6); }
 .records-heading-top { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 24px; }
 .page-title { font-size: var(--text-title); font-weight: 600; padding: 16px 24px 12px; }
 .records-header .page-title { padding: 0; margin: 0; }
+.records-heading-top > .title-sub { margin: 0; font-size: var(--text-support); font-weight: 400; color: var(--muted); }
 .records-header-actions { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; justify-content: flex-end; }
 .records-header-actions > .btn-row { border: 0; padding: 6px 0; font-size: var(--text-support); }
 .records-header-actions .freshness { gap: 10px; }
+.report-context { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--space-1) var(--space-4); min-width: 0; font-size: var(--text-support); }
+.report-review { display: inline-flex; align-items: center; min-height: var(--control-compact); }
+.report-guide { color: var(--muted); min-width: 0; }
+.report-guide > summary { cursor: pointer; padding-block: var(--space-1); min-height: var(--control-compact); }
+.report-guide[open] { flex-basis: 100%; }
+.report-guide > p { max-width: 64ch; margin: var(--space-2) 0 0; line-height: 1.6; }
 .freshness .btn-row { border-color: transparent; border-radius: var(--radius-input); font-size: var(--text-support); }
-.records-header .wallet-balance.wallet-compact { padding: 0; border: 0; font-size: var(--text-support); gap: 8px 16px; }
-.records-header .wallet-balance.wallet-compact > button { padding: 0; }
-.records-header .wallet-readout { color: var(--muted); }
-.records-header .wallet-readout strong { font-weight: 400; }
-.records-header .wallet-expanded { padding-top: 8px; }
-.records-toolbar { padding: 12px 20px; gap: 12px 20px; border-top: 1px solid var(--border); }
+.records-toolbar { padding: var(--space-3) var(--page-gutter); gap: var(--space-3) var(--space-4); border-top: 1px solid var(--border); }
 .toolbar-search, .toolbar-view, .toolbar-actions { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .toolbar-search { flex: 1; }
 .toolbar-search .search { flex: 1; max-width: 340px; min-width: 160px; }
@@ -53,7 +56,7 @@
 .toolbar-actions > .btn-dispatch:not(:disabled) { background: var(--primary); color: var(--primary-text); border-color: var(--primary-edge); }
 
 /* One centered navigation group, with the result count kept secondary. */
-.records-pagination { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px 16px; padding: 10px 20px; }
+.records-pagination { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: var(--space-2) var(--space-4); padding: var(--space-2) var(--page-gutter); }
 .pagination-count { color: var(--muted); font-size: var(--text-support); font-variant-numeric: tabular-nums; }
 .pagination-controls { grid-column: 2; display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 0; }
 .pagination-button { display: inline-flex; align-items: center; justify-content: center; min-width: 36px; min-height: 36px; padding: 6px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-input); background: var(--surface); color: var(--text); font: inherit; font-size: var(--text-support); text-decoration: none; }
@@ -67,7 +70,7 @@
 .records-pagination .page-jump button:disabled { color: var(--muted); opacity: .55; }
 .records-pagination .page-jump [role="alert"] { position: absolute; bottom: calc(100% + 12px); left: 50%; transform: translateX(-50%); width: 260px; max-width: calc(100vw - 32px); padding: 12px; border: 1px solid var(--danger); border-radius: var(--radius-input); background: var(--surface); box-shadow: 0 8px 24px rgb(0 0 0 / 12%); }
 @media (max-width: 1100px) {
-  .header.app-header { gap: 16px; padding-inline: 16px; }
+  .header.app-header { gap: 16px; }
   .header.app-header .brand { gap: 16px; }
   .header.app-header .topnav a { padding-inline: 9px; }
   .account-caption { display: none; }
@@ -79,22 +82,22 @@
   .header.app-header { min-height: 0; padding: 8px 16px 48px; gap: 8px; }
   .header.app-header .brand { flex: 1; align-self: center; }
   .header.app-header .user { display: flex; margin: 0; gap: 6px; }
-  .header.app-header h1 { font-size: 1.0625rem; }
+  .header.app-header .brand-name { font-size: 1.0625rem; }
   .header.app-header .topnav { position: absolute; inset: auto 8px 0; height: 40px; overflow-x: auto; padding: 0; border: 0; gap: 8px; }
   .header.app-header .topnav a { padding: 0 8px; font-size: var(--text-support); }
   .header.app-header .theme-toggle { margin: 0; }
   .header.app-header .account-menu > summary { padding: 4px; gap: 6px; }
   .page-title { padding: 16px; }
-  .records-header { padding: 16px; flex-wrap: wrap; gap: 12px; }
+  .records-header { padding: var(--space-3) var(--page-gutter); flex-wrap: wrap; gap: var(--space-2); }
+  .records-heading:has(> .wallet-balance, > .report-context) { gap: var(--space-2) var(--space-4); }
+  .records-heading > .report-context { flex-basis: 100%; }
   .records-heading { width: 100%; }
   .records-header-actions { width: 100%; justify-content: space-between; gap: 12px; }
   .records-header-actions .freshness { flex-basis: auto; }
-  .records-header .wallet-balance.wallet-compact { grid-template-columns: minmax(0, 1fr) auto; }
-  .records-header .wallet-meta { font-size: var(--text-caption); }
-  .records-toolbar { padding: 12px 16px; gap: 12px; }
-  .records-toolbar .toolbar-search { flex-basis: 100%; flex-wrap: wrap; }
-  .toolbar-search .search { flex-basis: 100%; max-width: none; }
-  .records-toolbar .toolbar-view { border: 0; padding: 0; margin-left: 0; }
+  .records-toolbar { padding: var(--space-3) var(--page-gutter); gap: var(--space-2); }
+  .records-toolbar .toolbar-search { display: contents; }
+  .records-toolbar .search { flex-basis: 100%; max-width: none; }
+  .records-toolbar .toolbar-view { border: 0; padding: 0; margin-left: auto; }
   .records-toolbar .toolbar-actions { flex-basis: auto; flex-wrap: wrap; margin-left: auto; gap: 6px; }
   .records-pagination { grid-template-columns: minmax(0, 1fr); padding: 8px 12px; gap: 6px; }
   .pagination-count { text-align: center; }

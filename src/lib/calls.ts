@@ -1,4 +1,5 @@
 import type { VerificationFilters } from "./scope";
+import { aiAttemptsExistSql, aiAttemptSummarySql, type AiAttemptSummary } from "./ai-summary";
 import {matchesCallSearch,rawSearch,matchesSearch} from "./search";
 import {cityWhere} from "./filter-values";
 import { categoryWhere,filterValues,type FilterValue } from "./filter-values";
@@ -11,6 +12,7 @@ import { INFERENCE_VERSION } from "@/lib/openai";
 import { assignmentScope, currentAssignmentLateral, ownershipFilter,verificationFilters, type Viewer } from "@/lib/scope";
 
 export type CallRow = {
+  ai_summary: AiAttemptSummary;
   revision: number;
   id: string;
   agent_id: string | null;
@@ -97,7 +99,7 @@ export type CallFilters = VerificationFilters & {
   date_from?: string;     // YYYY-MM-DD (inclusive)
   date_to?: string;       // YYYY-MM-DD (inclusive)
   needs_review?: boolean;
-  has_recording?: "yes" | "no"; has_transcript?: "yes" | "no";
+  has_recording?: "yes" | "no"; has_transcript?: "yes" | "no"; has_ai_calls?: "yes" | "no"; has_listing?: "yes" | "no"; warehouse_type?:FilterValue;
   city?:string;min_area?:number;max_area?:number;area_basis?:"source"|"built_up"|"carpet";
   manual_outcome?:FilterValue;rent_mentioned?:"yes"|"no";onboarded?:"yes"|"no";
   assignment_state?: string;
@@ -133,8 +135,9 @@ const SELECT_LIST = `(select revision from bolna_call_logs c where c.id = bolna_
        raw_match_count, raw_source, raw_owner_name, raw_warehouse_type,
        raw_city, raw_state, raw_area_sqft, raw_contact_type, raw_sources,
        (select string_agg(distinct r.city,', ' order by r.city) from raw_phone_numbers p join raw_phones rp using(phone_id) join raw_records r on r.id=rp.master_id where p.phone_last10=bolna_call_analysis.phone_last10 and nullif(trim(r.city),'') is not null) as source_cities,
-       (select count(*)::int from bolna_ai_attempts ai where ai.execution_id=bolna_call_analysis.id) as ai_attempt_count,
-       (select count(*)::int from bolna_ai_attempts ai where ai.execution_id=bolna_call_analysis.id and ai.confirmed_conversation) as ai_conversation_count, raw_matches`;
+       ai.total as ai_attempt_count, ai.conversations as ai_conversation_count, row_to_json(ai) as ai_summary, raw_matches`;
+
+const AI_SUMMARY_JOIN = `left join lateral (${aiAttemptSummarySql("call", "bolna_call_analysis.id")}) ai on true`;
 
 // Build the WHERE clause + params shared by the paged list, the CSV export and the
 // id resolver. `viewer` is FIRST and required so a new call site can't forget the
@@ -166,7 +169,7 @@ function buildFilter(viewer: Viewer, f: CallFilters): { whereSql: string; params
 
   for(const [column,value] of [["availability",f.availability],["agent_id::text",f.agent_id],["status",f.status],["call_type",f.call_type]] as const){const clause=categoryWhere(column,value,params,column==='availability'?'none':undefined);if(clause)where.push(clause);}
   const listing:string[]=[];
-  for(const [column,value] of [["r.source",f.source],["r.state",f.state]] as const){const clause=categoryWhere(column,value,params);if(clause)listing.push(clause);}
+  for(const [column,value] of [["r.source",f.source],["r.state",f.state],["r.warehouse_type",f.warehouse_type]] as const){const clause=categoryWhere(column,value,params);if(clause)listing.push(clause);}
   if(f.city)listing.push(cityWhere("r.city",f.city,params));
   const contacts=filterValues(f.contact),contactChoices:string[]=[];
   if(contacts.includes('broker'))contactChoices.push("r.contact_type='probable broker'");
@@ -175,6 +178,8 @@ function buildFilter(viewer: Viewer, f: CallFilters): { whereSql: string; params
   const measure=f.area_basis==='built_up'?'bolna_numeric_measure(built_up_area_sqft)':f.area_basis==='carpet'?'bolna_numeric_measure(carpet_area_sqft)':'r.area_sqft';
   for(const [value,op] of [[f.min_area,">="],[f.max_area,"<="]] as const)if(value!=null){params.push(value);(measure==='r.area_sqft'?listing:where).push(`${measure} ${op} $${params.length}`);}
   if(listing.length)where.push(`exists(select 1 from raw_phone_numbers p join raw_phones rp using(phone_id) join raw_records r on r.id=rp.master_id where p.phone_last10=bolna_call_analysis.phone_last10 and ${listing.join(' and ')})`);
+  if(f.has_listing)where.push(`${f.has_listing==='no'?'not ':''}exists(select 1 from raw_phone_numbers p join raw_phones rp using(phone_id) where p.phone_last10=bolna_call_analysis.phone_last10)`);
+  if(f.has_ai_calls)where.push(`${f.has_ai_calls==='no'?'not ':''}${aiAttemptsExistSql('call','bolna_call_analysis.id')}`);
   if(f.rent_mentioned)where.push(`${f.rent_mentioned==='no'?'not ':''}bolna_rent_mentioned(expected_rent)`);
   where.push(...verificationFilters('call','bolna_call_analysis.id',viewer,f,params));
   if (f.date_from) { params.push(f.date_from); where.push(`call_created_at >= ($${params.length}::date::timestamp at time zone 'Asia/Kolkata')`); }
@@ -195,7 +200,7 @@ export async function getCallDetailsByIds(viewer: Viewer, ids: string[]): Promis
   if (ids.length > 1000) throw new ApiError(400, "Too many detail IDs; use the export endpoint");
   const { whereSql, params } = buildFilter(viewer, { ids,include_blocked:true });
   const res = await query<CallRow>(
-    `select ${SELECT_LIST} from bolna_call_analysis ${currentAssignmentLateral("call", "bolna_call_analysis.id", viewer, params)} ${whereSql}
+    `select ${SELECT_LIST} from bolna_call_analysis ${AI_SUMMARY_JOIN} ${currentAssignmentLateral("call", "bolna_call_analysis.id", viewer, params)} ${whereSql}
        order by call_created_at desc nulls last, id`,
     params,
   );
@@ -204,10 +209,16 @@ export async function getCallDetailsByIds(viewer: Viewer, ids: string[]): Promis
 
 // Just the ids matching the filters — the "assign everything that matches" path.
 // Same builder, so the set is exactly what the grid shows.
+// The reporting view also resolves display assignments/listings. Counts and ID
+// selection must not do those lateral lookups for every matching execution.
+const FILTER_SOURCE = `(select id, agent_id, batch_id, status, call_type, phone_last10,
+  call_created_at, built_up_area_sqft, carpet_area_sqft, expected_rent, needs_review,
+  recording_url, transcript, bolna_availability(status,llm_availability) as availability
+  from bolna_call_logs) bolna_call_analysis`;
 export async function getCallIds(viewer: Viewer, f: CallFilters, cap: number): Promise<{ ids: string[]; capped: boolean }> {
   const { whereSql, params } = buildFilter(viewer, f);
   const res = await query<{ id: string }>(
-    `select id from bolna_call_analysis ${whereSql}
+    `select id from ${FILTER_SOURCE} ${whereSql}
        order by call_created_at desc nulls last, id limit ${cap + 1}`,
     params,
   );
@@ -223,7 +234,7 @@ export async function getCalls(viewer: Viewer, f: CallFilters) {
   // Evaluate expensive fuzzy/property filters once for both the count and page.
   // Materialize only IDs/timestamps; full transcripts and property JSON stay out.
   const countRes = await query<{ n: string; ids: string[] }>(
-    `with matching as materialized (select id,call_created_at from bolna_call_analysis ${whereSql}),
+    `with matching as materialized (select id,call_created_at from ${FILTER_SOURCE} ${whereSql}),
       totals as (select count(*) n from matching)
      select n::text, array(select id from matching order by call_created_at desc nulls last,id
        limit ${pageSize} offset least(${requestedPage - 1},greatest(ceil(n::numeric/${pageSize})-1,0))*${pageSize}) ids
@@ -237,7 +248,7 @@ export async function getCalls(viewer: Viewer, f: CallFilters) {
   const detailScope = assignmentScope(viewer,"call","bolna_call_analysis.id",detailParams);
   const rowsRes = await query<CallRow>(
     `select ${SELECT_LIST.replace('notes, transcript, recording_url', 'left(notes,240) as notes, left(transcript,240) as transcript, recording_url').replace(/raw_matches$/, 'null::jsonb as raw_matches')}
-       from bolna_call_analysis ${currentAssignmentLateral("call", "bolna_call_analysis.id", viewer, detailParams)}
+       from bolna_call_analysis ${AI_SUMMARY_JOIN} ${currentAssignmentLateral("call", "bolna_call_analysis.id", viewer, detailParams)}
        where id=any($1::uuid[])${detailScope ? ` and ${detailScope}` : ''}
        order by call_created_at desc nulls last, id`,
     detailParams,
@@ -248,28 +259,25 @@ export async function getCalls(viewer: Viewer, f: CallFilters) {
 
 // Filter dropdowns change rarely but the source/state options materialize the
 // view — cache for 10 min to cut repeated heavy queries (egress + compute).
-export const getFilterOptions = unstable_cache(_getFilterOptions, ["call-filter-options"], { revalidate: 600 });
+export const getFilterOptions = unstable_cache(_getFilterOptions, ["call-filter-options-v2"], { revalidate: 600 });
 
 async function _getFilterOptions() {
-  const agents = await query<{ agent_id: string }>(
-    `select distinct agent_id from bolna_call_logs where agent_id is not null order by agent_id`,
-  );
-  const statuses = await query<{ status: string }>(
-    `select distinct status from bolna_call_logs where status is not null order by status`,
-  );
-  // Sources / states come from the matched raw dataset (only ones that actually link to a call).
-  const sources = await query<{ raw_source: string }>(
-    `select distinct raw_source from bolna_call_analysis where raw_source is not null order by raw_source`,
-  );
-  const states = await query<{ raw_state: string }>(
-    `select distinct raw_state from bolna_call_analysis where raw_state is not null and raw_state <> '' order by raw_state`,
-  );
+  // Include every linked listing, not just the representative match on the view.
+  const listings = (await query<{agents:string[];statuses:string[];sources:string[];states:string[];types:string[]}>(`
+    select array(select distinct agent_id from bolna_call_logs where agent_id is not null order by agent_id) agents,
+      array(select distinct status from bolna_call_logs where status is not null order by status) statuses,
+      array_agg(distinct r.source order by r.source) filter(where nullif(trim(r.source),'') is not null) sources,
+      array_agg(distinct r.state order by r.state) filter(where nullif(trim(r.state),'') is not null) states,
+      array_agg(distinct r.warehouse_type order by r.warehouse_type) filter(where nullif(trim(r.warehouse_type),'') is not null) types
+    from raw_records r where exists(select 1 from raw_phones rp join raw_phone_numbers p using(phone_id)
+      join bolna_call_logs c using(phone_last10) where rp.master_id=r.id)`)).rows[0];
   return {
-    agents: [...new Set([...Object.values(getDispatchAgents()).map(agent => agent.id), ...agents.rows.map((r) => r.agent_id)])],
-    statuses: statuses.rows.map((r) => r.status),
-    sources: sources.rows.map((r) => r.raw_source),
-    states: states.rows.map((r) => r.raw_state),
-    availabilities: ["Available", "Unavailable", "Unclear"],
+    agents: [...new Set([...Object.values(getDispatchAgents()).map(agent => agent.id), ...listings.agents])],
+    statuses: listings.statuses,
+    sources: listings.sources || [],
+    states: listings.states || [],
+    warehouseTypes: listings.types || [],
+    availabilities: ["Available", "Unavailable", "Unclear", "dead number - do not call"],
   };
 }
 
@@ -277,12 +285,12 @@ export function callsExportQuery(viewer: Viewer, f: CallFilters): import("./expo
   const { whereSql, params } = buildFilter(viewer, f);
   const countParams = [...params];
   const join = currentAssignmentLateral("call", "bolna_call_analysis.id", viewer, params);
-  return { sql: `select ${SELECT_LIST.replace(/raw_matches$/, "null::jsonb as raw_matches")} from bolna_call_analysis ${join} ${whereSql} order by call_created_at desc nulls last, id`,
-    countSql: `select count(*)::text n from bolna_call_analysis ${whereSql}`, params, countParams };
+  return { sql: `select ${SELECT_LIST.replace(/raw_matches$/, "null::jsonb as raw_matches")} from bolna_call_analysis ${AI_SUMMARY_JOIN} ${join} ${whereSql} order by call_created_at desc nulls last, id`,
+    countSql: `select count(*)::text n from ${FILTER_SOURCE} ${whereSql}`, params, countParams };
 }
 
 
 export async function countCalls(viewer:Viewer,filters:CallFilters){
   const {whereSql,params}=buildFilter(viewer,filters);
-  return Number((await query<{n:string}>(`select count(*)::text n from bolna_call_analysis ${whereSql}`,params)).rows[0].n);
+  return Number((await query<{n:string}>(`select count(*)::text n from ${FILTER_SOURCE} ${whereSql}`,params)).rows[0].n);
 }

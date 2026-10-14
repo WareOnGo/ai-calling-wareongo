@@ -6,6 +6,12 @@ import Link from "next/link";
 import { useDashboardUI } from "../DashboardUI";
 import { requestJson } from "../requests";
 import { IconPlus, IconCheck, IconUsers, IconLock } from "../icons";
+import { countFilters, firstValue, type SearchValues } from "@/lib/filter-values";
+import { FilterForm } from "../FilterForm";
+import { FilterPanel } from "../FilterPanel";
+import { FiltersToggle } from "../FiltersToggle";
+import { ApplyButton } from "../ApplyButton";
+import { SelectFilter } from "../FilterFields";
 
 export type Person = {
   email: string;
@@ -28,9 +34,8 @@ export function TeamEditor({
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [role, setRole] = useState("employee");
-  const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState("");
-  const [accessFilter, setAccessFilter] = useState("");
+  const [filters, setFilters] = useState<SearchValues>({});
+  const search = firstValue(filters.q) || "", roleFilter = firstValue(filters.role), accessFilter = firstValue(filters.access);
   const filtered = !!(search.trim() || roleFilter || accessFilter);
 
   async function save(body: Record<string, unknown>, key: string) {
@@ -124,13 +129,15 @@ export function TeamEditor({
 
       {!open && feedback?.key === "new" && status("new")}
 
-      <div className="team-directory-tools">
-        <label className="team-member-search"><span className="sr-only">Search team members</span><input type="search" placeholder="Search by name or email…" value={search} onChange={event => setSearch(event.target.value)}/></label>
-        <label className="directory-filter"><span>Role</span><select aria-label="Filter by role" value={roleFilter} onChange={event => setRoleFilter(event.target.value)}><option value="">All roles</option><option value="admin">Admins</option><option value="employee">Employees</option></select></label>
-        <label className="directory-filter"><span>Access</span><select aria-label="Filter by access" value={accessFilter} onChange={event => setAccessFilter(event.target.value)}><option value="">All members</option><option value="active">Can sign in</option><option value="removed">Access removed</option></select></label>
-        <span role="status">{filtered ? `${matching.length} of ${people.length} members` : `${people.filter(person => person.active).length} with access · ${people.length} members`}</span>
-        {filtered && <button type="button" className="btn-text" onClick={() => { setSearch(""); setRoleFilter(""); setAccessFilter(""); }}>Clear filters</button>}
-      </div>
+      <FilterForm key={JSON.stringify(filters)} action="/dashboard/team/access" applied={filters} onApply={setFilters} savedViews={false} className="team-directory-tools" labels={{q:"Search",role:"Role",access:"Access"}} formatValue={(key,value)=>key==='role'?(value==='admin'?'Admins':'Employees'):key==='access'?(value==='active'?'Can sign in':'Access removed'):value}
+        actions={<span role="status">{filtered ? `${matching.length} of ${people.length} members` : `${people.filter(person => person.active).length} with access · ${people.length} members`}</span>}>
+        <div className="search"><input name="q" aria-label="Search team members" type="search" placeholder="Search by name or email…" defaultValue={search}/></div>
+        <FiltersToggle count={countFilters(filters,["role","access"])}/><ApplyButton/>
+        <FilterPanel groups={[{label:"Access",content:<>
+          <SelectFilter name="role" label="Role" ariaLabel="Filter by role" applied={filters} any="All roles" options={[{value:"admin",label:"Admins"},{value:"employee",label:"Employees"}]}/>
+          <SelectFilter name="access" label="Access" ariaLabel="Filter by access" applied={filters} any="All members" options={[{value:"active",label:"Can sign in"},{value:"removed",label:"Access removed"}]}/>
+        </>}]}/>
+      </FilterForm>
       {!matching.length && filtered && <p className="team-no-matches">No members match these filters. Try another name, role or access status.</p>}
       {groups.filter(group => !filtered || group.rows.length).map((g) => (
         <section key={g.key} className="people-group">

@@ -7,7 +7,7 @@ const seedAttempts=()=>sql(`insert into bolna_manual_attempts(id,assignment_id,a
  (gen_random_uuid(),1,'priya@eval.test','priya@eval.test','2026-08-02T01:00:00Z','connected',30,'fixture'),
  (gen_random_uuid(),1,'priya@eval.test','priya@eval.test','2026-08-02T02:00:00Z','no_answer',null,'fixture');`);
 test('team date range reconciles rates, duration coverage, drill-downs and CSV',async({adminPage:page,shot})=>{
- seedAttempts();await page.goto('/dashboard/team');await page.getByLabel('Report from').and(page.locator(':visible')).fill('2026-08-02');await page.getByLabel('Report to').and(page.locator(':visible')).fill('2026-08-02');await page.getByRole('button',{name:'Apply dates'}).click();
+ seedAttempts();await page.goto('/dashboard/team');await page.getByRole('button',{name:'Toggle filters'}).click();await page.getByRole('tab',{name:'Dates',exact:true}).click();await page.getByLabel('Report from').fill('2026-08-02');await page.getByLabel('Report to').fill('2026-08-02');await page.getByRole('button',{name:'Apply',exact:true}).click();
  await expect(page).toHaveURL(/date_from=2026-08-02/);
  const row=page.getByLabel('Team metrics table').and(page.locator(':visible')).locator('tbody tr').filter({hasText:'priya@eval.test'});await expect(row).toContainText('50%');await expect(row).toContainText('30.0s');
  await row.getByRole('link',{name:'Recorded attempts for priya@eval.test: 2',exact:true}).first().click();await expect(page).toHaveURL(/metric=attempts/);
@@ -32,7 +32,7 @@ test('team presets, empty evidence, pagination and invalid ranges are explicit',
  sql("insert into bolna_manual_attempts(id,assignment_id,actor,assignee,occurred_at,disposition,request_hash) select gen_random_uuid(),1,'priya@eval.test','priya@eval.test','2026-08-02T01:00:00Z'::timestamptz+i*interval '1 second','connected','fixture' from generate_series(1,53) i");
  await page.goto('/dashboard/team?date_from=2026-08-02&date_to=2026-08-02&metric=attempts&caller=priya%40eval.test');await expect(page.getByLabel('Metric evidence table').and(page.locator(':visible')).locator('tbody tr')).toHaveCount(50);
  await page.getByLabel('Go to page',{exact:true}).fill('2');await page.getByRole('button',{name:'Go',exact:true}).click();await expect(page.getByLabel('Metric evidence table').and(page.locator(':visible')).locator('tbody tr')).toHaveCount(3);
- await page.getByRole('link',{name:'Today',exact:true}).click();await expect(page.getByLabel('Metric evidence table')).toHaveCount(0);await expect(page.getByText('Historical call counts are unknown',{exact:false})).toBeVisible();
+ await page.locator('.team-report-filters').getByRole('button',{name:'Toggle filters'}).click();await page.getByRole('tab',{name:'Dates',exact:true}).click();await page.getByRole('button',{name:'Today',exact:true}).click();await page.getByRole('dialog',{name:'Filters',exact:true}).getByRole('button',{name:'Apply',exact:true}).click();await expect(page.getByLabel('Metric evidence table')).toHaveCount(0);await expect(page.getByText('Historical call counts are unknown',{exact:false})).toBeVisible();
  await page.goto('/dashboard/team?date_from=2026-08-03&date_to=2026-08-02');await expect(page.locator('.dashboard-content [role=alert]')).toContainText('Start date cannot follow end date');
  expect((await page.request.get('/api/team/export?date_from=2026-02-30')).status()).toBe(400);
 });

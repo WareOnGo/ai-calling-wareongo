@@ -1,23 +1,24 @@
 import { assignmentFiltersSchema } from "@/lib/filters";
 import {dispositionLabel} from "@/lib/manual-dispositions";
-import { countFilters, firstValue, filterValues, searchQuery, type SearchValues } from "@/lib/filter-values";
+import { countFilters, firstValue, filterValues } from "@/lib/filter-values";
 import { RecordsPagination } from "../RecordsPagination";
-import { AssignmentNotices } from "../GridNotices";
+import { RecordsHeader } from "../RecordsHeader";
 import { SelectionProvider } from "../Selection";
 import { ASSIGNMENT_COLUMNS as COLUMNS } from "../sheet-columns";
-import { dateTime as fmt } from "@/lib/display";
+import { dateTime as fmt, shortDate } from "@/lib/display";
 import { Freshness } from "../DashboardUI";
-import { RecordDetails } from "../RecordDetails";
+import { AiAttemptCard } from "../AiAttemptCard";
 import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
 import { listAssignments, assignmentTotals, HISTORY_PAGE_SIZE, type AssignmentHistoryRow } from "@/lib/assignments";
 import { listUsers } from "@/lib/users";
-import { AssignmentColumns, AssignmentHeaders, AssignmentStats } from "./AssignmentStructure";
+import { AssignmentColumns, AssignmentHeaders, AssignmentStats, AssignmentSummary } from "./AssignmentStructure";
 import { AssignmentFilters, ASSIGNMENT_FILTER_KEYS } from "./AssignmentFilters";
 import { AssignmentNotes } from "./AssignmentNotes";
+import { AssigneeCard } from "./AssigneeCard";
 import { ReopenAssignment } from "../ReopenAssignment";
 import { UnassignButton } from "../UnassignButton";
-import { CopyText } from "../CopyText";
+import { ContactCard } from "../ContactCard";
 import { IconClipboard } from "../icons";
 import { ResultBadge } from "../ResultBadge";
 
@@ -53,9 +54,6 @@ function resultCell(r: AssignmentHistoryRow) {
   );
 }
 
-type SP=SearchValues;
-function qs(base:SP,override:SP){return `?${searchQuery({...base,...override})}`;}
-
 export default async function Assignments({
   searchParams,
 }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -78,13 +76,11 @@ export default async function Assignments({
 
   return (
     <SelectionProvider total={total}>
-      <div className="page-title">
-        <span className="pt-icon"><IconClipboard size={18} /></span> Assignments <Freshness updatedAt={new Date().toISOString()} />
-      </div>
+      <RecordsHeader title="Assignments" icon={<IconClipboard size={18}/>} actions={<Freshness updatedAt={new Date().toISOString()}/>}/>
 
       <AssignmentStats applied={sp} totals={totals} assignee={sp.assignee} person={filterValues(sp.assignee).map(email=>assignees.find(p=>p.email===email)?.name||email).join(", ") || undefined} state={sp.state} />
-      <AssignmentFilters applied={sp} assignees={assignees} /><AssignmentNotices />
-      <div className="assignment-summary"><span>{total.toLocaleString()} {total === 1 ? "assignment" : "assignments"}{activeFilters || sp.q ? " matching filters" : ""}</span><span>{filters.sort === "oldest" ? "Oldest first" : filters.sort === "name" ? "Name A–Z" : "Newest first"}</span></div>
+      <AssignmentFilters applied={sp} assignees={assignees} />
+      <AssignmentSummary sort={filters.sort}>{total.toLocaleString()} {total === 1 ? "assignment" : "assignments"}{activeFilters || sp.q ? " matching filters" : ""}</AssignmentSummary>
 
       <div className="gridwrap">
         <table className="sheet log-sheet assignment-sheet">
@@ -95,33 +91,32 @@ export default async function Assignments({
                 <td className="rownum"></td>
                 <td colSpan={COLUMNS.length} className="muted" style={{ textAlign: "center", padding: 28 }}>
                   {total === 0 && activeFilters === 0 && !sp.q
-                    ? "Nothing assigned yet. Use Assign on Raw Dataset or Call Analytics."
+                    ? "Nothing assigned yet. Use Assign on Raw Dataset or AI Calls."
                     : "No assignments match these filters."}
-                  <div className="empty-actions">{total === 0 && activeFilters === 0 && !sp.q ? <><Link href="/dashboard/raw">Open Raw Dataset</Link><Link href="/dashboard/calls">Open Call Analytics</Link></> : <Link href="/dashboard/assignments">Clear filters</Link>}</div>
+                  <div className="empty-actions">{total === 0 && activeFilters === 0 && !sp.q ? <><Link href="/dashboard/raw">Open Raw Dataset</Link><Link href="/dashboard/calls">Open AI Calls</Link></> : <Link href="/dashboard/assignments">Clear filters</Link>}</div>
                 </td>
               </tr>
             )}
             {rows.map((r, i) => (
               <tr key={r.id} className={r.state === "dropped" ? "row-muted" : undefined}>
                 <td className="rownum">{startRow + i + 1}</td>
-                <td className="assignment-subject identity-owner">{r.subject ?? <span className="muted">—</span>} <RecordDetails id={r.entity_id} entity={r.entity_type} /></td>
-                <td><CopyText value={r.phone} label="phone number" /></td>
+                <td className="assignment-subject identity-owner"><ContactCard name={r.subject} phone={r.phone} details={{id: r.entity_id, entity: r.entity_type}} /></td>
                 <td>{r.city ?? <span className="muted">—</span>}</td>
                 <td><span className={`pill pill-${r.entity_type}`}>{r.entity_type === "record" ? "manual" : "AI call"}</span></td>
-                <td className="assignment-person" title={r.assignee}>
-                  <Link className="assignee-name" href={qs(sp, { assignee: r.assignee, page: undefined })} title={`Show assignments for ${r.assignee_name || r.assignee}`}>{r.assignee_name || r.assignee}</Link>
-                  {r.assignee_name && <span className="assignee-email">{r.assignee}</span>}
+                <td className="assignment-person">
+                  <AssigneeCard id={r.id} name={r.assignee_name} email={r.assignee} assignedBy={r.assigned_by} assignedByName={r.assigned_by_name} assignedAt={r.assigned_at}/>
                 </td>
                 <td title={`${fmt(r.assigned_at)} · Assigned by ${r.assigned_by}`} className="assignment-date nowrap">{ago(r.assigned_at)}</td>
-                <td><span className={`pill pill-${r.state}`}>{r.state === "dropped" ? "unassigned" : r.state}</span></td>
+                <td><span className={`pill pill-${r.state}`}>{r.state === "dropped" ? "unassigned" : r.state}</span>{r.state === "done" && <span className="record-meta assignment-completed">{r.completed_at ? <time dateTime={r.completed_at} title={`Completed ${fmt(r.completed_at)}`}>{shortDate(r.completed_at)}</time> : "Date not recorded"}</span>}</td>
                 <td className="assignment-brief">{r.note || <span className="muted">—</span>}</td>
                 <td title={r.entity_type === "record" ? "AI context from a shared phone; may describe another property" : "AI result for this execution"}><ResultBadge value={r.ai_availability} empty="No AI result"/>{r.entity_type === "record" && r.ai_availability && <small className="record-meta">contact context</small>}</td>
+                <td className="record-history"><AiAttemptCard entity={r.entity_type} id={r.entity_id} summary={r.ai_summary}/></td>
                 <td>{resultCell(r)}<span className="record-meta">{dispositionLabel(r.disposition)}{r.closure_reason==='exhausted'&&' · Exhausted'}{r.next_due_at&&<><br/>Due {fmt(r.next_due_at)}</>}</span></td>
                 <td className="assignment-note-cell"><AssignmentNotes text={r.remarks} /></td>
                 <td>{r.added_to_db ? <span className="pill pill-available">yes</span> : <span className="muted">no</span>}</td>
                 <td>{r.wh_id ?? <span className="muted">—</span>}</td>
                 <td className="actions">
-                  {r.state === "done" && <ReopenAssignment id={r.id} revision={r.revision}/>}<RecordDetails id={r.entity_id} entity={r.entity_type} label="History"/>
+                  {r.state === "done" && <ReopenAssignment id={r.id} revision={r.revision}/>}
                   {r.state === "open" && <UnassignButton id={r.id} who={r.assignee_name || r.assignee} />}
                 </td>
               </tr>

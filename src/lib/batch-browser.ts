@@ -6,7 +6,7 @@ import {TERMINAL_STATUSES} from './bolna';
 import type {Viewer} from './scope';
 import {contactTargets} from './scope';
 import type {ExportQuery} from './export';
-export const batchListSchema=z.object({kind:z.enum(['ai','manual']).default('ai'),q:z.string().trim().max(1000).optional(),language:z.enum(['english','hindi']).optional(),date_from:z.string().date().optional(),date_to:z.string().date().optional(),caller:z.string().max(1000).optional(),agent:z.string().max(1000).optional(),origin:z.enum(['record','call']).optional(),state:z.union([z.string().max(100),z.array(z.string().max(100)).max(30)]).optional(),dispatch:z.string().uuid().optional()}).refine(f=>!f.date_from||!f.date_to||f.date_from<=f.date_to,'Start date cannot follow end date');
+export const batchListSchema=z.object({kind:z.enum(['ai','manual']).default('ai'),created_by:z.string().trim().max(1000).optional(),q:z.string().trim().max(1000).optional(),language:z.enum(['english','hindi']).optional(),date_from:z.string().date().optional(),date_to:z.string().date().optional(),caller:z.string().max(1000).optional(),agent:z.string().max(1000).optional(),origin:z.enum(['record','call']).optional(),state:z.union([z.string().max(100),z.array(z.string().max(100)).max(30)]).optional(),dispatch:z.string().uuid().optional()}).refine(f=>!f.date_from||!f.date_to||f.date_from<=f.date_to,'Start date cannot follow end date');
 export type BatchListFilters=z.infer<typeof batchListSchema>;
 export type BatchRow={id:string;kind:'ai'|'manual';created_at:string;created_by:string|null;scheduled_at:string|null;state:string;entity_type:string|null;agent_id:string|null;agent_language:string|null;dispatch_request_id:string|null;bolna_batch_id:string|null;assignees:string[]|null;selection:unknown;last_error:string|null;resolution_note:string|null};
 export type BatchProgress={targeted:number;finished:number;attempts:number};
@@ -44,14 +44,18 @@ function listQuery(f:BatchListFilters){
  const status = categoryWhere('state', f.state, params); if (status) where.push(status);
  if (f.language) { params.push(f.language); where.push(`agent_language=$${params.length}`); }
  if (f.q) { params.push(f.q); where.push(`(id::text ilike '%'||$${params.length}||'%' or coalesce(created_by,'') ilike '%'||$${params.length}||'%' or coalesce(bolna_batch_id,'') ilike '%'||$${params.length}||'%')`); }
+ if(f.created_by){params.push(f.created_by.toLowerCase());where.push(`lower(created_by)=$${params.length}`);}
  if(f.caller){params.push(f.caller.toLowerCase());where.push(kind==='manual'?`$${params.length}=any(assignees)`:`lower(created_by)=$${params.length}`);}
  return {base,params,where:where.length?'where '+where.join(' and '):''};
 }
 export async function listBatches(viewer:Viewer,filters:BatchListFilters,requested=1){
- adminOnly(viewer);const {base,params,where}=listQuery(filters),total=Number((await query(`select count(*)::int n from (${base}) batches ${where}`,params)).rows[0].n);
+ adminOnly(viewer);const {base,params,where}=listQuery(filters);
+ const counts=(await query(`select count(*)::int n,
+  (select count(*)::int from bolna_assignments where batch_id is null) legacy from (${base}) batches ${where}`,params)).rows[0];
+ const total=Number(counts.n);
  const pages=Math.max(1,Math.ceil(total/25)),page=Math.min(pages,Math.max(1,Math.floor(Number.isFinite(requested)?requested:1)));
  const rows=(await query<BatchRow>(`select * from (${base}) batches ${where} order by created_at desc,id limit 25 offset ${(page-1)*25}`,params)).rows;
- const legacy=Number((await query('select count(*)::int n from bolna_assignments where batch_id is null')).rows[0].n);
+ const legacy=Number(counts.legacy);
  return {rows,total,page,pages,legacy};
 }
 export function batchListExport(viewer:Viewer,filters:BatchListFilters):ExportQuery{
@@ -116,7 +120,7 @@ function metricWhere(batch:BatchRow,metric:string){
 const memberValues = z.union([z.string().max(1000), z.array(z.string().max(1000)).max(100)]).optional();
 export const batchMemberFiltersSchema = z.object({
  q: z.string().trim().max(1000).optional(), city: z.string().trim().max(1000).optional(),
- outcome: memberValues, state: memberValues, assignee: memberValues, current_owner: memberValues,
+ allocation:memberValues, outcome: memberValues, state: memberValues, assignee: memberValues, current_owner: memberValues,
  has_attempts: z.enum(['yes','no']).optional(), connected: z.enum(['yes','no']).optional(),
  onboarded: z.enum(['yes','no']).optional(), wh_id: z.string().trim().max(1000).optional(),
 });
@@ -124,7 +128,7 @@ export type BatchMemberFilters = z.infer<typeof batchMemberFiltersSchema>;
 function memberWhere(batch: BatchRow, metric: string, f: BatchMemberFilters, params: unknown[]) {
  const selected = metricWhere(batch,metric).replace(/^where /, '');
  const where = selected ? [selected] : [];
- for (const [column, value] of [['outcome',f.outcome],['state',f.state],['assignee',f.assignee],['current_owner',f.current_owner]] as const) {
+ for (const [column, value] of [['disposition',f.allocation],['outcome',f.outcome],['state',f.state],['assignee',f.assignee],['current_owner',f.current_owner]] as const) {
   const clause = categoryWhere(column,value,params,'none'); if(clause)where.push(clause);
  }
  if(f.q){params.push(f.q);where.push(`(coalesce(name,'') ilike '%'||$${params.length}||'%' or coalesce(phone,'') ilike '%'||$${params.length}||'%')`);}

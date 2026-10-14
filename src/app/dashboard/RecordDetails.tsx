@@ -11,32 +11,54 @@ import { ResultBadge } from "./ResultBadge";
 import { Dialog } from "./Dialog";
 import { CopyText } from "./CopyText";
 import { requestJson } from "./requests";
+import { Transcript } from "./Transcript";
 
-export function RecordDetails({ id, entity, label = "Details", aiBatch,aiScope }: { aiBatch?:string;aiScope?:"contact"|"execution";id: string; entity: "call" | "record"; label?: string }) {
+type DetailSection = "Overview" | "AI activity" | "Manual activity";
+type ManualDetails = { history: AssignmentHistoryRow[]; historyTotal: number; manual: { rows: ManualAttempt[]; total: number; page: number; pages: number } };
+
+export function RecordDetails({ id, entity, label = "Details", aiBatch, aiScope, initialSection = "Overview", children, className = "btn-row details-trigger", ariaLabel, title }: {
+  aiBatch?: string; aiScope?: "contact" | "execution"; id: string; entity: "call" | "record"; label?: string;
+  initialSection?: DetailSection; children?: ReactNode; className?: string; ariaLabel?: string; title?: string;
+}) {
   const [open, setOpen] = useState(false);
-  return <><button type="button" className="btn-row details-trigger" onClick={() => setOpen(true)} aria-label={`${label} for ${entity}`}>{label}</button>{open && <DetailContents aiBatch={aiBatch} aiScope={aiScope} initialAi={label==="AI timeline"} id={id} entity={entity} onClose={() => setOpen(false)} />}</>;
+  return <><button type="button" className={className} onClick={() => setOpen(true)} aria-label={ariaLabel || `${label} for ${entity}`} aria-haspopup="dialog" title={title}>{children || label}</button>{open && <DetailContents key={`${entity}:${id}`} aiBatch={aiBatch} aiScope={aiScope} initialSection={initialSection} id={id} entity={entity} onClose={() => setOpen(false)} />}</>;
 }
-function DetailContents({ id, entity, onClose,initialAi,aiBatch,aiScope }: { aiBatch?:string;aiScope?:"contact"|"execution";initialAi:boolean;id: string; entity: "call" | "record"; onClose: () => void }) {
+function DetailContents({ id, entity, onClose,initialSection,aiBatch,aiScope }: { aiBatch?:string;aiScope?:"contact"|"execution";initialSection:DetailSection;id: string; entity: "call" | "record"; onClose: () => void }) {
   const tabs = ["Overview", "AI activity", "Manual activity"] as const;
-  const [tab, setTab] = useState<(typeof tabs)[number]>(initialAi ? "AI activity" : "Overview");
-  const [aiVisited, setAiVisited] = useState(initialAi);
+  const [tab, setTab] = useState<DetailSection>(initialSection);
+  const [aiVisited, setAiVisited] = useState(initialSection === "AI activity");
   const tabId = useId(), body = useRef<HTMLDivElement>(null), tabList = useRef<HTMLDivElement>(null);
   function selectTab(value: (typeof tabs)[number]) {
     setTab(value); if (value === "AI activity") setAiVisited(true);
     body.current?.scrollTo({ top: 0 });
   }
-  const [data, setData] = useState<{ row: RawRow & CallRow; history: AssignmentHistoryRow[]; historyTotal: number; manual:{rows:ManualAttempt[];total:number;page:number;pages:number};
+  const [data, setData] = useState<{ row: RawRow & CallRow;
     relatedListings: { id: string; owner_name: string | null; city: string | null; state: string | null; area_sqft: string | null; address: string | null; source: string }[]; relatedListingsCapped: boolean } | null>(null);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [manualPage,setManualPage]=useState(1);
+  const [manualData, setManualData] = useState<ManualDetails | null>(null);
+  const [manualError, setManualError] = useState(''), [manualRetry, setManualRetry] = useState(0);
+  const manualCache = useRef(new Map<number, ManualDetails>());
+  const manualActive = tab === 'Manual activity';
   const [audioFailed, setAudioFailed] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
     setError("");
-    requestJson(`/api/details/${entity}/${encodeURIComponent(id)}?manual_page=${manualPage}`, { signal: controller.signal }).then(setData).catch(e => { if (!controller.signal.aborted) setError(e.message); });
+    requestJson(`/api/details/${entity}/${encodeURIComponent(id)}?section=overview`, { signal: controller.signal }).then(value => { if (!controller.signal.aborted) setData(value); }).catch(e => { if (!controller.signal.aborted) setError(e.message); });
     return () => controller.abort();
-  }, [entity, id, attempt,manualPage]);
+  }, [entity, id, attempt]);
+  useEffect(() => {
+    if (!manualActive) return;
+    const cached = manualCache.current.get(manualPage);
+    setManualError(''); setManualData(cached || null);
+    if (cached) return;
+    const controller = new AbortController();
+    requestJson<ManualDetails>(`/api/details/${entity}/${encodeURIComponent(id)}?section=manual&manual_page=${manualPage}`, { signal: controller.signal })
+      .then(value => { if (!controller.signal.aborted) { manualCache.current.set(manualPage, value); setManualData(value); } })
+      .catch(error => { if (!controller.signal.aborted) setManualError(error.message); });
+    return () => controller.abort();
+  }, [entity, id, manualActive, manualPage, manualRetry]);
   const r = data?.row;
   const phone = r ? entity === "record" ? r.phone : r.call_type === "inbound" ? r.from_number : r.to_number : null;
   const audio = r ? entity === "record" ? r.last_recording_url : r.recording_url : null;
@@ -69,21 +91,29 @@ function DetailContents({ id, entity, onClose,initialAi,aiBatch,aiScope }: { aiB
           {r.raw_matches?.length ? <details className="detail-section detail-listings"><summary>Matched listings <span>{r.raw_matches.length}</span></summary>{r.raw_matches.map((m,i) => <article className="detail-listing" key={i}><strong>{m.owner_name || "Unnamed owner"}</strong><Facts values={{ "Property type": m.warehouse_type, "Location": [m.city,m.state].filter(Boolean).join(", "), "Size": area(m.area_sqft) }} />{m.address && <p>{m.address}</p>}</article>)}</details> : null}
         </div>
         <div className="detail-panel" role="tabpanel" id={`${tabId}-panel-1`} aria-labelledby={`${tabId}-tab-1`} hidden={tab !== "AI activity"}>
-          <section className="detail-section"><h3>Latest call details</h3><Facts values={{ ...callFacts, ...(entity === "call" && r.called_by ? { "Legacy Called By": r.called_by } : {}) }} />
+          {aiVisited && <AiTimeline initialBatch={aiBatch} initialScope={aiScope} initialPhone={phone} entity={entity} id={id} initialOpen>
+          <section className="detail-section ai-saved-summary" aria-label="Saved AI summary">
+            <div className="detail-section-heading"><h3>{entity === "call" ? "Selected call" : "Saved AI summary"}</h3><ResultBadge value={result} empty="No AI result"/></div>
+            <p className="ai-saved-meta">{dateTime(entity === "record" ? r.last_called_at : r.call_created_at)}{(entity === "record" ? r.last_status : r.status) && <> · {entity === "record" ? r.last_status : r.status}</>}</p>
+            <div className="ai-saved-evidence">
+            {entity === "call" && r.called_by && <p className="detail-description">Legacy Called By: {r.called_by}</p>}
             <div className="detail-evidence"><h4>AI notes</h4><p className="detail-text">{notes || "No AI notes available."}</p></div>
             {audio && <div className="detail-evidence"><h4>Recording</h4><audio controls preload="none" src={audio} onError={() => setAudioFailed(true)} />{audioFailed && <p role="alert">Couldn't play this recording. <a href={audio} target="_blank" rel="noreferrer">Open recording</a></p>}</div>}
-            {transcript ? <details className="detail-evidence"><summary>Transcript</summary><p className="detail-text transcript">{transcript}</p></details> : <p className="detail-description">{audio ? "No transcript available." : "No recording or transcript available."}</p>}
+            {transcript ? <details className="detail-evidence"><summary>Transcript</summary><Transcript text={transcript}/></details> : <p className="detail-description">{audio ? "No transcript available." : "No recording or transcript available."}</p>}
             {!audio && transcript && <p className="detail-description">No recording available.</p>}
+            {r.calls_history?.length ? <details className="ai-saved-records"><summary>Saved execution records <span>{r.calls_history.length}</span></summary>{r.calls_history.map((h,i) => <div className="detail-history" key={i}><strong>{dateTime(h.at)}</strong><p>{h.status || "Unknown"} · <ResultBadge value={h.availability}/></p></div>)}</details> : null}
+            </div>
           </section>
-          <div className="detail-section">{aiVisited && <AiTimeline initialBatch={aiBatch} initialScope={aiScope} entity={entity} id={id} initialOpen />}</div>
-          {r.calls_history?.length ? <details className="detail-section detail-listings"><summary>Latest execution records <span>{r.calls_history.length}</span></summary>{r.calls_history.map((h,i) => <div className="detail-history" key={i}><strong>{dateTime(h.at)}</strong><p>{h.status || "Unknown"} · <ResultBadge value={h.availability}/></p></div>)}</details> : null}
+          </AiTimeline>}
         </div>
         <div className="detail-panel" role="tabpanel" id={`${tabId}-panel-2`} aria-labelledby={`${tabId}-tab-2`} hidden={tab !== "Manual activity"}>
-        <section className="detail-section"><h3>Manual calls <span className="detail-count">{data!.manual.total}</span></h3><p className="detail-description">Caller-recorded attempts for this listing/execution. Corrections preserve the original; note edits are not calls.</p>
-          {data!.manual.rows.length?data!.manual.rows.map(event=><div className="detail-history" key={event.id}><strong>{dateTime(event.occurred_at)}</strong> · {DISPOSITION_LABELS[event.disposition as Disposition]}{event.superseded&&<span> · superseded by a correction</span>}{event.corrects_id&&<span> · correction</span>}<p>{event.assignee}{event.actor!==event.assignee?` · recorded by ${event.actor}`:""} · <ResultBadge value={event.outcome} empty="No new result"/></p>{event.notes&&<p>{event.notes}</p>}{event.next_due_at&&<p>Follow-up due: {dateTime(event.next_due_at)}</p>}{event.duration_seconds!==null&&<p>Reported duration: {event.duration_seconds}s</p>}</div>):<p>No recorded manual attempts. Older notes or completion records are not proof of an attempt.</p>}
-          {data!.manual.pages>1&&<nav aria-label="Manual history pages"><button type="button" disabled={manualPage<=1} onClick={()=>setManualPage(p=>p-1)}>Previous attempts</button><span> {data!.manual.page} / {data!.manual.pages} </span><button type="button" disabled={manualPage>=data!.manual.pages} onClick={()=>setManualPage(p=>p+1)}>Next attempts</button></nav>}
+        {manualError ? <p role="alert">{manualError} <button type="button" className="btn-row" onClick={() => setManualRetry(value => value + 1)}>Retry manual history</button></p> : !manualData ? <p role="status">Loading manual history…</p> : <>
+        <section className="detail-section"><h3>Manual calls <span className="detail-count">{manualData.manual.total}</span></h3><p className="detail-description">Caller-recorded attempts for this listing/execution. Corrections preserve the original; note edits are not calls.</p>
+          {manualData.manual.rows.length?manualData.manual.rows.map(event=><div className="detail-history" key={event.id}><strong>{dateTime(event.occurred_at)}</strong> · {DISPOSITION_LABELS[event.disposition as Disposition]}{event.superseded&&<span> · superseded by a correction</span>}{event.corrects_id&&<span> · correction</span>}<p>{event.assignee}{event.actor!==event.assignee?` · recorded by ${event.actor}`:""} · <ResultBadge value={event.outcome} empty="No new result"/></p>{event.notes&&<p>{event.notes}</p>}{event.next_due_at&&<p>Follow-up due: {dateTime(event.next_due_at)}</p>}{event.duration_seconds!==null&&<p>Reported duration: {event.duration_seconds}s</p>}</div>):<p>No recorded manual attempts. Older notes or completion records are not proof of an attempt.</p>}
+          {manualData.manual.pages>1&&<nav aria-label="Manual history pages"><button type="button" disabled={manualPage<=1} onClick={()=>setManualPage(p=>p-1)}>Previous attempts</button><span> {manualData.manual.page} / {manualData.manual.pages} </span><button type="button" disabled={manualPage>=manualData.manual.pages} onClick={()=>setManualPage(p=>p+1)}>Next attempts</button></nav>}
         </section>
-        <section className="detail-section"><h3>Verification history <span className="detail-count">{data!.historyTotal}</span></h3>{data!.history.length ? data!.history.map(h => <div className="detail-history" key={h.id}><strong>{h.assignee_name || h.assignee}</strong> · {h.state === 'dropped' ? 'unassigned' : h.state}<p>{dateTime(h.assigned_at)} · <ResultBadge value={h.outcome} empty="No result yet"/></p>{h.note && <p>Brief: {h.note}</p>}{h.remarks && <p className="detail-text">{h.remarks}</p>}<p>Staff-recorded onboarding: {h.added_to_db && h.wh_id ? "Yes" : "Not yet"}{h.wh_id ? ` · ${h.wh_id}` : ""}</p></div>) : <p className="muted">No verification history yet.</p>}{data!.historyTotal > data!.history.length && <p className="muted">Showing the latest {data!.history.length} of {data!.historyTotal} assignments.</p>}</section>
+        <section className="detail-section"><h3>Verification history <span className="detail-count">{manualData.historyTotal}</span></h3>{manualData.history.length ? manualData.history.map(h => <div className="detail-history" key={h.id}><strong>{h.assignee_name || h.assignee}</strong> · {h.state === 'dropped' ? 'unassigned' : h.state}<p>{dateTime(h.assigned_at)} · <ResultBadge value={h.outcome} empty="No result yet"/></p>{h.note && <p>Brief: {h.note}</p>}{h.remarks && <p className="detail-text">{h.remarks}</p>}<p>Staff-recorded onboarding: {h.added_to_db && h.wh_id ? "Yes" : "Not yet"}{h.wh_id ? ` · ${h.wh_id}` : ""}</p></div>) : <p className="muted">No verification history yet.</p>}{manualData.historyTotal > manualData.history.length && <p className="muted">Showing the latest {manualData.history.length} of {manualData.historyTotal} assignments.</p>}</section>
+        </>}
         </div>
       </>}
     </div>

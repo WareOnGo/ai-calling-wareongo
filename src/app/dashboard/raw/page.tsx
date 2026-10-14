@@ -1,6 +1,6 @@
-import { ReportingFilters, REPORTING_FILTER_KEYS, SelectFilter, YesNoFilter, DateFilters } from "../FilterFields";
+import { AiActivityFilter, ReportingFilters, REPORTING_FILTER_KEYS, SelectFilter, YesNoFilter, DateFilters } from "../FilterFields";
 import {dispositionLabel} from "@/lib/manual-dispositions";
-import {AiHistoryButton} from '../AiTimeline';
+import {AiAttemptCard} from '../AiAttemptCard';
 import { firstValue } from "@/lib/filter-values";
 import { MultiSelect } from "../MultiSelect";
 import { RecordsPagination } from "../RecordsPagination";
@@ -17,7 +17,7 @@ import { FilterForm } from "../FilterForm";
 import { Freshness } from "../DashboardUI";
 import { RecordDetails } from "../RecordDetails";
 import Link from "next/link";
-import { getRawRecords, getRawFilterOptions, getQueuedNumberSet, type RawFilters, type RawRow } from "@/lib/raw";
+import { getRawRecords, getRawFilterOptions, type RawFilters, type RawRow } from "@/lib/raw";
 import { requireAdmin } from "@/lib/auth";
 import { listAssignees } from "@/lib/users";
 import { AssignButton } from "../AssignButton";
@@ -29,8 +29,7 @@ import { FiltersToggle } from "../FiltersToggle";
 import { QueueForCalling } from "../QueueForCalling";
 import { getConfiguredLanguages } from "@/lib/agents";
 import { BatchActivity } from "../BatchActivity";
-import { CopyText } from "../CopyText";
-import { deriveCat, normNum } from "@/lib/queue";
+import { ContactCard } from "../ContactCard";
 
 export const dynamic = "force-dynamic";
 
@@ -62,16 +61,15 @@ export default async function RawDataset({
   const filters: RawFilters = { ...parsedFilters.data, page: Number(firstValue(sp.page) || 1) };
 
 
-  const [{ rows, total, page, pages, pageSize, terms }, opts, queuedSet, assignees] = await Promise.all([
+  const [{ rows, total, page, pages, pageSize, terms }, opts, assignees] = await Promise.all([
     getRawRecords(user, filters),
     getRawFilterOptions(),
-    getQueuedNumberSet(),
     listAssignees(),
   ]);
 
   const numCols = COLUMNS.length + 1; // + selection column
   const startRow = (page - 1) * pageSize;
-  const activeFilters = ["source", "state", "city", "contact", "called", "last_result", "min_area", "max_area", "has_phone", "assignee", "assignment_state", "manual_outcome", "onboarded", "warehouse_type", "ai_result", ...REPORTING_FILTER_KEYS]
+  const activeFilters = ["source", "state", "city", "contact", "called", "last_result", "min_area", "max_area", "has_phone", "assignee", "assignment_state", "manual_outcome", "onboarded", "warehouse_type", "ai_result", "has_ai_calls", "last_status", "date_from", "date_to", "has_recording", "has_transcript", ...REPORTING_FILTER_KEYS]
     .filter((k) => sp[k]).length;
 
   return (
@@ -91,22 +89,30 @@ export default async function RawDataset({
         <a className="btn-text toolbar-reset" href="/dashboard/raw">Reset</a>
 
         <FilterPanel groups={[
-          { label: "Call outcome", count: ["ai_result", "last_result", "manual_outcome", "called"].filter(key => sp[key]).length, content: <>
+          { label: "Call outcome", count: ["ai_result", "last_result", "manual_outcome"].filter(key => sp[key]).length, content: <>
             <MultiSelect name="ai_result" label="AI history result" value={sp.ai_result} options={["Available", "Unavailable", "Unclear", {value:"none",label:"No AI result"}]} />
             <p className="filter-explanation">AI history uses the best result across calls: Available, then Unavailable, then Unclear.</p>
-            <MultiSelect name="last_result" label="Latest AI result" value={sp.last_result} options={["Available","Unavailable","Unclear",{value:"none",label:"No AI result"}]}/>
+            <MultiSelect name="last_result" label="Latest AI result" value={sp.last_result} options={["Available","Unavailable","Unclear",{value:"dead number - do not call",label:"Dead number — do not call"},{value:"none",label:"No AI result"}]}/>
             <MultiSelect name="manual_outcome" label="Manual result" value={sp.manual_outcome} options={["Available","Unavailable","Unclear",{value:"none",label:"No manual result"}]}/>
-            <label className="chip filter-field"><span>Called</span><select aria-label="Called" name="called" defaultValue={firstValue(sp.called)||""}><option value="">Called?</option><option value="no">Not called</option><option value="yes">Already called</option></select></label>
+          </> },
+          { label: "Call details", count: ["called","has_ai_calls","last_status","date_from","date_to","has_recording","has_transcript"].filter(key=>sp[key]).length, content: <>
+            <AiActivityFilter applied={sp}/>
+            <YesNoFilter name="called" label="AI execution records" applied={sp} yes="Has execution records" no="No execution records"/>
+            <p className="filter-explanation">Recorded attempts match the AI attempts card. Older execution records may exist without a verified attempt.</p>
+            <MultiSelect name="last_status" label="Last call status" value={sp.last_status} options={[...opts.statuses,{value:"none",label:"No call status"}]}/>
+            <DateFilters applied={sp} label="Last call date"/>
+            <YesNoFilter name="has_recording" label="Latest recording" applied={sp} yes="Has recording" no="No recording"/>
+            <YesNoFilter name="has_transcript" label="Latest transcript" applied={sp} yes="Has transcript" no="No transcript"/>
           </> },
           { label: "Property", count: ["city", "state", "source", "contact", "warehouse_type", "min_area", "max_area", "has_phone"].filter(key => sp[key]).length, content: <>
             <label className="chip"><span>City</span><input name="city" aria-label="City" placeholder="City" defaultValue={firstValue(sp.city) || ""}/></label>
             <MultiSelect name="state" label="State" value={sp.state} options={opts.states}/>
             <MultiSelect name="source" label="Source" value={sp.source} options={opts.sources}/>
-            <MultiSelect name="contact" label="Contact" value={sp.contact} options={[{value:"owner",label:"Owner"},{value:"broker",label:"Probable broker"}]}/>
+            <MultiSelect name="contact" label="Contact type" value={sp.contact} options={[{value:"owner",label:"Owner"},{value:"broker",label:"Probable broker"}]}/>
             <MultiSelect name="warehouse_type" label="Warehouse type" value={sp.warehouse_type} options={opts.warehouseTypes}/>
             <label className="filter-field"><span>Minimum square feet</span><input className="num-filter" type="number" aria-label="Minimum square feet" min="0" name="min_area" defaultValue={firstValue(sp.min_area)||""} placeholder="min sqft"/></label>
             <label className="filter-field"><span>Maximum square feet</span><input className="num-filter" type="number" aria-label="Maximum square feet" min="0" name="max_area" defaultValue={firstValue(sp.max_area)||""} placeholder="max sqft"/></label>
-            <SelectFilter name="has_phone" label="Has phone" applied={sp} options={[{value:"1",label:"Has a phone number"},{value:"0",label:"No phone number"}]} />
+            <SelectFilter name="has_phone" label="Has phone" applied={{...sp,has_phone:filters.has_phone===undefined?undefined:filters.has_phone?"1":"0"}} options={[{value:"1",label:"Has a phone number"},{value:"0",label:"No phone number"}]} />
           </> },
           { label: "Reporting", count: REPORTING_FILTER_KEYS.filter(key => sp[key]).length, content: <ReportingFilters applied={sp} /> },
           { label: "Assignment", count: ["assignee", "assignment_state", "onboarded"].filter(key => sp[key]).length, content: <>
@@ -151,12 +157,9 @@ export default async function RawDataset({
                     data-contact={r.phone ?? ""}
                     data-area={r.city ?? ""}
                     data-state={r.state ?? ""}
-                    data-cat={deriveCat(r.call_count, r.last_availability)}
-                    data-queued={r.phone && queuedSet.has(normNum(r.phone)) ? "1" : ""}
                   />
                 </td>
-                <td className="identity-owner">{hl(r.owner_name, terms)} <RecordDetails id={r.id} entity="record" /></td>
-                <td><CopyText value={r.phone} display={hl(r.phone, terms)} label="phone number" /></td>
+                <td className="identity-owner"><ContactCard name={r.owner_name} nameDisplay={hl(r.owner_name, terms)} phone={r.phone} phoneDisplay={hl(r.phone, terms)} details={{id: r.id, entity: "record"}} /></td>
                 <td>{r.contact_type === "probable broker" ? <span className="review-tag">probable broker</span> : "owner"}</td>
                 <td>{hl(r.city, terms)}</td>
                 <td>{hl(r.state, terms)}</td>
@@ -166,9 +169,7 @@ export default async function RawDataset({
                 <td className="clip" title={r.source_record_id ?? ""}>{r.source_record_id ?? ""}</td>
                 {/* AI execution history */}
                 <td className="record-history">
-                  {(r.ai_attempt_count||0)+(r.ai_inbound_count||0)>0
-                    ? <AiHistoryButton entity="record" id={r.id} name={r.owner_name} executionCount={r.call_count} summary={{outbound:r.ai_attempt_count||0,inbound:r.ai_inbound_count||0,result:r.ai_history_result}}/>
-                    : <span className="muted">0 outbound · 0 inbound</span>}
+                  <AiAttemptCard entity="record" id={r.id} summary={r.ai_summary}/>
                   <small className="sr-only"> · {r.call_count} execution records</small>
                 </td>
                 <td className="calls-col">{r.last_status ?? ""}</td>
@@ -180,7 +181,7 @@ export default async function RawDataset({
                 <td className="clip" title={r.assignment_note ?? ""}>
                   <AssignedCaller current={r.assigned_to} previous={r.assignment_assignee} state={r.assignment_state} people={assignees}/>
                 </td>
-                <td className="record-history"><div><ResultBadge value={r.assignment_outcome} empty="No manual result"/></div>{(r.manual_attempt_count||0)>0&&<RecordDetails id={r.id} entity="record" label="Manual calls"/>}<div className="sr-only">{r.manual_attempt_count||0} recorded in {r.assignment_state==='open'?'current':'latest'} assignment<br/>{r.assignment_outcome||"No manual result"}{r.manual_disposition&&<><br/>{dispositionLabel(r.manual_disposition)}</>}{r.assignment_closure_reason==='exhausted'&&<><br/>Closed: Exhausted</>}{r.manual_last_attempt_at&&<><br/>{fmtDate(r.manual_last_attempt_at)}</>}{r.manual_next_due_at&&<><br/>Due {fmtDate(r.manual_next_due_at)}</>}</div></td>
+                <td className="record-history"><div><ResultBadge value={r.assignment_outcome} empty="No manual result"/></div>{(r.manual_attempt_count||0)>0&&<RecordDetails id={r.id} entity="record" label="Manual calls" initialSection="Manual activity"/>}<div className="sr-only">{r.manual_attempt_count||0} recorded in {r.assignment_state==='open'?'current':'latest'} assignment<br/>{r.assignment_outcome||"No manual result"}{r.manual_disposition&&<><br/>{dispositionLabel(r.manual_disposition)}</>}{r.assignment_closure_reason==='exhausted'&&<><br/>Closed: Exhausted</>}{r.manual_last_attempt_at&&<><br/>{fmtDate(r.manual_last_attempt_at)}</>}{r.manual_next_due_at&&<><br/>Due {fmtDate(r.manual_next_due_at)}</>}</div></td>
               </tr>
             ))}
           </tbody>

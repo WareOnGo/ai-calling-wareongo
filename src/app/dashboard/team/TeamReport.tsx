@@ -5,7 +5,7 @@ import Link from "next/link";
 import { TEAM_METRICS, teamDates, teamSummary, teamDetails, type TeamFilters, type TeamMetric } from "@/lib/team-report";
 import type { Viewer } from "@/lib/scope";
 import { dateTime } from "@/lib/display";
-import { RecordDetails } from "../RecordDetails";
+import { ContactCard } from "../ContactCard";
 import { RecordsPagination } from "../RecordsPagination";
 import { TeamDateRange } from "./TeamDateRange";
 import { ResultText } from "../ResultBadge";
@@ -55,15 +55,15 @@ export async function TeamReport({ viewer, filters, showEvidence = false }: { vi
     {data && <section id="team-evidence" className="team-evidence" aria-label="Metric evidence">
       <div className="team-section-heading"><div><h2>{TEAM_METRICS[filters.metric]}</h2><p>{filters.caller || "All callers"} · {data.total.toLocaleString()} evidence rows</p></div><div className="team-evidence-actions">
         {filters.caller && <Link href={href(undefined, filters.metric)}>All callers</Link>}
-        <a className="btn secondary" href={"/api/team/export?" + searchQuery({ ...base, metric: filters.metric, caller: filters.caller, q: filters.q, state: filters.state })}>Export these rows</a>
+        <a className="btn secondary" href={"/api/team/export?" + searchQuery({ ...base, metric: filters.metric, caller: filters.caller, q: filters.q, state: filters.state, entity_type: filters.entity_type, has_duration: filters.has_duration })}>Export these rows</a>
         <Link href={"/dashboard/team?" + searchQuery(base)}>Close evidence</Link>
       </div></div>
       <EvidenceFilters filters={filters} />
-      <div className="team-report-grid team-evidence-grid" tabIndex={0} role="region" aria-label="Metric evidence table"><table className="sheet"><thead><tr><th scope="col">Target</th><th scope="col">Caller</th><th scope="col">Evidence time (IST)</th><th scope="col">Evidence</th><th scope="col">Reported seconds</th><th scope="col">Current task state</th></tr></thead><tbody>
-        {data.rows.map((row, index) => <tr key={`${row.event_id}:${index}`}><td><span className="team-evidence-target">{row.subject}<RecordDetails entity={row.entity_type} id={row.entity_id}/></span></td><td>{row.assignee}</td><td>{row.occurred_at ? dateTime(row.occurred_at) : "Current / date unknown"}</td><td><ResultText text={row.detail}/></td><td className="team-number">{row.duration_seconds ?? "Unknown"}</td><td>{row.current_state}</td></tr>)}
+      <div className="team-report-grid team-evidence-grid" tabIndex={0} role="region" aria-label="Metric evidence table"><table className="sheet"><thead><tr><th scope="col">Contact</th><th scope="col">Caller</th><th scope="col">Evidence time (IST)</th><th scope="col">Evidence</th><th scope="col">Reported seconds</th><th scope="col">Current task state</th></tr></thead><tbody>
+        {data.rows.map((row, index) => <tr key={`${row.event_id}:${index}`}><td><ContactCard name={row.subject} phone={row.phone} details={{entity: row.entity_type, id: row.entity_id}}/></td><td>{row.assignee}</td><td>{row.occurred_at ? dateTime(row.occurred_at) : "Current / date unknown"}</td><td><ResultText text={row.detail}/></td><td className="team-number">{row.duration_seconds ?? "Unknown"}</td><td>{row.current_state}</td></tr>)}
         {!data.rows.length && <tr><td colSpan={6}>No evidence rows for this selection.</td></tr>}
       </tbody></table></div>
-      <RecordsPagination page={data.page} pages={data.pages} total={data.total} pageSize={50} applied={{ ...base, metric: filters.metric, caller: filters.caller, q: filters.q, state: filters.state }} label="Evidence pages"/>
+      <RecordsPagination page={data.page} pages={data.pages} total={data.total} pageSize={50} applied={{ ...base, metric: filters.metric, caller: filters.caller, q: filters.q, state: filters.state, entity_type: filters.entity_type, has_duration: filters.has_duration }} label="Evidence pages"/>
     </section>}
   </section>;
 }

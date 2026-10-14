@@ -51,13 +51,15 @@ for (const width of [1366, 390]) for (const theme of ['light', 'dark']) {
     await page.addInitScript(value => localStorage.setItem('theme', value), theme);
     let aiRequests = 0;
     page.on('request', request => { if (/\/api\/details\/record\/[^/]+\/ai\?/.test(request.url())) aiRequests++; });
-    await page.route('**/api/details/record/*?manual_page=*', async route => {
+    await page.route('**/api/details/record/*?section=*', async route => {
       const response = await route.fetch();
       const data = await response.json();
-      const pageNumber = Number(new URL(route.request().url()).searchParams.get('manual_page'));
-      data.row.rent = '150000000.0';
-      data.row.last_transcript = 'assistant: Is the warehouse available?\nuser: Yes, it is available.';
-      data.manual = { rows: [{ id: `synthetic-${pageNumber}`, occurred_at: '2026-10-12T10:00:00Z', disposition: 'connected', assignee: 'priya@eval.test', actor: 'priya@eval.test', outcome: 'Available', notes: `Recorded attempt ${pageNumber}`, duration_seconds: 30 }], total: 2, page: pageNumber, pages: 2 };
+      const pageNumber = Number(new URL(route.request().url()).searchParams.get('manual_page')) || 1;
+      if (data.row) {
+        data.row.rent = '150000000.0';
+        data.row.last_transcript = 'assistant: Is the warehouse available?\nuser: Yes, it is available.';
+      }
+      if (data.manual) data.manual = { rows: [{ id: `synthetic-${pageNumber}`, occurred_at: '2026-10-12T10:00:00Z', disposition: 'connected', assignee: 'priya@eval.test', actor: 'priya@eval.test', outcome: 'Available', notes: `Recorded attempt ${pageNumber}`, duration_seconds: 30 }], total: 2, page: pageNumber, pages: 2 };
       await route.fulfill({ response, json: data });
     });
     await page.goto('/dashboard/raw?q=Raghav');
@@ -77,8 +79,9 @@ for (const width of [1366, 390]) for (const theme of ['light', 'dark']) {
     await page.keyboard.press('ArrowRight');
     await expect(dialog.getByRole('tab', { name: 'AI activity', exact: true })).toBeFocused();
     const ai = dialog.getByRole('tabpanel', { name: 'AI activity', exact: true });
-    await expect(ai.locator('.history-summary')).toBeVisible();
+    await expect(ai.locator('.history-count')).toHaveText('0');
     expect(aiRequests).toBe(1);
+    await ai.getByRole('button', { name: 'View saved record details', exact: true }).click();
     await ai.getByText('Transcript', { exact: true }).click();
     await expect(ai.locator('.transcript')).toBeVisible();
     await expect(ai.locator('.transcript')).toContainText('Yes, it is available.');

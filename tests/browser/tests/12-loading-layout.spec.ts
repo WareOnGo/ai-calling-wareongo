@@ -90,7 +90,7 @@ test('employee skeleton ignores old spreadsheet geometry and honours the new col
     await expect(skeleton.locator('th').filter({hasText:/^DB Owner$/})).toBeHidden();
     expect(await skeleton.locator('.selcol').count()).toBe(0);
     before=await rectangles(page,'.colheads th');
-    expect(before.find((r:any)=>r.text==='Owner').width).toBeGreaterThanOrEqual(200);
+    expect(before.find((r:any)=>r.text==='Contact').width).toBeGreaterThanOrEqual(200);
   } finally {await db.query('commit');await db.end();}
   await expect(page.locator('[data-loading-view]')).toHaveCount(0);
   await expect(page.locator('table.sheet')).toHaveClass(/resizable/);

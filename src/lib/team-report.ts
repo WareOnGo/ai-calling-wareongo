@@ -7,7 +7,7 @@ import type {ExportQuery} from './export';
 export const TEAM_METRICS={attempts:'Recorded attempts',connected:'Connected attempts',duration:'Timed connected attempts',available:'First Available targets',onboarded:'Warehouse references onboarded'} as const;
 export type TeamMetric=keyof typeof TEAM_METRICS;
 const metricKeys=Object.keys(TEAM_METRICS) as [TeamMetric,...TeamMetric[]];
-export const teamReportSchema=z.object({person:z.string().email().max(320).optional(),access:z.enum(['active','removed']).optional(),q:z.string().trim().max(1000).optional(),state:z.enum(['open','done','dropped']).optional(),date_from:z.string().date(),date_to:z.string().date(),caller:z.string().email().max(320).optional(),metric:z.enum(metricKeys).default('attempts'),page:z.coerce.number().int().min(1).max(1000000).default(1)})
+export const teamReportSchema=z.object({entity_type:z.enum(["record","call"]).optional(),has_duration:z.enum(["yes","no"]).optional(),person:z.string().email().max(320).optional(),access:z.enum(['active','removed']).optional(),q:z.string().trim().max(1000).optional(),state:z.enum(['open','done','dropped']).optional(),date_from:z.string().date(),date_to:z.string().date(),caller:z.string().email().max(320).optional(),metric:z.enum(metricKeys).default('attempts'),page:z.coerce.number().int().min(1).max(1000000).default(1)})
  .refine(f=>f.date_from<=f.date_to,'Start date cannot follow end date');
 export type TeamFilters=z.infer<typeof teamReportSchema>;
 export function teamDates(now=new Date()){
@@ -89,18 +89,24 @@ export async function teamSummary(viewer:Viewer,f:TeamFilters,now=new Date()):Pr
  select u.email,u.name,u.active,coalesce(g.counts,'{}'::jsonb) counts,g.average_seconds,coalesce(g.duration_coverage,0)::int duration_coverage
  from bolna_app_users u left join grouped g on g.assignee=u.email ${where.length?'where '+where.join(' and '):''} order by coalesce(nullif(u.name,''),u.email)`,params)).rows;
 }
-export type TeamDetail={metric:TeamMetric;assignee:string;assignment_id:string;event_id:string;occurred_at:string|null;detail:string;duration_seconds:number|null;entity_type:'record'|'call';entity_id:string;subject:string|null;current_state:string};
+export type TeamDetail={metric:TeamMetric;assignee:string;assignment_id:string;event_id:string;occurred_at:string|null;detail:string;duration_seconds:number|null;entity_type:'record'|'call';entity_id:string;subject:string|null;phone:string|null;current_state:string};
 export function teamDetailExport(viewer:Viewer,f:TeamFilters,now=new Date()):ExportQuery{
  adminOnly(viewer);const evidence=teamEvidenceSql([f.metric]);const params:unknown[]=[f.date_from,f.date_to,now.toISOString(),f.metric],where=['e.metric=$4'];
  if(f.caller){params.push(f.caller.toLowerCase());where.push(`e.assignee=$${params.length}`);}
  where.push(...rosterWhere(f,params));
  if(f.state){params.push(f.state);where.push(`a.state=$${params.length}`);}
- if(f.q){params.push(f.q);where.push(`(coalesce(r.owner_name,c.context_details#>>'{recipient_data,name}',a.entity_id::text) ilike '%'||$${params.length}||'%' or e.detail ilike '%'||$${params.length}||'%')`);}
+ if(f.entity_type){params.push(f.entity_type);where.push(`a.entity_type=$${params.length}`);}
+ if(f.has_duration)where.push(`e.duration_seconds is ${f.has_duration==='yes'?'not ':''}null`);
+ if(f.q){params.push(f.q);where.push(`(coalesce(r.owner_name,c.context_details#>>'{recipient_data,name}',a.entity_id::text) ilike '%'||$${params.length}||'%' or e.detail ilike '%'||$${params.length}||'%' or coalesce(rphone.phone,case when c.call_type='inbound' then c.from_number else c.to_number end,'') ilike '%'||$${params.length}||'%')`);}
  const from=`from events e join bolna_assignments a on a.id=e.assignment_id
  left join bolna_app_users u on u.email=e.assignee
- left join raw_records r on a.entity_type='record' and r.id=a.entity_id left join bolna_call_logs c on a.entity_type='call' and c.id=a.entity_id where ${where.join(' and ')}`;
+ left join raw_records r on a.entity_type='record' and r.id=a.entity_id left join bolna_call_logs c on a.entity_type='call' and c.id=a.entity_id
+ left join lateral (select pn.phone from raw_phones rp join raw_phone_numbers pn on pn.phone_id=rp.phone_id
+   where rp.master_id=r.id and nullif(trim(pn.phone),'') is not null order by rp.is_primary desc,pn.phone limit 1) rphone on true
+ where ${where.join(' and ')}`;
  const selected=`${evidence} select e.*,e.occurred_at::text as occurred_at,a.entity_type,a.entity_id,a.state current_state,
- coalesce(r.owner_name,c.context_details#>>'{recipient_data,name}',a.entity_id::text) subject ${from}`;
+ coalesce(r.owner_name,c.context_details#>>'{recipient_data,name}',a.entity_id::text) subject,
+ coalesce(rphone.phone,case when c.call_type='inbound' then c.from_number else c.to_number end) phone ${from}`;
  return {sql:`${selected} order by e.occurred_at desc nulls last,e.assignee,e.event_id`,countSql:`${evidence} select count(*)::text n ${from}`,params,countParams:params};
 }
 export async function teamDetails(viewer:Viewer,f:TeamFilters,now=new Date()){

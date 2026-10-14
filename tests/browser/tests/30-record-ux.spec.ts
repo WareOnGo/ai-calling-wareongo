@@ -1,7 +1,7 @@
 import { test, expect, bodyOverflowsX } from './fixtures';
 
 test('zero attempts keep their count and omit empty history actions', async ({ adminPage: page }) => {
-  for (const path of ['raw', 'calls']) {
+  for (const path of ['raw', 'calls', 'assignments']) {
     await page.goto('/dashboard/' + path);
     await expect(page.getByRole('button', {name:'Show AI attempts'})).toHaveCount(0);
     await expect(page.getByRole('button', {name:/^Manual (calls|history) for/})).toHaveCount(0);
@@ -13,9 +13,9 @@ test('zero attempts keep their count and omit empty history actions', async ({ a
 test('primary records and their actions fit a laptop without horizontal panning', async ({ adminPage: page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   const readingOrder = {
-    calls: ['Owner', 'Number', 'AI result', 'AI attempts', 'Assigned To', 'Manual result', 'Manual notes', 'Added', 'WH ID'],
-    raw: ['Owner', 'Phone', 'City', 'Sqft', 'Source', 'AI attempts', 'Assigned To', 'Manual calls'],
-    assignments: ['Who', 'Phone', 'Assignee', 'Status', 'AI result', 'Manual result', 'Notes', 'Actions'],
+    calls: ['Contact', 'AI result', 'AI attempts', 'Assigned To', 'Manual result', 'Manual notes', 'Added', 'WH ID'],
+    raw: ['Contact', 'City', 'Sqft', 'Source', 'AI attempts', 'Assigned To', 'Manual calls'],
+    assignments: ['Contact', 'Assignee', 'Status', 'AI result', 'AI attempts', 'Manual result', 'Notes', 'Actions'],
   };
   for (const view of ['calls', 'raw', 'assignments'] as const) {
     await page.goto('/dashboard/' + view);

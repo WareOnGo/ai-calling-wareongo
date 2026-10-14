@@ -1,4 +1,4 @@
-import {it,afterAll,expect} from 'vitest';
+import {it,afterAll,expect,vi} from 'vitest';
 import {writeFileSync} from 'node:fs';
 import {query,transaction,getPool} from '@/lib/db';
 import {getRawRecords,getRawRecordIds,rawExportQuery} from '@/lib/raw';
@@ -87,6 +87,22 @@ it('measures representative local volume and preserves correct pages and scopes'
  await query("insert into call_batch_items(batch_id,record_id,name,contact_number) select $1,md5('record'||i),'Warehouse Owner '||i,'+91'||(8000000000::bigint+i) from generate_series(1,250) i",[aiBatchId]);
  await query("update bolna_call_logs set batch_id='perf-ai' where id in(select md5('call'||i)::uuid from generate_series(1,250) i)");
  const aiBatch=await getBatch(admin,'ai',aiBatchId);await measure('ai_batch_250',()=>batchMembers(admin,aiBatch));
+ // Assert actual page plans, not just wall-clock timings on a small local DB.
+ for (const [name,read] of [['raw_page',()=>getRawRecords(admin,{})],['assignment_page',()=>listAssignments(admin,{page:50})]] as const) {
+  const spy=vi.spyOn(getPool(),'query'); let calls:unknown[][]=[];
+  try {await read();calls=spy.mock.calls.map(args=>[...args]);} finally {spy.mockRestore();}
+  const [sql,params]=calls.at(-1)!;
+  const plan=(await query(`explain(analyze,buffers,format json) ${sql}`,params as unknown[])).rows[0]['QUERY PLAN'];
+  report.plans[name]=plan;
+  if(name==='raw_page')expect(JSON.stringify(plan)).toContain('bolna_raw_page_order');
+  else {
+   const nodes:Record<string,unknown>[]=[];
+   const walk=(node:Record<string,unknown>)=>{nodes.push(node);for(const child of (node.Plans||[]) as Record<string,unknown>[])walk(child);};
+   walk(plan[0].Plan);
+   expect(nodes.find(node=>node['CTE Name']==='page_assignments')?.['Actual Rows']).toBe(50);
+   expect(nodes.filter(node=>node['Relation Name']==='raw_records').every(node=>Number(node['Actual Loops'])<=50)).toBe(true);
+  }
+ }
  for(const [name,spec] of [['calls',callsExportQuery(admin,{})],['raw',rawExportQuery(admin,{})]] as const){try{report.plans[name]=(await query(`explain(analyze,buffers,format json) ${spec.sql} limit 25`,spec.params)).rows[0]['QUERY PLAN'];}catch(e){report.plans[name]={error:String(e)};}}
  // Verify the selective real-volume plan actually uses the new search index.
  const searchSpec=rawExportQuery(admin,{q:'49999'});

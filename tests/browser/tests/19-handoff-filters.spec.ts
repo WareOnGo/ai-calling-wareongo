@@ -3,7 +3,7 @@ import {execFileSync} from 'node:child_process';
 import {CONTAINER} from '../lib/env.mjs';
 const sql=(text:string)=>execFileSync('podman',['exec','-i',CONTAINER,'psql','-U','postgres','-v','ON_ERROR_STOP=1','-q'],{input:text});
 const choices=async(page:any,label:string,values:string[])=>{
- const category = ['Contact','Source','State','Warehouse type'].includes(label) ? 'Property' : label==='Assigned to' ? 'Assignment' : 'Call outcome';
+ const category = ['Contact type','Source','State','Warehouse type'].includes(label) ? 'Property' : label==='Assigned to' ? 'Assignment' : 'Call outcome';
  const tab=page.getByRole('tab',{name:category,exact:true});if(await tab.count())await tab.click();
  const menu=page.locator('details.filter-multi').filter({has:page.locator('.multi-control-label').filter({hasText:new RegExp(`^${label}( \\(|$)`)})});
  await menu.locator('summary').click();for(const value of values)await menu.getByRole('checkbox',{name:value,exact:true}).check();await menu.locator('summary').click();
@@ -30,7 +30,7 @@ test('source city remains under the owner; optional columns persist and reset',a
  await options.getByRole('checkbox',{name:'Transcript',exact:true}).uncheck();await expect(page.locator('th[data-column="Transcript"]')).toBeHidden();
  await page.reload();await expect(page.locator('th[data-column="Notes"]')).toBeVisible();await expect(page.locator('th[data-column="Transcript"]')).toBeHidden();
  await page.locator('details.column-menu:not(.views-menu) summary').click();await page.getByRole('button',{name:'Reset columns'}).click();await expect(page.locator('th[data-column="Notes"]')).toBeHidden();
- await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'Toggle filters',exact:true}).click();await choices(page,'Contact',['Owner','Probable broker']);expect(await bodyOverflowsX(page)).toBe(false);await shot(page,'handoff-d-filters-mobile');
+ await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'Toggle filters',exact:true}).click();await choices(page,'Contact type',['Owner','Probable broker']);expect(await bodyOverflowsX(page)).toBe(false);await shot(page,'handoff-d-filters-mobile');
 });
 test('page jump rejects invalid bounds and preserves repeated filters across reload and next',async({adminPage:page})=>{
  sql("insert into raw_records(source,source_record_id,owner_name) select case when i%2=0 then 'alpha' else 'beta' end,'page-'||i,'Page test '||i from generate_series(1,130) i");

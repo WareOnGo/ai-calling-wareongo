@@ -7,6 +7,7 @@ import {claimEvent,storeEvent} from '@/lib/process-events';
 import {getCalls,getCallIds,countCalls,callsExportQuery,getCallDetailsByIds} from '@/lib/calls';
 import {getRawRecords} from '@/lib/raw';
 import {aiHistory} from '@/lib/ai-attempts';
+import {listAssignments} from '@/lib/assignments';
 import {deriveCat} from '@/lib/queue';
 const admin={email:'admin@test.example',isAdmin:true},employee={email:'employee@test.example',isAdmin:false};
 let id:string,record:string;
@@ -113,14 +114,90 @@ it('AI history summary includes inbound calls on alternate phones without replac
  await query('delete from bolna_call_logs');
  expect((await getRawRecords(admin,{})).rows[0].ai_history_result).toBeNull();
 });
+it('AI cards share counts and result precedence across raw records, call analytics and both assignment channels',async()=>{
+ const inboundId=randomUUID();
+ const phone=(await query("insert into raw_phone_numbers(phone_last10,phone) values('9876543211','+919876543211') returning phone_id")).rows[0].phone_id;
+ await query('insert into raw_phones(master_id,phone_id,is_primary) values($1,$2,false)',[record,phone]);
+ await query("insert into bolna_call_logs(id,phone_id,status,call_type,from_number,to_number,llm_availability,call_created_at) values($1,$2,'completed','inbound','+919876543211','+918000000000','Available',now()-interval '1 day')",[inboundId,phone]);
+ await capture(payload());
+ await capture(payload({telephony_data:{...payload().telephony_data,provider_call_id:'provider-2'}}));
+ await capture(payload({id:inboundId,telephony_data:{provider_call_id:'inbound',call_type:'inbound',from_number:'+919876543211',to_number:'+918000000000',duration:30}}));
+ await query("insert into bolna_assignments(entity_type,entity_id,assignee,assigned_by) values('record',$1,$3,$4),('call',$2,$3,$4)",[record,id,employee.email,admin.email]);
+ const raw=(await getRawRecords(admin,{})).rows[0];
+ const call=(await getCalls(employee,{})).rows[0];
+ expect(raw.ai_summary).toEqual({total:3,outbound:2,inbound:1,conversations:3,result:'Available'});
+ expect(raw.ai_history_result).toBe(raw.ai_summary.result);
+ expect(call.ai_summary).toEqual({total:2,outbound:2,inbound:0,conversations:2,result:'Unclear'});
+ for(const [entity,entityId,summary] of [['record',record,raw.ai_summary],['call',id,call.ai_summary]] as const){
+  const history=await aiHistory(employee,entity,entityId);
+  expect(history).toMatchObject({total:summary.total,outbound:summary.outbound,inbound:summary.inbound,conversations:summary.conversations});
+  const assignment=(await listAssignments(employee,{entity_id:entityId})).rows[0];
+  expect(assignment.ai_summary).toEqual(summary);
+ }
+ // Employee cards and exports stay on the assigned execution, even when the
+ // same listing has another inbound call with a different verdict.
+ expect((await getCalls(employee,{})).total).toBe(1);
+ expect((await getCallDetailsByIds(employee,[id]))[0].ai_summary).toEqual(call.ai_summary);
+ const exportQuery=callsExportQuery(employee,{});
+ const exported=(await query(exportQuery.sql,exportQuery.params)).rows;
+ expect(exported).toHaveLength(1);expect(exported[0].ai_summary).toEqual(call.ai_summary);
+});
+it('AI cards retain known attempts with unknown direction without inventing outbound calls',async()=>{
+ await capture(payload({telephony_data:{provider_call_id:'unknown-direction',to_number:'+919876543210'}}));
+ const summary=(await getCalls(admin,{})).rows[0].ai_summary;
+ expect(summary).toMatchObject({total:1,outbound:0,inbound:0});
+ expect((await getRawRecords(admin,{})).rows[0].ai_summary).toEqual(summary);
+ const history=await aiHistory(admin,'call',id);expect(history.total).toBe(1);
+});
 it('timelines are scoped, paginated and filterable by batch, with intervals computed before pagination',async()=>{
  for(let i=0;i<55;i++)await capture(payload({initiated_at:new Date(Date.UTC(2026,9,10,0,i)).toISOString(),telephony_data:{...payload().telephony_data,provider_call_id:`p-${i}`}}));
+ // The same dial retained under another execution cannot inflate totals or
+ // push a duplicate onto a second page.
+ await capture(payload({id:randomUUID(),initiated_at:new Date(Date.UTC(2026,9,10,0,54)).toISOString(),telephony_data:{...payload().telephony_data,provider_call_id:'p-54'}}));
  expect((await aiHistory(admin,'record',record,{page:2})).rows).toHaveLength(5);
  expect((await aiHistory(admin,'record',record,{batch:'missing'})).total).toBe(0);
  const h=await aiHistory(admin,'record',record,{batch:'provider-batch'});expect(h.total).toBe(55);expect(Number(h.rows[0].interval_seconds)).toBe(60);
  await expect(aiHistory(employee,'call',id)).rejects.toMatchObject({status:404});
  await query("insert into bolna_assignments(entity_type,entity_id,assignee,assigned_by) values ('call',$1,$2,$3)",[id,employee.email,admin.email]);
  expect((await aiHistory(employee,'call',id,{scope:'contact'})).scope).toBe('execution');
+});
+it('groups shared listings by normalized number and keeps genuine repeat calls',async()=>{
+ const duplicate=randomUUID(),listing=randomUUID();
+ await query("insert into raw_records(id,source,source_record_id) values($1,'fixture','shared')",[listing]);
+ await query('insert into raw_phones(master_id,phone_id,is_primary) select $1,phone_id,true from raw_phones where master_id=$2',[listing,record]);
+ await capture(payload());
+ await capture(payload({id:duplicate,telephony_data:{...payload().telephony_data,to_number:'98765 43210'}}));
+ await capture(payload({initiated_at:'2026-10-10T04:01:00Z',telephony_data:{...payload().telephony_data,provider_call_id:'repeat-call'}}));
+ for(const target of [record,listing]){
+  const history=await aiHistory(admin,'record',target,{phone:'+91 98765 43210'});
+  expect(history.total).toBe(2);expect(history.outbound).toBe(2);expect(history.phones).toEqual(['9876543210']);
+  expect(history.rows.map(row=>row.provider_call_id)).toEqual(['repeat-call','provider-1']);
+  expect(Number(history.rows[0].interval_seconds)).toBe(3600);
+ }
+ for(const row of (await getRawRecords(admin,{})).rows)expect(row.ai_summary.total).toBe(2);
+});
+it('filters one linked number without merging another number or widening employee visibility',async()=>{
+ const other=randomUUID();
+ const phone=(await query("insert into raw_phone_numbers(phone_last10,phone) values('9876543211','+919876543211') returning phone_id")).rows[0].phone_id;
+ await query('insert into raw_phones(master_id,phone_id,is_primary) values($1,$2,false)',[record,phone]);
+ await capture(payload());
+ await capture(payload({id:other,telephony_data:{...payload().telephony_data,to_number:'+919876543211'}}));
+ const all=await aiHistory(admin,'record',record);expect(all.total).toBe(2);expect(all.phones).toEqual(['9876543210','9876543211']);
+ const selected=await aiHistory(admin,'record',record,{phone:'9876543211'});expect(selected.total).toBe(1);expect(selected.rows[0].phone_last10).toBe('9876543211');
+ await expect(aiHistory(admin,'record',record,{phone:'0000000000'})).rejects.toMatchObject({status:400});
+ await query("insert into bolna_assignments(entity_type,entity_id,assignee,assigned_by) values('call',$1,$2,$3)",[id,employee.email,admin.email]);
+ expect((await aiHistory(employee,'call',id,{scope:'contact',phone:'9876543210'})).rows).toHaveLength(1);
+ await expect(aiHistory(employee,'call',id,{scope:'contact',phone:'9876543211'})).rejects.toMatchObject({status:400});
+ await expect(aiHistory(employee,'record',record)).rejects.toMatchObject({status:404});
+});
+it('attaches recordings and transcripts to their own dial, never later enrichment to an earlier retry',async()=>{
+ await capture(payload({transcript:'user: Earlier conversation',telephony_data:{...payload().telephony_data,recording_url:'https://example.test/first'}}));
+ const later=payload({initiated_at:'2026-10-10T04:01:00Z',transcript:'user: Later conversation',telephony_data:{...payload().telephony_data,provider_call_id:'provider-2',recording_url:'https://example.test/second'}});
+ await capture(later);
+ await query("update bolna_call_logs set raw=$2::jsonb,llm_availability='Available',notes='Notes from the second call' where id=$1",[id,later]);
+ const [latest,earlier]=(await aiHistory(admin,'record',record)).rows;
+ expect(latest).toMatchObject({availability:'Available',notes:'Notes from the second call',transcript:'user: Later conversation',recording_url:'https://example.test/second'});
+ expect(earlier).toMatchObject({availability:null,notes:null,transcript:'user: Earlier conversation',recording_url:'https://example.test/first'});
 });
 it('retains per-dial payloads without a second immutable delivery ledger',async()=>{
  await capture(payload());await capture(payload());expect((await aiHistory(admin,'call',id)).total).toBe(1);

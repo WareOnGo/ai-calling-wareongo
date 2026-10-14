@@ -58,7 +58,7 @@ test('property chips omit missing rent and empty instructions in AI follow-ups',
   await expect(row.locator('.work-assignment-note')).toHaveCount(0);
   await expect(row).not.toContainText('No assigner note');
   await expect(row.locator('.work-assigned-meta')).toContainText('admin@eval.test');
-  await expect(row.locator('.work-person-heading').getByRole('button', {name: 'Details for call', exact: true})).toBeVisible();
+  await expect(row.locator('.contact-card').getByRole('button', {name: 'Details for call', exact: true})).toBeVisible();
   await shot(page, 'my-work-compact-followup');
 });
 
@@ -123,7 +123,7 @@ test('filters apply to the entire workload and pagination keeps them', async ({e
   await page.goto('/dashboard/my?city=Pune&type=record&view=open&sort=oldest');
   await expect(page.locator('tbody tr')).toHaveCount(25);
   await expect(page.locator('.work-result-summary')).toContainText('28 open assignments matching filters');
-  await expect(page.locator('tbody .who-name').first()).toHaveText('Followup 28');
+  await expect(page.locator('tbody .contact-card-name').first()).toHaveText('Followup 28');
   await page.locator('.work-pager').getByRole('link', {name: 'Next', exact: true}).click();
   await expect(page.locator('tbody tr')).toHaveCount(3);
   const params = new URL(page.url()).searchParams;
@@ -150,6 +150,7 @@ test('filtering retains visible rows while waiting and protects failed drafts', 
   await mine(page).getByRole('textbox', {name: 'Your notes', exact: true}).fill('Keep my failed draft');
   await mine(page).getByRole('textbox', {name: 'Your notes', exact: true}).blur();
   await expect(page.locator('.sheet-save-status')).toContainText("hasn't saved");
+  await page.getByRole('button', {name: 'Toggle filters'}).click();
   await page.getByRole('combobox', {name: 'Work type', exact: true}).selectOption('call');
   await page.getByRole('button', {name: 'Apply', exact: true}).click();
   await expect(page).toHaveURL(/\/dashboard\/my$/);
@@ -165,7 +166,8 @@ for (const width of [1366, 1024, 390]) {
       if (dark) await page.getByRole('button', {name: 'Toggle dark mode'}).click();
       expect(await bodyOverflowsX(page)).toBe(false);
       if (width >= 1024) expect(await page.locator('.worklist .gridwrap').evaluateAll(els=>els.every(el=>el.scrollWidth <= el.clientWidth+1))).toBe(true);
-      await expect(page.getByRole('combobox', {name: 'Work type', exact: true})).toBeVisible();
+      await expect(page.getByRole('button', {name: 'Toggle filters'})).toBeVisible();
+      await expect(page.getByRole('combobox', {name: 'Work type', exact: true})).toBeHidden();
       await expect(mine(page).locator('.work-assignment-note')).toBeVisible();
       await shot(page, `my-work-filters-${width}-${dark ? 'dark' : 'light'}`);
     }

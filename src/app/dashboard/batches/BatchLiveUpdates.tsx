@@ -10,7 +10,7 @@ export function BatchLiveUpdates({ids}:{ids:string[]}) {
   const key=ids.join(",");
   useEffect(()=>{
     const controller=new AbortController();let busy=false;
-    const editing=()=>hasDrafts()||!!document.querySelector('dialog[open], .batch-resolution fieldset')||!!document.activeElement?.matches('input,textarea,select')||!!document.querySelector('.batch-filters.has-changes');
+    const editing=()=>hasDrafts()||!!document.querySelector('dialog[open], .batch-resolution fieldset')||!!document.activeElement?.matches('input,textarea,select')||!!document.querySelector('.filterbar.has-changes');
     const tick=async()=>{
       if(busy||document.hidden||blocked.current||editing())return;
       busy=true;setChecking(true);
@@ -22,8 +22,10 @@ export function BatchLiveUpdates({ids}:{ids:string[]}) {
       } catch {if(!controller.signal.aborted)setError(true);}
       finally {busy=false;if(!controller.signal.aborted)setChecking(false);}
     };
-    const initial=setTimeout(tick,2000),interval=setInterval(tick,30000);
-    return()=>{controller.abort();clearTimeout(initial);clearInterval(interval);};
+    // A completed/manual page has just fetched its data. Do not repeat that
+    // entire render two seconds later; the regular live refresh still applies.
+    const initial=key?setTimeout(tick,2000):null,interval=setInterval(tick,30000);
+    return()=>{controller.abort();if(initial)clearTimeout(initial);clearInterval(interval);};
   },[key,refresh,hasDrafts]);
   return <span className={`batch-live${error?' batch-live-error':''}`} role="status">{error?'Status check delayed · will retry':checking?'Checking batch status…':'Live updates · every 30s'}</span>;
 }

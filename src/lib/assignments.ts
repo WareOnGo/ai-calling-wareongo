@@ -1,4 +1,5 @@
 import { warehouseWhere, dateRangeWhere, hasText } from "./filter-values";
+import { aiAttemptsExistSql, aiAttemptSummarySql, type AiAttemptSummary } from "./ai-summary";
 import { categoryWhere, filterValues, type FilterValue } from "./filter-values";
 import { ApiError } from "./api";
 import { query, transaction } from "@/lib/db";
@@ -115,6 +116,9 @@ export async function dropAssignment(id: string, actor: string | null = null): P
 // ---------------------------------------------------------------------------
 
 export type AssignmentHistoryRow = {
+  work_context?: { owner_name: string | null; city: string | null; area_sqft: string | null; built_up_area_sqft: string | null; carpet_area_sqft: string | null; rent: string | null };
+  ai_summary: AiAttemptSummary;
+  batch_id: string | null;
   revision: number;
   id: string;                    // bigint -> string
   entity_type: "record" | "call";
@@ -142,6 +146,7 @@ export type AssignmentHistoryRow = {
 };
 
 export type HistoryFilters = {
+  assignment_id?: string;
   entity_id?: string;
   batch_id?: string;
   activeOnly?: boolean;
@@ -154,7 +159,8 @@ export type HistoryFilters = {
   outcome?: FilterValue;
   city?: string;
   assigned_by?: FilterValue;
-  ai_result?: FilterValue;
+  ai_result?: FilterValue; has_ai_calls?: "yes" | "no"; manual_disposition?: FilterValue;
+  completed_from?: string; completed_to?: string;
   wh_id?: string; has_notes?: "yes" | "no"; has_manual_calls?: "yes" | "no";
   date_from?: string; date_to?: string;
   added_to_db?: "yes" | "no";
@@ -169,30 +175,39 @@ export const HISTORY_PAGE_SIZE = 50;
 // `and a.entity_type = '...'` in the join condition (not the WHERE) is what keeps
 // a record row from matching a call id and vice versa.
 const HISTORY_AI_RESULT = "case when cl.id is not null then bolna_availability(cl.status, cl.llm_availability) else rai.llm_availability end";
-const HISTORY_FROM = `
-  from bolna_assignments a
-  left join bolna_app_users u on u.email = a.assignee
-  left join bolna_app_users assigner on assigner.email = a.assigned_by
+const HISTORY_ENTITIES = `
   left join raw_records r
          on a.entity_type = 'record' and r.id = a.entity_id
   left join bolna_call_logs cl
-         on a.entity_type = 'call'   and cl.id = a.entity_id
+         on a.entity_type = 'call'   and cl.id = a.entity_id`;
+const HISTORY_PHONE = `
   left join lateral (
     select pp.phone from raw_phones rp
       join raw_phone_numbers pp on pp.phone_id = rp.phone_id
      where rp.master_id = r.id and nullif(trim(pp.phone), '') is not null order by rp.is_primary desc limit 1
-  ) rphone on true
-  -- For a MANUAL assignment there is no call row to read a verdict from, but the
-  -- number may well have been rung by the AI already — and "the human disagreed
-  -- with the AI" is the most useful signal precisely on these rows. So pull the
-  -- latest AI verdict across the listing's numbers.
-  left join lateral (
+  ) rphone on true`;
+// A record assignment can still have AI calls across its linked numbers.
+const HISTORY_AI = `left join lateral (
     select bolna_availability(cl2.status, cl2.llm_availability) as llm_availability
       from raw_phones rp2
       join bolna_call_logs cl2 on cl2.phone_id = rp2.phone_id
      where rp2.master_id = r.id and cl2.status is distinct from 'balance-low'
      order by cl2.call_created_at desc nulls last, cl2.id desc limit 1
   ) rai on true`;
+const HISTORY_FROM = `from bolna_assignments a
+  left join bolna_app_users u on u.email = a.assignee
+  left join bolna_app_users assigner on assigner.email = a.assigned_by
+  ${HISTORY_ENTITIES} ${HISTORY_PHONE} ${HISTORY_AI}`;
+
+// Counts and page selection only need joins referenced by their predicates.
+// Display-only phone/result lookups otherwise run once for every assignment.
+function historyFilterFrom(f: HistoryFilters, ordering = false) {
+  const search = !!f.q?.trim(), ai = filterValues(f.ai_result).length > 0;
+  return `from bolna_assignments a
+    ${search ? 'left join bolna_app_users u on u.email=a.assignee' : ''}
+    ${search || ai || f.city?.trim() || ordering && f.sort === 'name' ? HISTORY_ENTITIES : ''}
+    ${search ? HISTORY_PHONE : ''} ${ai ? HISTORY_AI : ''}`;
+}
 
 function historyWhere(viewer: import("./scope").Viewer, f: HistoryFilters): { sql: string; params: unknown[] } {
   const where: string[] = [];
@@ -202,6 +217,7 @@ function historyWhere(viewer: import("./scope").Viewer, f: HistoryFilters): { sq
     where.push(`a.assignee = $${params.length}`);
   }
   if (f.batch_id) { if (!UUID_RE.test(f.batch_id)) throw new ApiError(400,"Invalid batch ID"); params.push(f.batch_id); where.push(`a.batch_id = $${params.length}`); }
+  if (f.assignment_id) { params.push(f.assignment_id); where.push(`a.id = $${params.length}::bigint`); }
   if (f.entity_id) { params.push(f.entity_id); where.push(`a.entity_id = $${params.length}`); }
   if (f.follow_up) where.push(`a.state='open' and a.disposition=any(bolna_retry_dispositions())${f.follow_up==='due'?" and (a.next_due_at is null or a.next_due_at<=now())":""}`);
   if (f.quality_review) where.push("a.id in (select id from bolna_assignment_quality_review)");
@@ -214,6 +230,12 @@ function historyWhere(viewer: import("./scope").Viewer, f: HistoryFilters): { sq
   if (assigner) where.push(assigner);
   const ai = categoryWhere(`(${HISTORY_AI_RESULT})`, f.ai_result, params, 'none');
   if (ai) where.push(ai);
+  const disposition=categoryWhere('a.disposition',f.manual_disposition,params,'none'); if(disposition)where.push(disposition);
+  if(f.has_ai_calls)where.push(`${f.has_ai_calls==='no'?'not ':''}(case when a.entity_type='record' then ${aiAttemptsExistSql('record','a.entity_id')} else ${aiAttemptsExistSql('call','a.entity_id')} end)`);
+  if(f.completed_from || f.completed_to) {
+    where.push("a.state='done'");
+    where.push(...dateRangeWhere('a.completed_at',f.completed_from,f.completed_to,params));
+  }
   if (f.wh_id) where.push(warehouseWhere('a.wh_id', f.wh_id, params));
   if (f.has_notes) where.push(`${f.has_notes === 'no' ? 'not ' : ''}(${hasText('a.remarks')})`);
   if (f.has_manual_calls) where.push(`${f.has_manual_calls === 'no' ? 'not ' : ''}exists(select 1 from bolna_effective_manual_attempts e where e.assignment_id=a.id)`);
@@ -236,18 +258,23 @@ function historyWhere(viewer: import("./scope").Viewer, f: HistoryFilters): { sq
   return { sql: where.length ? `where ${where.join(" and ")}` : "", params };
 }
 
-export async function listAssignments(viewer: import("./scope").Viewer, f: HistoryFilters) {
+export async function listAssignments(viewer: import("./scope").Viewer, f: HistoryFilters, { workContext = false }: { workContext?: boolean } = {}) {
   const { sql: whereSql, params } = historyWhere(viewer, f);
   const requestedPage = Number.isFinite(f.page) ? Math.max(1, Math.floor(f.page!)) : 1;
   const pageSize = Number.isFinite(f.pageSize) ? Math.max(1, Math.min(100, Math.floor(f.pageSize!))) : HISTORY_PAGE_SIZE;
 
   const countRes = await query<{ n: string }>(
-    `select count(*)::text n ${HISTORY_FROM} ${whereSql}`, params);
+    `select count(*)::text n ${historyFilterFrom(f)} ${whereSql}`, params);
   const total = Number(countRes.rows[0].n);
   const page = Math.min(requestedPage, Math.max(1, Math.ceil(total / pageSize)));
 
+  const order = `${f.activeOnly ? "(a.state = 'open') desc," : ""} ${f.sort === "name" ? "lower(coalesce(r.owner_name, cl.context_details -> 'recipient_data' ->> 'name', '')) asc," : ""} a.assigned_at ${f.sort === "oldest" ? "asc" : "desc"}, a.id ${f.sort === "oldest" ? "asc" : "desc"}`;
   const rowsRes = await query<AssignmentHistoryRow>(
-    `select a.revision, a.id::text as id, a.entity_type, a.entity_id::text as entity_id,
+    `with page_assignments as materialized (
+       select a.* ${historyFilterFrom(f, true)} ${whereSql}
+       order by ${order} limit ${pageSize} offset ${(page - 1) * pageSize}
+     )
+     select a.revision, a.id::text as id, a.batch_id::text, a.entity_type, a.entity_id::text as entity_id,
             coalesce(r.owner_name, cl.context_details -> 'recipient_data' ->> 'name') as subject,
             coalesce(rphone.phone, case when cl.call_type = 'inbound' then cl.from_number else cl.to_number end) as phone,
             coalesce(r.city, initcap(cl.context_details -> 'recipient_data' ->> 'area')) as city,
@@ -255,10 +282,23 @@ export async function listAssignments(viewer: import("./scope").Viewer, f: Histo
             a.assigned_at::text as assigned_at, a.note, a.state, a.outcome, a.remarks,
             a.added_to_db, a.wh_id, a.closure_reason, a.disposition, a.next_due_at::text, a.last_attempt_at::text,
             a.completed_at::text as completed_at,
-            ${HISTORY_AI_RESULT} as ai_availability
-       ${HISTORY_FROM} ${whereSql}
-       order by ${f.activeOnly ? "(a.state = 'open') desc," : ""} ${f.sort === "name" ? "lower(coalesce(r.owner_name, cl.context_details -> 'recipient_data' ->> 'name', '')) asc," : ""} a.assigned_at ${f.sort === "oldest" ? "asc" : "desc"}, a.id ${f.sort === "oldest" ? "asc" : "desc"}
-       limit ${pageSize} offset ${(page - 1) * pageSize}`,
+            ${HISTORY_AI_RESULT} as ai_availability,
+            case when a.entity_type='record' then
+              (select row_to_json(ai) from (${aiAttemptSummarySql("record", "a.entity_id")}) ai)
+            else (select row_to_json(ai) from (${aiAttemptSummarySql("call", "a.entity_id")}) ai) end as ai_summary
+            ${workContext ? `, json_build_object(
+              'owner_name', work_source.owner_name,
+              'city', coalesce(r.city, nullif(initcap(cl.context_details->'recipient_data'->>'area'),''), work_source.city),
+              'area_sqft', coalesce(r.area_sqft::text,work_source.area_sqft::text),
+              'built_up_area_sqft',cl.built_up_area_sqft,'carpet_area_sqft',cl.carpet_area_sqft,
+              'rent',case when a.entity_type='record' then r.metadata->>'rent' else cl.expected_rent end) as work_context` : ''}
+       ${HISTORY_FROM.replace('from bolna_assignments a', 'from page_assignments a')}
+       ${workContext ? `left join lateral (
+         select source.owner_name,source.city,source.area_sqft from raw_phones rp
+         join raw_records source on source.id=rp.master_id where rp.phone_id=cl.phone_id
+         order by (source.contact_type is null) desc,rp.is_primary desc,source.ingested_at desc limit 1
+       ) work_source on true` : ''}
+       order by ${order}`,
     params);
 
   return {
@@ -271,7 +311,7 @@ export async function listAssignments(viewer: import("./scope").Viewer, f: Histo
 export async function matchingAssignmentTotals(viewer: import("./scope").Viewer, filters: HistoryFilters) {
   const { sql, params } = historyWhere(viewer, filters);
   return (await query<{ entity_type: string; state: string; n: string }>(
-    `select a.entity_type, a.state, count(*)::text n ${HISTORY_FROM} ${sql} group by a.entity_type, a.state`, params,
+    `select a.entity_type, a.state, count(*)::text n ${historyFilterFrom(filters)} ${sql} group by a.entity_type, a.state`, params,
   )).rows;
 }
 
@@ -283,7 +323,7 @@ export async function assignmentTotals(viewer: import("./scope").Viewer, assigne
             count(*) filter (where a.state = 'done')::text as done,
             count(*) filter (where a.state = 'dropped')::text as dropped,
             count(distinct a.assignee) filter (where a.state = 'open')::text as people
-       ${HISTORY_FROM} ${sql}`, params);
+       ${historyFilterFrom(filters)} ${sql}`, params);
   const r = res.rows[0];
   return { open: Number(r.open), done: Number(r.done), dropped: Number(r.dropped), people: Number(r.people) };
 }

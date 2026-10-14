@@ -77,7 +77,7 @@ test('correcting a mistaken Available attempt removes its Team credit and export
 });
 test('call-disconnected is final in AI batch cards and matching exports',async({adminPage:page})=>{
  const id=randomUUID();sql(`insert into call_batches(id,state,bolna_batch_id) values('${id}','completed','browser-final');insert into call_batch_items(batch_id,record_id,name,contact_number) values('${id}','a0000000-0000-4000-8000-000000000003','Suresh Kumar','9811100003');update bolna_call_logs set batch_id='browser-final' where id='c0000000-0000-4000-8000-000000000003';`);
- await page.goto(`/dashboard/batches/ai/${id}`);const card=page.locator('.batch-metrics a').filter({hasText:'No final result'});await expect(card.locator('strong')).toHaveText('0');await card.click();await expect(page.getByText('No batch members match this card.')).toBeVisible();
+ await page.goto(`/dashboard/batches/ai/${id}`);const card=page.locator('.batch-metrics a').filter({hasText:'No final result'});await expect(card.locator('strong')).toHaveText('0');await card.click();await expect(page.getByText('No batch members match these filters.')).toBeVisible();
  const csv=await page.request.get(`/api/batches/${id}/export?kind=ai&metric=pending`);expect(csv.status()).toBe(200);expect(csv.headers()['x-export-row-count']).toBe('0');
 });
 test('Completed history finds sibling listings and calls for the selected caller',async({adminPage:page})=>{

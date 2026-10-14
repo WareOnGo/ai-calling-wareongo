@@ -20,11 +20,10 @@ test('AI batch browser goes beyond 20, retains provider failures and reconciliat
  const csv=await page.request.get('/api/batches/d0000000-0000-4000-8000-000000000001/export?kind=ai&metric=blocked');expect(csv.headers()['x-export-row-count']).toBe('1');
 });
 test('balance distinguishes zero, stale data and unavailable without blocking dashboard use',async({adminPage:page})=>{
- let state='zero';await page.route('**/api/balance*',route=>route.fulfill({json:state==='zero'?{balance:0,state:'fresh',unit:'provider units',refreshedAt:'2026-10-10T00:00:00Z',low:true,message:null}:state==='stale'?{balance:25,state:'stale',unit:'provider units',refreshedAt:'2026-10-10T00:00:00Z',low:false,message:'Balance request timed out or failed.'}:{balance:null,state:'unavailable',unit:'provider units',refreshedAt:null,low:false,message:'Provider authentication failed.'}}));
- await page.goto('/dashboard/raw');const wallet=page.getByRole('complementary',{name:'Bolna balance'});await expect(wallet).toContainText('0 provider units');await expect(wallet).toContainText('Low balance');
- await wallet.getByRole('button',{name:'Balance details',exact:true}).click();
- state='stale';await wallet.getByRole('button',{name:'Refresh balance'}).click();await expect(wallet).toContainText('25 provider units');await expect(wallet).toContainText('Stale');
- state='unavailable';await wallet.getByRole('button',{name:'Refresh balance'}).click();await expect(wallet).toContainText('Unavailable');await expect(wallet).not.toContainText('0 provider units');await expect(page.locator('table.sheet tbody').first().locator('tr')).toHaveCount(6);
+ let state='zero';await page.route('**/api/balance*',route=>route.fulfill({json:state==='zero'?{balance:0,state:'fresh',unit:'USD',refreshedAt:'2026-10-10T00:00:00Z',low:true,message:null}:state==='stale'?{balance:25,state:'stale',unit:'USD',refreshedAt:'2026-10-10T00:00:00Z',low:false,message:'Balance request timed out or failed.'}:{balance:null,state:'unavailable',unit:'USD',refreshedAt:null,low:false,message:'Provider authentication failed.'}}));
+ await page.goto('/dashboard/raw');const wallet=page.getByRole('complementary',{name:'Bolna balance'});await expect(wallet).toContainText('$0.00 USD');await expect(wallet).toContainText('Low balance');
+ state='stale';await wallet.getByRole('button',{name:'Refresh balance'}).click();await expect(wallet).toContainText('$25.00 USD');await expect(wallet).toContainText('Stale');
+ state='unavailable';await wallet.getByRole('button',{name:'Refresh balance'}).click();await expect(wallet).toContainText('Unavailable');await expect(wallet).not.toContainText('$0.00 USD');await expect(page.locator('table.sheet tbody').first().locator('tr')).toHaveCount(6);
 });
 test('batch data, exports and balance stay admin-only',async({employeePage:page})=>{
  for(const url of ['/api/balance','/api/batches','/api/batches/export?kind=manual','/api/batches/legacy/export?kind=manual'])expect((await page.request.get(url)).status()).toBe(403);

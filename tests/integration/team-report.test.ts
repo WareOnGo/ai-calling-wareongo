@@ -27,6 +27,18 @@ const summary=async()=> (await teamSummary(admin,f,asOf)).find(p=>p.email===empl
 beforeAll(()=>{if(!process.env.TEST_DATABASE_URL||!['127.0.0.1','localhost','[::1]'].includes(new URL(process.env.TEST_DATABASE_URL).hostname))throw Error('Disposable test DB only');});
 beforeEach(async()=>{auth.admin=true;await query('truncate bolna_ai_attempts,bolna_assignments,bolna_app_users,bolna_call_logs,raw_phones,raw_records,raw_phone_numbers restart identity cascade');await query("insert into bolna_app_users(email,role) values($1,'admin'),($2,'employee'),($3,'employee')",[admin.email,employee.email,other]);});
 afterAll(async()=>{await getPool().end();});
+it('evidence contacts use the listing primary phone or the correct end of an AI call without multiplying rows',async()=>{
+ const listing=await task(),outbound=await task('call'),inbound=await task('call'),missing=await task();
+ await query("insert into raw_phone_numbers(phone_last10,phone) values ('9811100001','+919811100001'),('9811100002','+919811100002')");
+ await query("insert into raw_phones(master_id,phone_id,is_primary) select $1,phone_id,phone_last10='9811100002' from raw_phone_numbers",[listing.entity_id]);
+ await query("update bolna_call_logs set call_type='outbound',from_number='+918000000000',to_number='+919811100003' where id=$1",[outbound.entity_id]);
+ await query("update bolna_call_logs set call_type='inbound',from_number='+919811100004',to_number='+918000000000' where id=$1",[inbound.entity_id]);
+ for(const target of [listing,outbound,inbound,missing])await attempt(target,'2026-08-02T01:00:00Z');
+ const data=await teamDetails(admin,{...f,metric:'attempts'},asOf);
+ expect(data.total).toBe(4);
+ expect((await teamDetails(admin,{...f,q:'9811100004'},asOf)).rows.map(row=>row.entity_id)).toEqual([inbound.entity_id]);
+ expect(Object.fromEntries(data.rows.map(row=>[row.entity_id,row.phone]))).toEqual({[listing.entity_id]:'+919811100002',[outbound.entity_id]:'+919811100003',[inbound.entity_id]:'+919811100004',[missing.entity_id]:null});
+});
 it('removes corrected Available attempts from summary, evidence and export without replaying audit projections',async()=>{
  const a=await task(),id=randomUUID(),at='2026-08-02T04:00:00Z';
  await recordManualAttempt(a.id,employee,{id,revision:0,occurred_at:at,disposition:'connected',outcome:'Available'});
@@ -53,6 +65,18 @@ it('uses IST half-open boundaries, corrected events and known timing coverage',a
  const bad=await attempt(a,'2026-08-02T04:00:00Z','connected',null,999);await attempt(a,'2026-08-02T04:00:00Z','no_answer',null,null,bad);
  const s=await summary();expect(s.counts).toMatchObject({attempts:3,connected:2,duration:1});expect(s.average_seconds).toBe(30);expect(s.duration_coverage).toBe(1);
  const rows=await teamDetails(admin,{...f,metric:'attempts'},asOf);expect(rows.total).toBe(3);expect(rows.rows.map(r=>r.event_id)).not.toContain(bad);
+});
+
+it('evidence channel and duration filters preserve recorded zero and CSV count parity',async()=>{
+ const listing=await task(),call=await task('call');
+ await attempt(listing,'2026-08-02T01:00:00Z','connected',null,0);
+ await attempt(listing,'2026-08-02T02:00:00Z','connected');
+ await attempt(call,'2026-08-02T03:00:00Z','connected',null,20);
+ const filters=parseTeamFilters({...f,entity_type:'record',has_duration:'yes'});
+ const data=await teamDetails(admin,filters,asOf);expect(data.total).toBe(1);expect(data.rows[0].duration_seconds).toBe(0);
+ const csv=teamDetailExport(admin,filters,asOf);expect((await query(csv.sql,csv.params)).rows).toHaveLength(1);expect(Number((await query(csv.countSql,csv.countParams)).rows[0].n)).toBe(1);
+ expect((await teamDetails(admin,{...filters,has_duration:'no'},asOf)).total).toBe(1);
+ expect((await summary()).counts.attempts).toBe(3);
 });
 it('does not invent dates for legacy discoveries or onboarding',async()=>{
  const a=await task('record',employee.email,{state:'done',outcome:'Available',wh_id:'1011',added_to_db:true,completed_at:'2026-08-02T02:00:00Z'},true);

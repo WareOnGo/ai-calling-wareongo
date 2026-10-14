@@ -1,6 +1,7 @@
 import { filterValues, searchQuery, type FilterValue, type SearchValues } from "@/lib/filter-values";
 import Link from "next/link";
 import { ASSIGNMENT_COLUMNS, ASSIGNMENT_WIDTHS } from "../sheet-columns";
+import { AssignmentNotices } from "../GridNotices";
 
 const WIDTHS = [32, ...ASSIGNMENT_COLUMNS.map(name => ASSIGNMENT_WIDTHS[name])];
 
@@ -19,20 +20,25 @@ export function AssignmentStats({ totals, assignee, person, state, applied = {},
   assignee?: FilterValue; person?: string; state?: FilterValue; applied?: SearchValues; loading?: boolean;
 }) {
   const all = totals ? totals.open + totals.done + totals.dropped : 0;
+  const scoped = !!assignee || Object.keys(applied).some(key => !["page", "state", "assignee", "sort"].includes(key) && applied[key]);
   const cards = [
     { value: totals?.open, label: "open", state: "open" },
     { value: totals?.done, label: "done", state: "done" },
     { value: totals?.dropped, label: "unassigned", state: "dropped" },
     { value: assignee ? all : totals?.people, label: assignee ? "total assignments" : "people with open work", state: "" },
   ];
-  return <>
-    <p className="section-foot">{Object.keys(applied).some(key => !["page", "state", "assignee", "sort"].includes(key) && applied[key]) ? "Status breakdown within these filters" : assignee ? <>All work for <strong>{person || filterValues(assignee).join(", ")}</strong></> : "Across all assignments"}</p>
+  return <div className="assignment-statusbar" aria-label="Assignment status breakdown">
     <div className="stat-row">{cards.map((card, index) => {
       const params = searchQuery({...applied, assignee, state: undefined, page: undefined});
       if (card.state) params.set("state", card.state);
-      const content = <><span className="stat-n">{loading ? <span className="skeleton" style={{ width: 28, height: 22 }} /> : (card.value || 0).toLocaleString()}</span><span className="stat-l">{card.label}</span></>;
+      const content = <><span className="stat-n">{loading ? <span className="skeleton" style={{ width: 28, height: 16 }} /> : (card.value || 0).toLocaleString()}</span><span className="stat-l">{card.label}</span></>;
       const className = `stat${index === 3 ? " stat-quiet" : ""}${filterValues(state).includes(card.state) ? " stat-active" : ""}`;
       return loading || (index === 3 && !assignee) ? <div className={className} key={card.label}>{content}</div> : <Link className={className} key={card.label} href={`/dashboard/assignments${params.size ? `?${params}` : ""}`} aria-current={filterValues(state).includes(card.state) ? "page" : undefined}>{content}</Link>;
     })}</div>
-  </>;
+    <span className={`assignment-stat-scope${scoped ? "" : " assignment-scope-default"}`}>{Object.keys(applied).some(key => !["page", "state", "assignee", "sort"].includes(key) && applied[key]) ? "Status breakdown within these filters" : assignee ? <>All work for <strong>{person || filterValues(assignee).join(", ")}</strong></> : "Across all assignments"}</span>
+  </div>;
+}
+
+export function AssignmentSummary({ children, sort }: { children: React.ReactNode; sort?: string }) {
+  return <div className="assignment-summary"><span>{children}</span><div className="assignment-summary-actions"><AssignmentNotices/><span>{sort === "oldest" ? "Oldest first" : sort === "name" ? "Name A–Z" : "Newest first"}</span></div></div>;
 }

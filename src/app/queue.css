@@ -1,6 +1,6 @@
 /* Calling preview: one decision, optional evidence, a stable action footer. */
 .app-dialog.queue-dialog { width: min(660px, calc(100vw - 32px)); }
-.queue-dialog .queue-body { display: flex; flex-direction: column; gap: 20px; padding: 24px; }
+.queue-dialog .queue-body { display: flex; flex-direction: column; gap: var(--space-4); padding: var(--panel-inset); }
 .queue-overview h2 { margin: 0; color: var(--heading); font-size: var(--text-title); font-weight: 600; line-height: 1.4; }
 .queue-overview h2 > span { font-size: var(--text-metric); font-variant-numeric: tabular-nums; }
 .queue-overview p { margin: 8px 0 0; color: var(--muted); font-size: var(--text-support); }
@@ -39,15 +39,9 @@
 .queue-counts dt { color: var(--muted); }
 .queue-counts dd { margin: 0; font-weight: 500; font-variant-numeric: tabular-nums; }
 .queue-audit .queue-language { margin-top: 16px; }
-.wallet-balance.wallet-compact { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; min-height: 0; padding: 16px 0 0; border-bottom: 0; border-top: 1px solid var(--border); background: transparent; font-size: var(--text-caption); color: var(--muted); }
-.wallet-compact .wallet-readout { gap: 4px; }
-.wallet-compact .wallet-readout strong { font-weight: 500; }
-.wallet-balance.wallet-compact > button { grid-column: 2; padding: 4px 0 4px 8px; font-size: var(--text-caption); }
-.wallet-expanded { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
-.wallet-balance.wallet-compact .wallet-meta { justify-self: start; }
 .queue-repeat-confirm { flex: 1 1 100%; font-size: var(--text-support); color: var(--muted); }
 @media (max-width: 520px) {
-  .queue-dialog .queue-body { padding: 20px 16px; gap: 16px; }
+  .queue-dialog .queue-body { padding: var(--panel-inset); gap: var(--space-4); }
   .queue-language > label { align-items: flex-start; flex-direction: column; gap: 8px; }
   .queue-language select { width: 100%; font-size: 1rem; }
   .queue-disclosure > summary span { display: block; margin: 4px 0 0 16px; }

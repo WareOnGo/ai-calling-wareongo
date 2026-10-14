@@ -22,15 +22,19 @@ test('manual follow-up notes persist when restored to their original value', asy
 
 test('failed checkbox rolls back and offers a working retry', async ({employeePage:page,shot}) => {
   await page.goto('/dashboard/my');
+  const toolbarTop = (await page.locator('.filterbar').boundingBox())!.y;
   let fail = true;
   await page.route('**/api/assignments/1', route => fail ? route.fulfill({status:500,json:{error:'test failure'}}) : route.continue());
   const row = mine(page); const checkbox = row.locator('.checkfield input');
   await checkbox.check(); await expect(row.locator('.save-status')).toContainText("Couldn't confirm");
   await expect(checkbox).not.toBeChecked();
   await expect(page.locator('.sheet-save-status')).toContainText("hasn't saved");
+  await expect(page.locator('.sheet-save-status')).toBeVisible();
+  expect((await page.locator('.filterbar').boundingBox())!.y, 'save errors must not move the worklist').toBe(toolbarTop);
   await shot(page,'ux-checkbox-retry');
   fail = false; await row.getByRole('button',{name:'Retry',exact:true}).click();
   await expect(row.locator('.save-status')).toHaveText('Saved'); await expect(checkbox).toBeChecked();
+  expect((await page.locator('.filterbar').boundingBox())!.y, 'save recovery must not move the worklist').toBe(toolbarTop);
 });
 
 test('failed notes survive another save and block navigation until retry', async ({employeePage:page}) => {
@@ -131,6 +135,7 @@ test('details are scoped, contain readable transcript and restore keyboard focus
   await trigger.click();
   await expect(page.getByRole('dialog')).toHaveAccessibleName('Raghav Sharma');
   await page.getByRole('tab',{name:'AI activity',exact:true}).click();
+  await page.getByRole('button',{name:'View saved record details',exact:true}).click();
   await page.locator('dialog .detail-evidence > summary').filter({hasText:'Transcript'}).click();
   await expect(page.locator('dialog .transcript')).toBeVisible();
   await expect(page.locator('dialog .transcript')).toContainText('haan ji available hai');

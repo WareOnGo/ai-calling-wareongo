@@ -1,14 +1,14 @@
 import Link from "next/link";
 
-// Share the notices with loading screens so the grid does not move on arrival.
+// Keep report context beside its title, shared with loading screens.
 export function AiReviewNotice({ count }: { count: number | string }) {
-  return <p className="page-notice"><Link href="/dashboard/calls?needs_review=1">Needs AI review: {count}</Link> — low-confidence inference; inspect the transcript or recording.</p>;
+  return <div className="report-context"><Link className="report-review" href="/dashboard/calls?needs_review=1">Needs AI review: {count}</Link><CallGridHint/></div>;
 }
 
 export function AssignmentNotices() {
-  return <p className="page-notice"><Link href="/dashboard/assignments?quality_review=1">Review questionable completions</Link> · <Link href="/dashboard/assignments?follow_up=due">Follow-ups due</Link></p>;
+  return <nav className="assignment-review-links" aria-label="Assignment reviews"><Link href="/dashboard/assignments?quality_review=1">Review questionable completions</Link><Link href="/dashboard/assignments?follow_up=due">Follow-ups due</Link></nav>;
 }
 
 export function CallGridHint() {
-  return <p className="grid-hint">AI result and Manual result are independent. Needs AI review means low-confidence inference. Called By is legacy metadata; manual attempt history records the caller and time.</p>;
+  return <details className="report-guide"><summary>About this report</summary><p>AI and manual results are independent. Needs AI review means low-confidence inference; inspect the transcript or recording. Called By is legacy metadata. Manual attempt history records the caller and time.</p></details>;
 }

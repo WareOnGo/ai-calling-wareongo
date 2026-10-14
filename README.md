@@ -18,7 +18,7 @@ Those are environment-specific operational facts.
 
 The [Bolna DB Fixes checklist](BOLNA_DB_FIXES_PLAN.md) records the 22-item handoff,
 implementation stages and validation. Apply the consolidated migrations through 008 before running
-this version. The [requirement-by-requirement re-audit](docs/HANDOFF_COMPLETENESS_AUDIT.md)
+this version. Migration 009 adds pagination indexes; see the [loading audit](docs/performance/LOADING_AUDIT.md) for measured improvements and deployment status. The [requirement-by-requirement re-audit](docs/HANDOFF_COMPLETENESS_AUDIT.md)
 links each original request to its implementation, tests and remaining limits.
 The [browser interaction audit](docs/BROWSER_UX_AUDIT.md) records additional UI,
 recovery and mobile fixes with Playwright evidence and screenshots.

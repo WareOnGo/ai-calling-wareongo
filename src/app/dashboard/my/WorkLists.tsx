@@ -1,6 +1,7 @@
 "use client";
 import { PageJump } from "../PageJump";
-import { WorkColumns, WorkHeaders, WorkLegend, WorkStatusBar, WorkResultSummary } from "./WorkTableStructure";
+import { WorkColumns, WorkHeaders, WorkStatusBar, WorkResultSummary } from "./WorkTableStructure";
+import { RecordsHeader } from "../RecordsHeader";
 import { WorkFilters } from "./WorkFilters";
 import { AssignmentBrief } from "./AssignmentBrief";
 import { WorkContext } from "./WorkContext";
@@ -10,8 +11,7 @@ import { useCallback, useState } from "react";
 import type { WorkItem, WorkPage, WorkTotals } from "@/lib/personal-work";
 import { hasWorkCriteria, workHref, type WorkFilters as Filters } from "@/lib/work-filters";
 import { OutcomeCells } from "../OutcomeCells";
-import { CopyText } from "../CopyText";
-import { RecordDetails } from "../RecordDetails";
+import { ContactCard } from "../ContactCard";
 import { Freshness } from "../DashboardUI";
 import { IconClipboard } from "../icons";
 
@@ -34,11 +34,10 @@ export function WorkLists({ records, calls, totals, matchingTotals, filters, ass
     return workHref(filters, { records_page: String(entity === "record" ? page : records.page), calls_page: String(entity === "call" ? page : calls.page) });
   }
   return <>
-    <div className="page-title"><span className="pt-icon"><IconClipboard size={18} /></span>My Work<span className="title-sub">{total ? open ? `${open} still to do` : "all caught up" : ""}</span><Freshness updatedAt={updatedAt} /></div>
+    <RecordsHeader title="My Work" icon={<IconClipboard size={18}/>} status={total ? open ? `${open} still to do` : "all caught up" : undefined} actions={<Freshness updatedAt={updatedAt}/>}/>
     <WorkStatusBar filters={filters} total={matchingTotal} open={matchingOpen} />
     <WorkFilters filters={filters} assigners={assigners} />
     <WorkResultSummary filters={filters} count={shownCount} />
-    <WorkLegend />
     <div className="stacked work-content">
       {noRows && <div className="work-empty">
         <span className="work-empty-icon"><IconClipboard size={24} /></span>
@@ -52,11 +51,11 @@ export function WorkLists({ records, calls, totals, matchingTotals, filters, ass
           <WorkColumns /><WorkHeaders />
           <tbody>{list.rows.map((r,i) => <tr key={r.id} className={(states[r.id] || r.state) === 'done' ? 'row-done' : undefined}>
             <td className="rownum">{(list.page-1)*25+i+1}</td>
-            <td className="who"><div className="work-person-heading"><span className="who-name">{r.who}</span><RecordDetails id={r.entityId} entity={entity} /></div>
+            <td className="who"><ContactCard name={r.who} phone={r.phone} details={{id: r.entityId, entity}} />
               <WorkContext context={r.context} />
               <AssignmentBrief id={r.id} note={r.brief} assignedBy={r.assignedBy} name={r.assignedByName} assignedAt={r.assignedAt} />
             </td>
-            <td className="work-phone"><CopyText value={r.phone} label="phone number" /><AiCallStatus result={r.ai} count={r.aiCount} /></td>
+            <td className="work-ai-cell"><AiCallStatus result={r.ai} count={r.aiCount} /></td>
             <OutcomeCells closureReason={r.closureReason} disposition={r.disposition} nextDueAt={r.nextDueAt} revision={r.revision} assignmentId={r.id} outcome={r.outcome} remarks={r.remarks} addedToDb={r.addedToDb} whId={r.whId} state={r.state} onStateChange={onStateChange} />
           </tr>)}</tbody>
         </table></div>

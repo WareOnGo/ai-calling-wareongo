@@ -1,6 +1,7 @@
 import type { VerificationFilters } from "./scope";
+import { aiAttemptsExistSql, aiAttemptSummarySql, type AiAttemptSummary } from "./ai-summary";
 import {rawSearch,matchesSearch} from "./search";
-import {cityWhere} from "./filter-values";
+import {cityWhere,dateRangeWhere,hasText} from "./filter-values";
 import type {PoolClient} from 'pg';
 import { categoryWhere,filterValues,type FilterValue } from "./filter-values";
 import { ApiError } from "./api";
@@ -13,6 +14,7 @@ import { assignmentScope, currentAssignmentLateral, contactTargets, ownershipFil
 // Powers the raw listing view and server-validated batch selection.
 
 export type RawRow = {
+  ai_summary: AiAttemptSummary;
   ai_attempt_count:number;ai_inbound_count:number;ai_conversation_count:number;
   ai_history_result: 'Available' | 'Unavailable' | 'Unclear' | null;
   id: string;
@@ -68,6 +70,8 @@ export type RawFilters = VerificationFilters & {
   contact?: FilterValue;              // "broker" | "owner"
   called?: string;              // "yes" | "no" — already called or not
   ai_result?: FilterValue;
+  has_ai_calls?: "yes" | "no"; last_status?: FilterValue;
+  date_from?: string; date_to?: string; has_recording?: "yes" | "no"; has_transcript?: "yes" | "no";
   last_result?: FilterValue;        // most-recent call availability: Available | Unavailable | Unclear
   min_area?: number;
   max_area?: number;
@@ -96,7 +100,7 @@ const SELECT_LIST = `
   calls.last_called_at::text           as last_called_at,
   calls.last_status                    as last_status,
   calls.last_availability              as last_availability,
-  calls.history_result                as ai_history_result,
+  ai.result                           as ai_history_result,
   calls.last_transcript                as last_transcript,
   calls.last_recording_url             as last_recording_url,
   calls.last_notes                     as last_notes,
@@ -110,23 +114,17 @@ const SELECT_LIST = `
   asg.note                             as assignment_note,
   asg.asg_added                        as assignment_added_to_db,
   asg.asg_wh                           as assignment_wh_id,
-  (select count(*)::int from bolna_ai_attempts ai where ai.direction='outbound' and ai.phone_last10 in (select p.phone_last10 from raw_phones rp join raw_phone_numbers p using(phone_id) where rp.master_id=r.id)) as ai_attempt_count,
-  (select count(*)::int from bolna_ai_attempts ai where ai.direction='inbound' and ai.phone_last10 in (select p.phone_last10 from raw_phones rp join raw_phone_numbers p using(phone_id) where rp.master_id=r.id)) as ai_inbound_count,
-  (select count(*)::int from bolna_ai_attempts ai where ai.confirmed_conversation and ai.phone_last10 in (select p.phone_last10 from raw_phones rp join raw_phone_numbers p using(phone_id) where rp.master_id=r.id)) as ai_conversation_count,
+  ai.outbound as ai_attempt_count, ai.inbound as ai_inbound_count, ai.conversations as ai_conversation_count,
+  row_to_json(ai) as ai_summary,
   asg.closure_reason as assignment_closure_reason,asg.manual_attempt_count,asg.disposition as manual_disposition,asg.next_due_at::text as manual_next_due_at,asg.last_attempt_at::text as manual_last_attempt_at`;
 
 // Call history aggregated across all of a record's phone numbers.
 const CALLS_JOIN = `
   left join lateral (
-    select totals.call_count, totals.history_result, recent.last_called_at, recent.last_status, recent.last_availability,
+    select totals.call_count, recent.last_called_at, recent.last_status, recent.last_availability,
            recent.last_transcript, recent.last_recording_url, recent.last_notes, history.calls_history
     from (
-      -- Summarize all saved AI results across every linked phone, independently
-      -- of the most recent result and the 20-row history preview.
-      select count(*) as call_count,
-        case max(case bolna_availability(cl.status, cl.llm_availability)
-          when 'Available' then 3 when 'Unavailable' then 2 when 'Unclear' then 1 end)
-        when 3 then 'Available' when 2 then 'Unavailable' when 1 then 'Unclear' end as history_result
+      select count(*) as call_count
       from raw_phones rp join bolna_call_logs cl on cl.phone_id = rp.phone_id
       where rp.master_id = r.id and cl.status is distinct from 'balance-low'
     ) totals
@@ -143,7 +141,8 @@ const CALLS_JOIN = `
         from raw_phones rp join bolna_call_logs cl on cl.phone_id = rp.phone_id
         where rp.master_id = r.id and cl.status is distinct from 'balance-low' order by cl.call_created_at desc nulls last, cl.id desc limit 20) recent_calls
     ) history on true
-  ) calls on true`;
+  ) calls on true
+  left join lateral (${aiAttemptSummarySql("record", "r.id")}) ai on true`;
 
 // Grid rows keep a short preview. Full evidence is fetched by Details or CSV.
 const GRID_SELECT = SELECT_LIST
@@ -203,6 +202,15 @@ function buildFilter(viewer: Viewer, f: RawFilters): { whereSql: string; params:
       from raw_phones rp join bolna_call_logs cl using(phone_id)
       where rp.master_id=r.id and cl.status is distinct from 'balance-low')`, f.ai_result, params, 'none');
     if (clause) where.push(clause);
+  }
+  if (f.has_ai_calls) where.push(`${f.has_ai_calls === 'no' ? 'not ' : ''}${aiAttemptsExistSql('record','r.id')}`);
+  const latest = (column: string) => `(select cl.${column} from raw_phones rp join bolna_call_logs cl using(phone_id)
+    where rp.master_id=r.id and cl.status is distinct from 'balance-low' order by cl.call_created_at desc nulls last, cl.id desc limit 1)`;
+  const lastStatus = categoryWhere(latest('status'), f.last_status, params, 'none');
+  if (lastStatus) where.push(lastStatus);
+  where.push(...dateRangeWhere(latest('call_created_at'), f.date_from, f.date_to, params));
+  for (const [column,value] of [['recording_url',f.has_recording],['transcript',f.has_transcript]] as const) {
+    if (value) where.push(`${value === 'no' ? 'not ' : ''}(${hasText(latest(column))})`);
   }
   if (viewer.isAdmin) where.push(...ownershipFilter("record", "r.id", f, params));
 
@@ -392,24 +400,16 @@ export async function getRawQueueRowsByIds(viewer: Viewer, ids: string[], client
   return res.rows.map((r) => toQueueSel(r, queued));
 }
 
-export const getRawFilterOptions = unstable_cache(_getRawFilterOptions, ["raw-filter-options"], { revalidate: 600 });
+export const getRawFilterOptions = unstable_cache(_getRawFilterOptions, ["raw-filter-options-v2"], { revalidate: 600 });
 
 async function _getRawFilterOptions() {
-  const sources = await query<{ source: string }>(
-    `select distinct source from raw_records where source is not null order by source`,
-  );
-  const states = await query<{ state: string }>(
-    `select distinct state from raw_records where state is not null and state <> '' order by state`,
-  );
-  const types = await query<{ warehouse_type: string }>(
-    `select warehouse_type, count(*) n from raw_records
-      where warehouse_type is not null group by warehouse_type order by n desc limit 25`,
-  );
-  return {
-    sources: sources.rows.map((r) => r.source),
-    states: states.rows.map((r) => r.state),
-    warehouseTypes: types.rows.map((r) => r.warehouse_type),
-  };
+  // One round trip on a cache miss, without taking four pooled connections.
+  return (await query<{sources:string[];states:string[];warehouseTypes:string[];statuses:string[]}>(`select
+    array(select distinct source from raw_records where source is not null order by source) as sources,
+    array(select distinct state from raw_records where state is not null and state <> '' order by state) as states,
+    array(select warehouse_type from raw_records where warehouse_type is not null
+      group by warehouse_type order by count(*) desc,warehouse_type limit 25) as "warehouseTypes",
+    array(select distinct status from bolna_call_logs where status is not null and status <> 'balance-low' order by status) as statuses`)).rows[0];
 }
 
 export function rawExportQuery(viewer: Viewer, f: RawFilters, ids?: string[]): import("./export").ExportQuery {

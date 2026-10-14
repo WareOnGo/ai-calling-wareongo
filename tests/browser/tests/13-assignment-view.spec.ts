@@ -31,10 +31,11 @@ test('completed assignments retain attribution and remain distinct from current 
 test('contact identity leads assignments and follow-up notes remain expandable', async ({adminPage: page, shot}) => {
   sql("update bolna_assignments set remarks = repeat('Owner confirmed the warehouse is available. ', 12) || 'Final inspection booked.' where id = 1");
   await page.goto('/dashboard/assignments');
-  await expect(page.locator('.colheads th').nth(1)).toHaveText('Who');
-  await expect(page.locator('.colheads th').nth(2)).toHaveText('Phone');
-  await expect(page.locator('.filter-multi summary').filter({hasText:'Assignee'})).toBeVisible();
-  await expect(page.locator('.filter-multi summary').filter({hasText:'Status'})).toBeVisible();
+  await expect(page.locator('.colheads th').nth(1)).toHaveText('Contact');
+  await expect(page.locator('.contact-card').first().locator('.copytext-v')).toContainText('+91');
+  await expect(page.getByRole('button',{name:'Toggle filters'})).toBeVisible();
+  await expect(page.locator('.filter-multi summary').filter({hasText:'Assignee'})).toBeHidden();
+  await expect(page.locator('.filter-multi summary[aria-label="Status"]')).toBeHidden();
   const notes = page.locator('.assignment-notes').filter({hasText: 'Final inspection booked.'});
   await notes.getByRole('button', {name: 'Show more'}).click();
   await expect(notes.locator('.notes-preview')).toHaveCount(0);
@@ -48,9 +49,10 @@ test('contact identity leads assignments and follow-up notes remain expandable',
 
 test('assignee workload cards retain the person and show matching totals', async ({adminPage: page}) => {
   await page.goto('/dashboard/assignments');
+  await page.getByRole('button',{name:'Toggle filters'}).click();
   await page.locator('.filter-multi summary').filter({hasText:'Assignee'}).click();await page.getByRole('checkbox',{name:'Raj Eval',exact:true}).check();
   await page.getByRole('button', {name: 'Apply', exact: true}).click();
-  await expect(page.locator('.section-foot')).toContainText('All work for Raj Eval');
+  await expect(page.locator('.assignment-stat-scope')).toContainText('All work for Raj Eval');
   await expect(page.locator('.stat-n')).toHaveText(['1', '0', '0', '1']);
   await page.locator('a.stat').filter({hasText: 'done'}).click();
   await expect(page).toHaveURL(/assignee=raj%40eval.test&state=done/);

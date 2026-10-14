@@ -3,11 +3,13 @@ import type {Viewer} from './scope';
 export type WalletBalance={balance:number|null;unit:string;state:'fresh'|'stale'|'unavailable';refreshedAt:string|null;low:boolean;message:string|null};
 type Cache={wallet:number|null;refreshed_at:Date|null;attempted_at:Date;error:string|null};
 function response(cache:Cache|null):WalletBalance{
- const balance=cache?.wallet??null,refreshedAt=cache?.refreshed_at?.toISOString()??null;
+ const wallet=cache?.wallet??null,balance=wallet===null?null:wallet/100,refreshedAt=cache?.refreshed_at?.toISOString()??null;
  const configured=process.env.BOLNA_WALLET_LOW_THRESHOLD,threshold=configured?Number(configured):0;
- return {balance,unit:process.env.BOLNA_WALLET_UNIT?.trim().slice(0,40)||'provider units',
+ // Bolna's /user/me wallet is USD cents, as documented by its official CLI:
+ // https://github.com/bolna-ai/cli/blob/main/internal/api/account.go
+ return {balance,unit:'USD',
   state:balance===null?'unavailable':cache?.error||Date.now()-new Date(refreshedAt!).getTime()>60_000?'stale':'fresh',refreshedAt,
-  low:balance!==null&&Number.isFinite(threshold)&&threshold>=0&&balance<=threshold,message:cache?.error??null};
+  low:wallet!==null&&Number.isFinite(threshold)&&threshold>=0&&wallet<=threshold,message:cache?.error??null};
 }
 /** A process-local cache and shared promise keep provider waits outside the DB. */
 export function createWalletReader(){

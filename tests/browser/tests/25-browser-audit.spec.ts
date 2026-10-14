@@ -150,6 +150,7 @@ test('open multi-select menus fit the mobile viewport and support keyboard dismi
     }
     }
   }
+  await page.getByRole('tab').first().click();
   const summary = page.locator('.filter-panel details.filter-multi:visible').first().locator('summary');await summary.focus();await page.keyboard.press('Enter');
   await page.keyboard.press('Tab');await page.keyboard.press('Escape');
   await expect(page.locator('details.filter-multi[open]')).toHaveCount(0);await expect(summary).toBeFocused();

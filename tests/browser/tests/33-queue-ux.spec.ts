@@ -122,19 +122,18 @@ test('long contact reviews keep every contact reachable and the footer visible',
 test('compact wallet keeps low and stale states visible and refresh available', async ({ adminPage: page }) => {
   let state = 'low';
   await page.route('**/api/balance*', route => route.fulfill({ json: state === 'low'
-    ? { balance: 0, unit: 'provider units', state: 'stale', low: true, refreshedAt: '2026-10-10T00:00:00Z', message: 'Last known balance' }
-    : { balance: 100, unit: 'provider units', state: 'fresh', low: false, refreshedAt: '2026-10-12T00:00:00Z', message: null } }));
+    ? { balance: 0, unit: 'USD', state: 'stale', low: true, refreshedAt: '2026-10-10T00:00:00Z', message: 'Last known balance' }
+    : { balance: 100, unit: 'USD', state: 'fresh', low: false, refreshedAt: '2026-10-12T00:00:00Z', message: null } }));
   const dialog = await openPreview(page, [contact(1)]);
   const balance = dialog.getByRole('complementary', { name: 'Bolna balance' });
-  await expect(balance).toContainText('0 provider units');
+  await expect(balance).toContainText('$0.00 USD');
   await expect(balance.getByText('Low balance', { exact: true })).toBeVisible();
   await expect(balance.getByText('Stale', { exact: true })).toBeVisible();
-  await expect(balance.getByRole('button', { name: 'Refresh balance', exact: true })).toHaveCount(0);
-  await balance.getByRole('button', { name: 'Balance details', exact: true }).click();
-  await expect(balance).toContainText('Last known balance');
+  await expect(balance.getByRole('button', { name: 'Refresh balance', exact: true })).toBeVisible();
+  await expect(balance).toHaveAttribute('title',/Last known balance/);
   state = 'fresh';
   await balance.getByRole('button', { name: 'Refresh balance', exact: true }).click();
-  await expect(balance).toContainText('100 provider units');
+  await expect(balance).toContainText('$100.00 USD');
   await expect(balance.getByText('Low balance', { exact: true })).toHaveCount(0);
   await expect(balance.getByText('Stale', { exact: true })).toHaveCount(0);
 });

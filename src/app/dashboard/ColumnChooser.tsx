@@ -22,7 +22,7 @@ export function ColumnChooser() {
     const headers = [...table.querySelectorAll<HTMLTableCellElement>("tr.colheads th")];
     const labels = headers.map((th, i) => th.dataset.column || (i === 0 ? "Row" : "Select"));
     const preferences = readColumnPreferences(path, labels);
-    const locked = new Set(['Row', 'Select', 'Owner', 'Number', 'Phone', 'Assignee', 'Who', 'Actions']);
+    const locked = new Set(['Row', 'Select', 'Contact', 'Assignee', 'Actions']);
     setHidden(preferences.hiddenColumns);
     setOptions(labels.filter(name => !locked.has(name)));
 

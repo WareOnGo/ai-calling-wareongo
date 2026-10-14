@@ -59,12 +59,48 @@ focus return and contrast at both widths in both themes. `26-review-regressions.
 verifies that My Work changes appear as read-only Call Analytics values, retaining
 the same onboarding filters and export data.
 
+`40-ai-details-cards.spec.ts` checks the same AI card in Raw Dataset, Call Analytics
+and both assignment channels. It verifies the Details panel opens on AI activity,
+counts match the scope, other tabs remain accessible, normal Details still opens
+Overview, keyboard focus returns, and retries and employee access work. The main
+gallery also captures each table's AI entry point. To build and render against the
+existing disposable stage database from the application checkout:
+
+```sh
+npm run test:stage -- build
+EVAL_RENDER_DIR=../bolna-eval/shots/ai-details npm run test:stage -- render-dashboard 40-ai-details-cards.spec.ts
+```
+
 The sibling `bolna-eval` harness also provides `npm run render:dashboard`; its
 wrapper uses `APP_DIR` to run this checkout's scenarios. Thus the renderer stays
 versioned with the implementation it checks. The wrapper defaults to the
 `bolna-visual-overhaul` worktree for this review.
 
+`41-contact-cards.spec.ts` verifies the combined Contact column across Raw Dataset,
+Call Analytics, Assignments, My Work, AI/manual batch members and Team evidence.
+It checks opening Details from the card surface and phone text, independent copying, keyboard focus, search highlights,
+inbound caller numbers, missing values, long names and migration of the old Raw
+Dataset Contact-type visibility preference. The main gallery renders the shared
+card in both themes and widths; `12-loading-layout.spec.ts` checks matching skeletons.
+
+`42-ai-call-timeline.spec.ts` renders the AI timeline in both themes at desktop
+and mobile widths. It checks the fixed identity header, compact timeline without
+duplicate summaries, normalized phone selection, deduplication across executions,
+distinct repeat calls, inline recordings, one-click transcripts, batch filtering,
+empty results and retry recovery. Integration tests
+also cover deduplication before pagination and the employee visibility boundary.
+
+```bash
+EVAL_RENDER_DIR=../bolna-eval/shots/ai-timeline npm run test:stage -- render-dashboard 40-ai-details-cards.spec.ts 42-ai-call-timeline.spec.ts
+```
+
 Review the actual images as well as the checks. Use
 [the design SOP](../../docs/DESIGN_SOP.md) for consistency, contrast, whitespace,
 density and interaction review. A gallery's visible-control count is a useful
 inspection aid, not an automated usability score.
+
+`43-transcripts-assignees.spec.ts` captures chat transcripts, assignee cards and
+assignment batch modals at desktop and mobile widths in both themes. It checks
+speaker order, multilingual text, attribution and completion dates in IST,
+recorded batch membership, legacy fallback, pagination, retry and focus return.
+The batch preview endpoint is also checked for admin-only access.

@@ -53,6 +53,11 @@ test('live completion refreshes the status and removes resolution controls',asyn
 test('live updates preserve unsaved batch filter changes',async({adminPage:page})=>{
  seedBatch();let checked=0;await page.route('**/api/batches/sync',route=>{checked++;return route.fulfill({json:{checked:0,completed:0,failed:0}});});
  await page.clock.install();await page.goto('/dashboard/batches');
- await page.getByRole('combobox',{name:'Created by',exact:true}).selectOption('admin@eval.test');await page.getByText('More filters',{exact:true}).click();
- await page.clock.fastForward(35000);expect(checked).toBe(0);await expect(page.getByRole('combobox',{name:'Created by',exact:true})).toHaveValue('admin@eval.test');
+  await page.getByRole('button',{name:'Toggle filters',exact:true}).click();
+  await page.getByRole('combobox',{name:'Created by',exact:true}).selectOption('admin@eval.test');
+  await page.getByRole('button',{name:'Close filters',exact:true}).click();
+  await expect(page.locator('.batch-filter-toolbar')).toHaveClass(/has-changes/);
+  const before=checked;await page.clock.fastForward(35000);expect(checked).toBe(before);
+  await page.getByRole('button',{name:'Toggle filters',exact:true}).click();
+  await expect(page.getByRole('combobox',{name:'Created by',exact:true})).toHaveValue('admin@eval.test');
 });

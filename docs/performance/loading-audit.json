@@ -1,0 +1,2987 @@
+{
+  "date": "2026-10-14",
+  "notes": [
+    "Synthetic volume uses the disposable PostgreSQL database on port 55439.",
+    "Live readers ran in pinned read-only transactions; browser profiling blocked all non-GET/HEAD requests.",
+    "Timing samples are sequential observations, not statistical percentiles or an SLA.",
+    "Live database measurements exclude migration 009; its indexes were applied only to the disposable test database.",
+    "Browser documentBytes is decoded HTML plus React payload. transferBytes includes compressed document transfer and headers; it excludes JS, fonts, and other requests."
+  ],
+  "database": {
+    "before": {
+      "volume": {
+        "raw": 50000,
+        "calls": 10000,
+        "assignments": 5000,
+        "manualAttempts": 5000,
+        "aiAttempts": 2000,
+        "callers": 10
+      },
+      "seedMs": 13998,
+      "label": "loading-before",
+      "measurements": {
+        "raw_first": {
+          "ms": [
+            26,
+            18,
+            18,
+            18,
+            19
+          ],
+          "p95": 26,
+          "jsonBytes": 56007
+        },
+        "raw_page_400": {
+          "ms": [
+            63,
+            62,
+            61,
+            64,
+            63
+          ],
+          "p95": 64,
+          "jsonBytes": 56459
+        },
+        "raw_unassigned": {
+          "ms": [
+            314,
+            306,
+            311,
+            340,
+            315
+          ],
+          "p95": 340,
+          "jsonBytes": 54502
+        },
+        "raw_search": {
+          "ms": [
+            689,
+            685,
+            677,
+            672,
+            698
+          ],
+          "p95": 698,
+          "jsonBytes": 1150
+        },
+        "calls_search": {
+          "ms": [
+            526,
+            522,
+            561,
+            517,
+            519
+          ],
+          "p95": 561,
+          "jsonBytes": 1719
+        },
+        "raw_filters": {
+          "ms": [
+            72,
+            70,
+            69,
+            70,
+            70
+          ],
+          "p95": 72,
+          "jsonBytes": 56449
+        },
+        "calls_first": {
+          "ms": [
+            42,
+            42,
+            42,
+            42,
+            41
+          ],
+          "p95": 42,
+          "jsonBytes": 41550
+        },
+        "calls_page_200": {
+          "ms": [
+            43,
+            43,
+            43,
+            42,
+            42
+          ],
+          "p95": 43,
+          "jsonBytes": 42193
+        },
+        "calls_filters": {
+          "ms": [
+            110,
+            112,
+            110,
+            111,
+            110
+          ],
+          "p95": 112,
+          "jsonBytes": 41919
+        },
+        "assignments_page_50": {
+          "ms": [
+            120,
+            117,
+            119,
+            118,
+            118
+          ],
+          "p95": 120,
+          "jsonBytes": 34089
+        },
+        "personal_work": {
+          "ms": [
+            49,
+            29,
+            28,
+            28,
+            28
+          ],
+          "p95": 49,
+          "jsonBytes": 12342
+        },
+        "team_workloads": {
+          "ms": [
+            16,
+            38,
+            39,
+            39,
+            53
+          ],
+          "p95": 53,
+          "jsonBytes": 1181
+        },
+        "team_report": {
+          "ms": [
+            47,
+            42,
+            43,
+            41,
+            43
+          ],
+          "p95": 47,
+          "jsonBytes": 1760
+        },
+        "team_evidence": {
+          "ms": [
+            74,
+            69,
+            70,
+            71,
+            70
+          ],
+          "p95": 74,
+          "jsonBytes": 20934
+        },
+        "preview_250": {
+          "ms": [
+            326,
+            347,
+            319,
+            314,
+            315
+          ],
+          "p95": 347,
+          "jsonBytes": 70716
+        },
+        "all_matching_ids_20000": {
+          "ms": [
+            65,
+            66,
+            66,
+            67,
+            64
+          ],
+          "p95": 67,
+          "jsonBytes": 780043
+        },
+        "ten_concurrent_saves": {
+          "ms": [
+            23,
+            7,
+            7,
+            7,
+            6
+          ],
+          "p95": 23,
+          "jsonBytes": 4945
+        },
+        "manual_batch_250": {
+          "ms": [
+            29,
+            27,
+            26,
+            26,
+            28
+          ],
+          "p95": 29,
+          "jsonBytes": 33105
+        },
+        "ai_batch_250": {
+          "ms": [
+            7,
+            7,
+            6,
+            7,
+            6
+          ],
+          "p95": 7,
+          "jsonBytes": 31718
+        }
+      }
+    },
+    "after": {
+      "volume": {
+        "raw": 50000,
+        "calls": 10000,
+        "assignments": 5000,
+        "manualAttempts": 5000,
+        "aiAttempts": 2000,
+        "callers": 10
+      },
+      "seedMs": 13418,
+      "label": "loading-final",
+      "measurements": {
+        "raw_first": {
+          "ms": [
+            21,
+            13,
+            12,
+            12,
+            13
+          ],
+          "p95": 21,
+          "jsonBytes": 56007
+        },
+        "raw_page_400": {
+          "ms": [
+            17,
+            17,
+            17,
+            18,
+            16
+          ],
+          "p95": 18,
+          "jsonBytes": 56459
+        },
+        "raw_unassigned": {
+          "ms": [
+            335,
+            298,
+            300,
+            300,
+            302
+          ],
+          "p95": 335,
+          "jsonBytes": 54502
+        },
+        "raw_search": {
+          "ms": [
+            708,
+            669,
+            687,
+            677,
+            679
+          ],
+          "p95": 708,
+          "jsonBytes": 1150
+        },
+        "calls_search": {
+          "ms": [
+            492,
+            487,
+            495,
+            496,
+            512
+          ],
+          "p95": 512,
+          "jsonBytes": 1719
+        },
+        "raw_filters": {
+          "ms": [
+            83,
+            90,
+            62,
+            59,
+            59
+          ],
+          "p95": 90,
+          "jsonBytes": 56449
+        },
+        "calls_first": {
+          "ms": [
+            16,
+            15,
+            15,
+            16,
+            15
+          ],
+          "p95": 16,
+          "jsonBytes": 41550
+        },
+        "calls_page_200": {
+          "ms": [
+            17,
+            16,
+            18,
+            15,
+            16
+          ],
+          "p95": 18,
+          "jsonBytes": 42193
+        },
+        "calls_filters": {
+          "ms": [
+            78,
+            77,
+            99,
+            80,
+            77
+          ],
+          "p95": 99,
+          "jsonBytes": 41919
+        },
+        "assignments_page_50": {
+          "ms": [
+            9,
+            7,
+            8,
+            7,
+            8
+          ],
+          "p95": 9,
+          "jsonBytes": 34089
+        },
+        "personal_work": {
+          "ms": [
+            28,
+            10,
+            10,
+            10,
+            9
+          ],
+          "p95": 28,
+          "jsonBytes": 12342
+        },
+        "team_workloads": {
+          "ms": [
+            40,
+            39,
+            38,
+            38,
+            38
+          ],
+          "p95": 40,
+          "jsonBytes": 1181
+        },
+        "team_report": {
+          "ms": [
+            43,
+            42,
+            42,
+            41,
+            41
+          ],
+          "p95": 43,
+          "jsonBytes": 1760
+        },
+        "team_evidence": {
+          "ms": [
+            71,
+            70,
+            69,
+            70,
+            70
+          ],
+          "p95": 71,
+          "jsonBytes": 20940
+        },
+        "preview_250": {
+          "ms": [
+            325,
+            315,
+            316,
+            324,
+            315
+          ],
+          "p95": 325,
+          "jsonBytes": 70716
+        },
+        "all_matching_ids_20000": {
+          "ms": [
+            17,
+            16,
+            21,
+            19,
+            18
+          ],
+          "p95": 21,
+          "jsonBytes": 780043
+        },
+        "ten_concurrent_saves": {
+          "ms": [
+            25,
+            6,
+            6,
+            8,
+            6
+          ],
+          "p95": 25,
+          "jsonBytes": 4945
+        },
+        "manual_batch_250": {
+          "ms": [
+            25,
+            25,
+            25,
+            24,
+            23
+          ],
+          "p95": 25,
+          "jsonBytes": 33105
+        },
+        "ai_batch_250": {
+          "ms": [
+            6,
+            7,
+            6,
+            7,
+            6
+          ],
+          "p95": 7,
+          "jsonBytes": 31718
+        }
+      }
+    }
+  },
+  "browserVolume": {
+    "before": {
+      "/dashboard/raw": [
+        {
+          "ms": 820,
+          "documentBytes": 444303
+        },
+        {
+          "ms": 514,
+          "documentBytes": 444303
+        },
+        {
+          "ms": 507,
+          "documentBytes": 444303
+        }
+      ],
+      "/dashboard/raw?page=400": [
+        {
+          "ms": 542,
+          "documentBytes": 448082
+        },
+        {
+          "ms": 562,
+          "documentBytes": 448082
+        },
+        {
+          "ms": 507,
+          "documentBytes": 447143
+        }
+      ],
+      "/dashboard/calls": [
+        {
+          "ms": 505,
+          "documentBytes": 372253
+        },
+        {
+          "ms": 510,
+          "documentBytes": 371234
+        },
+        {
+          "ms": 495,
+          "documentBytes": 371234
+        }
+      ],
+      "/dashboard/calls?page=200": [
+        {
+          "ms": 493,
+          "documentBytes": 348426
+        },
+        {
+          "ms": 447,
+          "documentBytes": 348426
+        },
+        {
+          "ms": 530,
+          "documentBytes": 348426
+        }
+      ],
+      "/dashboard/assignments?page=50": [
+        {
+          "ms": 584,
+          "documentBytes": 417061
+        },
+        {
+          "ms": 592,
+          "documentBytes": 417061
+        },
+        {
+          "ms": 596,
+          "documentBytes": 417061
+        }
+      ],
+      "/dashboard/team": [
+        {
+          "ms": 220,
+          "documentBytes": 112743
+        },
+        {
+          "ms": 253,
+          "documentBytes": 112743
+        },
+        {
+          "ms": 272,
+          "documentBytes": 112743
+        }
+      ],
+      "manual_batch_250": [
+        {
+          "ms": 408,
+          "documentBytes": 297050
+        },
+        {
+          "ms": 368,
+          "documentBytes": 297050
+        },
+        {
+          "ms": 392,
+          "documentBytes": 297050
+        }
+      ],
+      "ai_batch_250": [
+        {
+          "ms": 279,
+          "documentBytes": 261702
+        },
+        {
+          "ms": 352,
+          "documentBytes": 261702
+        },
+        {
+          "ms": 319,
+          "documentBytes": 261702
+        }
+      ]
+    },
+    "after": {
+      "/dashboard/raw": [
+        {
+          "ms": 873,
+          "documentBytes": 440923
+        },
+        {
+          "ms": 508,
+          "documentBytes": 440010
+        },
+        {
+          "ms": 565,
+          "documentBytes": 440010
+        }
+      ],
+      "/dashboard/raw?page=400": [
+        {
+          "ms": 477,
+          "documentBytes": 443804
+        },
+        {
+          "ms": 464,
+          "documentBytes": 443804
+        },
+        {
+          "ms": 477,
+          "documentBytes": 443804
+        }
+      ],
+      "/dashboard/calls": [
+        {
+          "ms": 482,
+          "documentBytes": 372253
+        },
+        {
+          "ms": 432,
+          "documentBytes": 371234
+        },
+        {
+          "ms": 411,
+          "documentBytes": 371234
+        }
+      ],
+      "/dashboard/calls?page=200": [
+        {
+          "ms": 408,
+          "documentBytes": 349401
+        },
+        {
+          "ms": 418,
+          "documentBytes": 349401
+        },
+        {
+          "ms": 442,
+          "documentBytes": 349401
+        }
+      ],
+      "/dashboard/assignments?page=50": [
+        {
+          "ms": 486,
+          "documentBytes": 417061
+        },
+        {
+          "ms": 475,
+          "documentBytes": 417061
+        },
+        {
+          "ms": 481,
+          "documentBytes": 417061
+        }
+      ],
+      "/dashboard/team": [
+        {
+          "ms": 234,
+          "documentBytes": 112743
+        },
+        {
+          "ms": 250,
+          "documentBytes": 112743
+        },
+        {
+          "ms": 273,
+          "documentBytes": 112743
+        }
+      ],
+      "manual_batch_250": [
+        {
+          "ms": 385,
+          "documentBytes": 297050
+        },
+        {
+          "ms": 368,
+          "documentBytes": 297050
+        },
+        {
+          "ms": 381,
+          "documentBytes": 297050
+        }
+      ],
+      "ai_batch_250": [
+        {
+          "ms": 357,
+          "documentBytes": 261702
+        },
+        {
+          "ms": 385,
+          "documentBytes": 261702
+        },
+        {
+          "ms": 311,
+          "documentBytes": 261702
+        }
+      ]
+    }
+  },
+  "liveDevelopment": {
+    "before": {
+      "pages": {
+        "raw": [
+          {
+            "readyMs": 13987,
+            "documentBytes": 565466,
+            "balanceRequests": 2
+          },
+          {
+            "readyMs": 12322,
+            "documentBytes": 565466,
+            "balanceRequests": 2
+          },
+          {
+            "readyMs": 3063,
+            "documentBytes": 565466,
+            "balanceRequests": 2
+          }
+        ],
+        "calls": [
+          {
+            "readyMs": 2698,
+            "documentBytes": 403891,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 2653,
+            "documentBytes": 403891,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 2201,
+            "documentBytes": 403891,
+            "balanceRequests": 0
+          }
+        ],
+        "assignments": [
+          {
+            "readyMs": 3296,
+            "documentBytes": 518056,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 4368,
+            "documentBytes": 518056,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 3390,
+            "documentBytes": 518056,
+            "balanceRequests": 0
+          }
+        ],
+        "my": [
+          {
+            "readyMs": 6895,
+            "documentBytes": 97080,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 1147,
+            "documentBytes": 97080,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 1111,
+            "documentBytes": 97080,
+            "balanceRequests": 0
+          }
+        ],
+        "batches": [
+          {
+            "readyMs": 1527,
+            "documentBytes": 129243,
+            "balanceRequests": 2
+          },
+          {
+            "readyMs": 1247,
+            "documentBytes": 129243,
+            "balanceRequests": 2
+          },
+          {
+            "readyMs": 1146,
+            "documentBytes": 129243,
+            "balanceRequests": 2
+          }
+        ],
+        "team": [
+          {
+            "readyMs": 5593,
+            "documentBytes": 120499,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 1268,
+            "documentBytes": 120499,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 1160,
+            "documentBytes": 120499,
+            "balanceRequests": 0
+          }
+        ],
+        "team/access": [
+          {
+            "readyMs": 5172,
+            "documentBytes": 91083,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 1943,
+            "documentBytes": 91083,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 1030,
+            "documentBytes": 91083,
+            "balanceRequests": 0
+          }
+        ]
+      },
+      "details": {
+        "raw": {
+          "overviewMs": 3254,
+          "overviewBytes": 5864,
+          "aiMs": 3619,
+          "aiBytes": 194
+        },
+        "calls": {
+          "overviewMs": 874,
+          "overviewBytes": 3055,
+          "aiMs": 571,
+          "aiBytes": 194
+        }
+      }
+    },
+    "after": {
+      "pages": {
+        "raw": [
+          {
+            "readyMs": 7434,
+            "documentBytes": 561737,
+            "transferBytes": 66104,
+            "balanceRequests": 1
+          },
+          {
+            "readyMs": 11824,
+            "documentBytes": 561695,
+            "transferBytes": 66110,
+            "balanceRequests": 1
+          },
+          {
+            "readyMs": 2585,
+            "documentBytes": 561737,
+            "transferBytes": 66104,
+            "balanceRequests": 1
+          }
+        ],
+        "calls": [
+          {
+            "readyMs": 2234,
+            "documentBytes": 403807,
+            "transferBytes": 48801,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 2069,
+            "documentBytes": 403849,
+            "transferBytes": 48827,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 2057,
+            "documentBytes": 403849,
+            "transferBytes": 48828,
+            "balanceRequests": 0
+          }
+        ],
+        "assignments": [
+          {
+            "readyMs": 2590,
+            "documentBytes": 518056,
+            "transferBytes": 46261,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 3356,
+            "documentBytes": 518056,
+            "transferBytes": 46258,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 2597,
+            "documentBytes": 518056,
+            "transferBytes": 46259,
+            "balanceRequests": 0
+          }
+        ],
+        "my": [
+          {
+            "readyMs": 11845,
+            "documentBytes": 97038,
+            "transferBytes": 16411,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 1277,
+            "documentBytes": 97038,
+            "transferBytes": 16418,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 1328,
+            "documentBytes": 97038,
+            "transferBytes": 16414,
+            "balanceRequests": 0
+          }
+        ],
+        "batches": [
+          {
+            "readyMs": 2078,
+            "documentBytes": 129201,
+            "transferBytes": 22794,
+            "balanceRequests": 1
+          },
+          {
+            "readyMs": 1641,
+            "documentBytes": 129201,
+            "transferBytes": 22794,
+            "balanceRequests": 1
+          },
+          {
+            "readyMs": 1111,
+            "documentBytes": 129201,
+            "transferBytes": 22794,
+            "balanceRequests": 1
+          }
+        ],
+        "team": [
+          {
+            "readyMs": 3312,
+            "documentBytes": 120499,
+            "transferBytes": 19389,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 1170,
+            "documentBytes": 120499,
+            "transferBytes": 19393,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 1157,
+            "documentBytes": 120499,
+            "transferBytes": 19395,
+            "balanceRequests": 0
+          }
+        ],
+        "team/access": [
+          {
+            "readyMs": 2016,
+            "documentBytes": 91083,
+            "transferBytes": 16032,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 1292,
+            "documentBytes": 91083,
+            "transferBytes": 16550,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 1279,
+            "documentBytes": 91083,
+            "transferBytes": 16548,
+            "balanceRequests": 0
+          }
+        ]
+      },
+      "details": {
+        "raw": {
+          "overviewMs": 6324,
+          "overviewBytes": 5092,
+          "aiMs": 3398,
+          "aiBytes": 194
+        },
+        "calls": {
+          "overviewMs": 450,
+          "overviewBytes": 2975,
+          "aiMs": 323,
+          "aiBytes": 194
+        }
+      }
+    }
+  },
+  "liveProduction": {
+    "before": {
+      "pages": {
+        "raw": [
+          {
+            "readyMs": 7512,
+            "documentBytes": 483503,
+            "balanceRequests": 1
+          },
+          {
+            "readyMs": 1091,
+            "documentBytes": 483503,
+            "balanceRequests": 1
+          },
+          {
+            "readyMs": 701,
+            "documentBytes": 483503,
+            "balanceRequests": 1
+          }
+        ],
+        "calls": [
+          {
+            "readyMs": 1375,
+            "documentBytes": 348955,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 644,
+            "documentBytes": 348955,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 467,
+            "documentBytes": 348955,
+            "balanceRequests": 0
+          }
+        ],
+        "assignments": [
+          {
+            "readyMs": 1381,
+            "documentBytes": 458253,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 841,
+            "documentBytes": 458253,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 515,
+            "documentBytes": 458253,
+            "balanceRequests": 0
+          }
+        ],
+        "my": [
+          {
+            "readyMs": 2128,
+            "documentBytes": 88996,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 639,
+            "documentBytes": 88996,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 779,
+            "documentBytes": 88996,
+            "balanceRequests": 0
+          }
+        ],
+        "batches": [
+          {
+            "readyMs": 1722,
+            "documentBytes": 108187,
+            "balanceRequests": 1
+          },
+          {
+            "readyMs": 1078,
+            "documentBytes": 108187,
+            "balanceRequests": 1
+          },
+          {
+            "readyMs": 927,
+            "documentBytes": 108187,
+            "balanceRequests": 1
+          }
+        ],
+        "team": [
+          {
+            "readyMs": 994,
+            "documentBytes": 103316,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 1027,
+            "documentBytes": 103316,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 392,
+            "documentBytes": 103316,
+            "balanceRequests": 0
+          }
+        ],
+        "team/access": [
+          {
+            "readyMs": 400,
+            "documentBytes": 77269,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 468,
+            "documentBytes": 77269,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 695,
+            "documentBytes": 77269,
+            "balanceRequests": 0
+          }
+        ]
+      },
+      "details": {
+        "raw": {
+          "overviewMs": 843,
+          "overviewBytes": 5864,
+          "aiMs": 760,
+          "aiBytes": 194
+        },
+        "calls": {
+          "overviewMs": 1173,
+          "overviewBytes": 3055,
+          "aiMs": 728,
+          "aiBytes": 194
+        }
+      }
+    },
+    "after": {
+      "pages": {
+        "raw": [
+          {
+            "readyMs": 8276,
+            "documentBytes": 479939,
+            "transferBytes": 44438,
+            "balanceRequests": 1
+          },
+          {
+            "readyMs": 2118,
+            "documentBytes": 479939,
+            "transferBytes": 44438,
+            "balanceRequests": 1
+          },
+          {
+            "readyMs": 1836,
+            "documentBytes": 479939,
+            "transferBytes": 44438,
+            "balanceRequests": 1
+          }
+        ],
+        "calls": [
+          {
+            "readyMs": 2793,
+            "documentBytes": 348955,
+            "transferBytes": 34298,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 2317,
+            "documentBytes": 348955,
+            "transferBytes": 34298,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 999,
+            "documentBytes": 348955,
+            "transferBytes": 34298,
+            "balanceRequests": 0
+          }
+        ],
+        "assignments": [
+          {
+            "readyMs": 663,
+            "documentBytes": 458253,
+            "transferBytes": 30233,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 2782,
+            "documentBytes": 458253,
+            "transferBytes": 30233,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 618,
+            "documentBytes": 458253,
+            "transferBytes": 30233,
+            "balanceRequests": 0
+          }
+        ],
+        "my": [
+          {
+            "readyMs": 1079,
+            "documentBytes": 88996,
+            "transferBytes": 15030,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 509,
+            "documentBytes": 88996,
+            "transferBytes": 15030,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 409,
+            "documentBytes": 88996,
+            "transferBytes": 15030,
+            "balanceRequests": 0
+          }
+        ],
+        "batches": [
+          {
+            "readyMs": 1191,
+            "documentBytes": 108187,
+            "transferBytes": 17968,
+            "balanceRequests": 1
+          },
+          {
+            "readyMs": 900,
+            "documentBytes": 108187,
+            "transferBytes": 17968,
+            "balanceRequests": 1
+          },
+          {
+            "readyMs": 598,
+            "documentBytes": 108187,
+            "transferBytes": 17968,
+            "balanceRequests": 1
+          }
+        ],
+        "team": [
+          {
+            "readyMs": 433,
+            "documentBytes": 103316,
+            "transferBytes": 15657,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 314,
+            "documentBytes": 103316,
+            "transferBytes": 15657,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 314,
+            "documentBytes": 103316,
+            "transferBytes": 15657,
+            "balanceRequests": 0
+          }
+        ],
+        "team/access": [
+          {
+            "readyMs": 466,
+            "documentBytes": 77269,
+            "transferBytes": 13662,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 262,
+            "documentBytes": 77269,
+            "transferBytes": 13662,
+            "balanceRequests": 0
+          },
+          {
+            "readyMs": 310,
+            "documentBytes": 77269,
+            "transferBytes": 13662,
+            "balanceRequests": 0
+          }
+        ]
+      },
+      "details": {
+        "raw": {
+          "overviewMs": 329,
+          "overviewBytes": 5092,
+          "aiMs": 307,
+          "aiBytes": 194
+        },
+        "calls": {
+          "overviewMs": 252,
+          "overviewBytes": 2975,
+          "aiMs": 304,
+          "aiBytes": 194
+        }
+      }
+    }
+  },
+  "liveReaders": {
+    "before": {
+      "label": "loading-readers-before",
+      "readOnly": true,
+      "measurements": {
+        "raw": [
+          {
+            "ms": 5689,
+            "resultBytes": 63361,
+            "queries": [
+              {
+                "fingerprint": "e4011f63d771",
+                "ms": 488,
+                "rows": 1,
+                "bytes": 15
+              },
+              {
+                "fingerprint": "5e8e0bbce46e",
+                "ms": 5199,
+                "rows": 50,
+                "bytes": 63291
+              }
+            ]
+          },
+          {
+            "ms": 981,
+            "resultBytes": 63361,
+            "queries": [
+              {
+                "fingerprint": "e4011f63d771",
+                "ms": 493,
+                "rows": 1,
+                "bytes": 15
+              },
+              {
+                "fingerprint": "5e8e0bbce46e",
+                "ms": 488,
+                "rows": 50,
+                "bytes": 63291
+              }
+            ]
+          },
+          {
+            "ms": 389,
+            "resultBytes": 63361,
+            "queries": [
+              {
+                "fingerprint": "e4011f63d771",
+                "ms": 160,
+                "rows": 1,
+                "bytes": 15
+              },
+              {
+                "fingerprint": "5e8e0bbce46e",
+                "ms": 228,
+                "rows": 50,
+                "bytes": 63291
+              }
+            ]
+          }
+        ],
+        "calls": [
+          {
+            "ms": 1625,
+            "resultBytes": 42597,
+            "queries": [
+              {
+                "fingerprint": "660d00fc77f6",
+                "ms": 1415,
+                "rows": 1,
+                "bytes": 997
+              },
+              {
+                "fingerprint": "e3e2bc89a444",
+                "ms": 208,
+                "rows": 25,
+                "bytes": 42529
+              }
+            ]
+          },
+          {
+            "ms": 293,
+            "resultBytes": 42597,
+            "queries": [
+              {
+                "fingerprint": "660d00fc77f6",
+                "ms": 139,
+                "rows": 1,
+                "bytes": 997
+              },
+              {
+                "fingerprint": "e3e2bc89a444",
+                "ms": 153,
+                "rows": 25,
+                "bytes": 42529
+              }
+            ]
+          },
+          {
+            "ms": 226,
+            "resultBytes": 42597,
+            "queries": [
+              {
+                "fingerprint": "660d00fc77f6",
+                "ms": 109,
+                "rows": 1,
+                "bytes": 997
+              },
+              {
+                "fingerprint": "e3e2bc89a444",
+                "ms": 115,
+                "rows": 25,
+                "bytes": 42529
+              }
+            ]
+          }
+        ],
+        "assignments": [
+          {
+            "ms": 1301,
+            "resultBytes": 33568,
+            "queries": [
+              {
+                "fingerprint": "d78e979dc7e8",
+                "ms": 914,
+                "rows": 1,
+                "bytes": 14
+              },
+              {
+                "fingerprint": "0bbef03ffbb7",
+                "ms": 385,
+                "rows": 50,
+                "bytes": 33512
+              }
+            ]
+          },
+          {
+            "ms": 289,
+            "resultBytes": 33568,
+            "queries": [
+              {
+                "fingerprint": "d78e979dc7e8",
+                "ms": 104,
+                "rows": 1,
+                "bytes": 14
+              },
+              {
+                "fingerprint": "0bbef03ffbb7",
+                "ms": 183,
+                "rows": 50,
+                "bytes": 33512
+              }
+            ]
+          },
+          {
+            "ms": 303,
+            "resultBytes": 33568,
+            "queries": [
+              {
+                "fingerprint": "d78e979dc7e8",
+                "ms": 139,
+                "rows": 1,
+                "bytes": 14
+              },
+              {
+                "fingerprint": "0bbef03ffbb7",
+                "ms": 163,
+                "rows": 50,
+                "bytes": 33512
+              }
+            ]
+          }
+        ],
+        "my_work": [
+          {
+            "ms": 497,
+            "resultBytes": 1547,
+            "queries": [
+              {
+                "fingerprint": "d904e3c8753d",
+                "ms": 73,
+                "rows": 1,
+                "bytes": 11
+              },
+              {
+                "fingerprint": "0617ccbfc343",
+                "ms": 256,
+                "rows": 3,
+                "bytes": 2042
+              },
+              {
+                "fingerprint": "bcf0f9b38ec6",
+                "ms": 116,
+                "rows": 3,
+                "bytes": 5503
+              }
+            ]
+          },
+          {
+            "ms": 571,
+            "resultBytes": 1547,
+            "queries": [
+              {
+                "fingerprint": "d904e3c8753d",
+                "ms": 76,
+                "rows": 1,
+                "bytes": 11
+              },
+              {
+                "fingerprint": "0617ccbfc343",
+                "ms": 95,
+                "rows": 3,
+                "bytes": 2042
+              },
+              {
+                "fingerprint": "bcf0f9b38ec6",
+                "ms": 398,
+                "rows": 3,
+                "bytes": 5503
+              }
+            ]
+          },
+          {
+            "ms": 524,
+            "resultBytes": 1547,
+            "queries": [
+              {
+                "fingerprint": "d904e3c8753d",
+                "ms": 209,
+                "rows": 1,
+                "bytes": 11
+              },
+              {
+                "fingerprint": "0617ccbfc343",
+                "ms": 80,
+                "rows": 3,
+                "bytes": 2042
+              },
+              {
+                "fingerprint": "bcf0f9b38ec6",
+                "ms": 231,
+                "rows": 3,
+                "bytes": 5503
+              }
+            ]
+          }
+        ],
+        "record_details": [
+          {
+            "ms": 146,
+            "resultBytes": 4361,
+            "queries": [
+              {
+                "fingerprint": "bcf0f9b38ec6",
+                "ms": 146,
+                "rows": 1,
+                "bytes": 4361
+              }
+            ]
+          },
+          {
+            "ms": 114,
+            "resultBytes": 4361,
+            "queries": [
+              {
+                "fingerprint": "bcf0f9b38ec6",
+                "ms": 114,
+                "rows": 1,
+                "bytes": 4361
+              }
+            ]
+          },
+          {
+            "ms": 155,
+            "resultBytes": 4361,
+            "queries": [
+              {
+                "fingerprint": "bcf0f9b38ec6",
+                "ms": 155,
+                "rows": 1,
+                "bytes": 4361
+              }
+            ]
+          }
+        ],
+        "call_details": [
+          {
+            "ms": 132,
+            "resultBytes": 2918,
+            "queries": [
+              {
+                "fingerprint": "5631a92d27eb",
+                "ms": 131,
+                "rows": 1,
+                "bytes": 2918
+              }
+            ]
+          },
+          {
+            "ms": 115,
+            "resultBytes": 2918,
+            "queries": [
+              {
+                "fingerprint": "5631a92d27eb",
+                "ms": 114,
+                "rows": 1,
+                "bytes": 2918
+              }
+            ]
+          },
+          {
+            "ms": 184,
+            "resultBytes": 2918,
+            "queries": [
+              {
+                "fingerprint": "5631a92d27eb",
+                "ms": 184,
+                "rows": 1,
+                "bytes": 2918
+              }
+            ]
+          }
+        ],
+        "ai_history": [
+          {
+            "ms": 436,
+            "resultBytes": 186,
+            "queries": [
+              {
+                "fingerprint": "3f9d19002b39",
+                "ms": 100,
+                "rows": 1,
+                "bytes": 47
+              },
+              {
+                "fingerprint": "a37797a6c7c9",
+                "ms": 79,
+                "rows": 1,
+                "bytes": 31
+              },
+              {
+                "fingerprint": "51fcc52ce549",
+                "ms": 81,
+                "rows": 1,
+                "bytes": 69
+              },
+              {
+                "fingerprint": "da89d77beea1",
+                "ms": 80,
+                "rows": 1,
+                "bytes": 9
+              },
+              {
+                "fingerprint": "77d77168e9da",
+                "ms": 95,
+                "rows": 0,
+                "bytes": 2
+              }
+            ]
+          },
+          {
+            "ms": 667,
+            "resultBytes": 186,
+            "queries": [
+              {
+                "fingerprint": "3f9d19002b39",
+                "ms": 96,
+                "rows": 1,
+                "bytes": 47
+              },
+              {
+                "fingerprint": "a37797a6c7c9",
+                "ms": 75,
+                "rows": 1,
+                "bytes": 31
+              },
+              {
+                "fingerprint": "51fcc52ce549",
+                "ms": 86,
+                "rows": 1,
+                "bytes": 69
+              },
+              {
+                "fingerprint": "da89d77beea1",
+                "ms": 211,
+                "rows": 1,
+                "bytes": 9
+              },
+              {
+                "fingerprint": "77d77168e9da",
+                "ms": 198,
+                "rows": 0,
+                "bytes": 2
+              }
+            ]
+          },
+          {
+            "ms": 818,
+            "resultBytes": 186,
+            "queries": [
+              {
+                "fingerprint": "3f9d19002b39",
+                "ms": 108,
+                "rows": 1,
+                "bytes": 47
+              },
+              {
+                "fingerprint": "a37797a6c7c9",
+                "ms": 70,
+                "rows": 1,
+                "bytes": 31
+              },
+              {
+                "fingerprint": "51fcc52ce549",
+                "ms": 367,
+                "rows": 1,
+                "bytes": 69
+              },
+              {
+                "fingerprint": "da89d77beea1",
+                "ms": 190,
+                "rows": 1,
+                "bytes": 9
+              },
+              {
+                "fingerprint": "77d77168e9da",
+                "ms": 83,
+                "rows": 0,
+                "bytes": 2
+              }
+            ]
+          }
+        ]
+      },
+      "settings": {
+        "jit": "off",
+        "timezone": "UTC"
+      }
+    },
+    "after": {
+      "label": "loading-readers-final",
+      "readOnly": true,
+      "measurements": {
+        "raw": [
+          {
+            "ms": 7230,
+            "resultBytes": 63361,
+            "queries": [
+              {
+                "fingerprint": "e4011f63d771",
+                "ms": 286,
+                "rows": 1,
+                "bytes": 15
+              },
+              {
+                "fingerprint": "5e8e0bbce46e",
+                "ms": 6941,
+                "rows": 50,
+                "bytes": 63291
+              }
+            ]
+          },
+          {
+            "ms": 890,
+            "resultBytes": 63361,
+            "queries": [
+              {
+                "fingerprint": "e4011f63d771",
+                "ms": 365,
+                "rows": 1,
+                "bytes": 15
+              },
+              {
+                "fingerprint": "5e8e0bbce46e",
+                "ms": 524,
+                "rows": 50,
+                "bytes": 63291
+              }
+            ]
+          },
+          {
+            "ms": 620,
+            "resultBytes": 63361,
+            "queries": [
+              {
+                "fingerprint": "e4011f63d771",
+                "ms": 330,
+                "rows": 1,
+                "bytes": 15
+              },
+              {
+                "fingerprint": "5e8e0bbce46e",
+                "ms": 289,
+                "rows": 50,
+                "bytes": 63291
+              }
+            ]
+          }
+        ],
+        "calls": [
+          {
+            "ms": 2512,
+            "resultBytes": 42597,
+            "queries": [
+              {
+                "fingerprint": "cddc661a6099",
+                "ms": 1612,
+                "rows": 1,
+                "bytes": 997
+              },
+              {
+                "fingerprint": "e3e2bc89a444",
+                "ms": 899,
+                "rows": 25,
+                "bytes": 42529
+              }
+            ]
+          },
+          {
+            "ms": 196,
+            "resultBytes": 42597,
+            "queries": [
+              {
+                "fingerprint": "cddc661a6099",
+                "ms": 92,
+                "rows": 1,
+                "bytes": 997
+              },
+              {
+                "fingerprint": "e3e2bc89a444",
+                "ms": 103,
+                "rows": 25,
+                "bytes": 42529
+              }
+            ]
+          },
+          {
+            "ms": 221,
+            "resultBytes": 42597,
+            "queries": [
+              {
+                "fingerprint": "cddc661a6099",
+                "ms": 91,
+                "rows": 1,
+                "bytes": 997
+              },
+              {
+                "fingerprint": "e3e2bc89a444",
+                "ms": 129,
+                "rows": 25,
+                "bytes": 42529
+              }
+            ]
+          }
+        ],
+        "assignments": [
+          {
+            "ms": 358,
+            "resultBytes": 33568,
+            "queries": [
+              {
+                "fingerprint": "50b035d47e98",
+                "ms": 112,
+                "rows": 1,
+                "bytes": 14
+              },
+              {
+                "fingerprint": "7974ac716a89",
+                "ms": 243,
+                "rows": 50,
+                "bytes": 33512
+              }
+            ]
+          },
+          {
+            "ms": 399,
+            "resultBytes": 33568,
+            "queries": [
+              {
+                "fingerprint": "50b035d47e98",
+                "ms": 179,
+                "rows": 1,
+                "bytes": 14
+              },
+              {
+                "fingerprint": "7974ac716a89",
+                "ms": 219,
+                "rows": 50,
+                "bytes": 33512
+              }
+            ]
+          },
+          {
+            "ms": 435,
+            "resultBytes": 33568,
+            "queries": [
+              {
+                "fingerprint": "50b035d47e98",
+                "ms": 176,
+                "rows": 1,
+                "bytes": 14
+              },
+              {
+                "fingerprint": "7974ac716a89",
+                "ms": 259,
+                "rows": 50,
+                "bytes": 33512
+              }
+            ]
+          }
+        ],
+        "my_work": [
+          {
+            "ms": 600,
+            "resultBytes": 1547,
+            "queries": [
+              {
+                "fingerprint": "2844452eed2c",
+                "ms": 349,
+                "rows": 1,
+                "bytes": 11
+              },
+              {
+                "fingerprint": "874ae39594c1",
+                "ms": 215,
+                "rows": 3,
+                "bytes": 2460
+              }
+            ]
+          },
+          {
+            "ms": 392,
+            "resultBytes": 1547,
+            "queries": [
+              {
+                "fingerprint": "2844452eed2c",
+                "ms": 160,
+                "rows": 1,
+                "bytes": 11
+              },
+              {
+                "fingerprint": "874ae39594c1",
+                "ms": 230,
+                "rows": 3,
+                "bytes": 2460
+              }
+            ]
+          },
+          {
+            "ms": 264,
+            "resultBytes": 1547,
+            "queries": [
+              {
+                "fingerprint": "2844452eed2c",
+                "ms": 132,
+                "rows": 1,
+                "bytes": 11
+              },
+              {
+                "fingerprint": "874ae39594c1",
+                "ms": 129,
+                "rows": 3,
+                "bytes": 2460
+              }
+            ]
+          }
+        ],
+        "record_details": [
+          {
+            "ms": 135,
+            "resultBytes": 4361,
+            "queries": [
+              {
+                "fingerprint": "bcf0f9b38ec6",
+                "ms": 135,
+                "rows": 1,
+                "bytes": 4361
+              }
+            ]
+          },
+          {
+            "ms": 138,
+            "resultBytes": 4361,
+            "queries": [
+              {
+                "fingerprint": "bcf0f9b38ec6",
+                "ms": 138,
+                "rows": 1,
+                "bytes": 4361
+              }
+            ]
+          },
+          {
+            "ms": 128,
+            "resultBytes": 4361,
+            "queries": [
+              {
+                "fingerprint": "bcf0f9b38ec6",
+                "ms": 127,
+                "rows": 1,
+                "bytes": 4361
+              }
+            ]
+          }
+        ],
+        "call_details": [
+          {
+            "ms": 128,
+            "resultBytes": 2918,
+            "queries": [
+              {
+                "fingerprint": "5631a92d27eb",
+                "ms": 128,
+                "rows": 1,
+                "bytes": 2918
+              }
+            ]
+          },
+          {
+            "ms": 142,
+            "resultBytes": 2918,
+            "queries": [
+              {
+                "fingerprint": "5631a92d27eb",
+                "ms": 142,
+                "rows": 1,
+                "bytes": 2918
+              }
+            ]
+          },
+          {
+            "ms": 127,
+            "resultBytes": 2918,
+            "queries": [
+              {
+                "fingerprint": "5631a92d27eb",
+                "ms": 127,
+                "rows": 1,
+                "bytes": 2918
+              }
+            ]
+          }
+        ],
+        "ai_history": [
+          {
+            "ms": 251,
+            "resultBytes": 186,
+            "queries": [
+              {
+                "fingerprint": "77f5111fc250",
+                "ms": 123,
+                "rows": 1,
+                "bytes": 71
+              },
+              {
+                "fingerprint": "ecfcdf2b7460",
+                "ms": 127,
+                "rows": 1,
+                "bytes": 92
+              }
+            ]
+          },
+          {
+            "ms": 329,
+            "resultBytes": 186,
+            "queries": [
+              {
+                "fingerprint": "77f5111fc250",
+                "ms": 117,
+                "rows": 1,
+                "bytes": 71
+              },
+              {
+                "fingerprint": "ecfcdf2b7460",
+                "ms": 212,
+                "rows": 1,
+                "bytes": 92
+              }
+            ]
+          },
+          {
+            "ms": 565,
+            "resultBytes": 186,
+            "queries": [
+              {
+                "fingerprint": "77f5111fc250",
+                "ms": 258,
+                "rows": 1,
+                "bytes": 71
+              },
+              {
+                "fingerprint": "ecfcdf2b7460",
+                "ms": 307,
+                "rows": 1,
+                "bytes": 92
+              }
+            ]
+          }
+        ]
+      },
+      "settings": {
+        "jit": "off",
+        "timezone": "UTC"
+      },
+      "plans": [
+        {
+          "name": "raw",
+          "fingerprint": "e4011f63d771",
+          "planningMs": 0.095,
+          "executionMs": 10.429,
+          "jitMs": 0,
+          "nodes": [
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 1,
+              "totalMs": 9.82,
+              "sharedHits": 53,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            },
+            {
+              "type": "Index Only Scan",
+              "relation": "raw_records",
+              "index": "idx_raw_records_source",
+              "rows": 58821,
+              "loops": 1,
+              "totalMs": 5.633,
+              "sharedHits": 53,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            }
+          ]
+        },
+        {
+          "name": "raw",
+          "fingerprint": "5e8e0bbce46e",
+          "planningMs": 3.884,
+          "executionMs": 75.374,
+          "jitMs": 0,
+          "nodes": [
+            {
+              "type": "Nested Loop",
+              "rows": 50,
+              "loops": 1,
+              "totalMs": 75.033,
+              "sharedHits": 15224,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 50,
+              "loops": 1,
+              "totalMs": 68.256,
+              "sharedHits": 11810,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 50,
+              "loops": 1,
+              "totalMs": 66.679,
+              "sharedHits": 11008,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 50,
+              "loops": 1,
+              "totalMs": 65.61,
+              "sharedHits": 10352,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            },
+            {
+              "type": "Limit",
+              "rows": 50,
+              "loops": 1,
+              "totalMs": 65.567,
+              "sharedHits": 10352,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            },
+            {
+              "type": "Sort",
+              "rows": 50,
+              "loops": 1,
+              "totalMs": 65.557,
+              "sharedHits": 10352,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            },
+            {
+              "type": "Seq Scan",
+              "relation": "raw_records",
+              "rows": 58821,
+              "loops": 1,
+              "totalMs": 32.409,
+              "sharedHits": 10352,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 1,
+              "loops": 50,
+              "totalMs": 0.107,
+              "sharedHits": 2840,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            }
+          ]
+        },
+        {
+          "name": "calls",
+          "fingerprint": "cddc661a6099",
+          "planningMs": 0.183,
+          "executionMs": 12.707,
+          "jitMs": 0,
+          "nodes": [
+            {
+              "type": "Subquery Scan",
+              "rows": 1,
+              "loops": 1,
+              "totalMs": 12.613,
+              "sharedHits": 2734,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            },
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 1,
+              "totalMs": 10.956,
+              "sharedHits": 2734,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 7998,
+              "loops": 1,
+              "totalMs": 10.358,
+              "sharedHits": 2734,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            },
+            {
+              "type": "Seq Scan",
+              "relation": "bolna_call_logs",
+              "rows": 7998,
+              "loops": 1,
+              "totalMs": 8.233,
+              "sharedHits": 2734,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            },
+            {
+              "type": "Limit",
+              "rows": 25,
+              "loops": 1,
+              "totalMs": 1.632,
+              "sharedHits": 0,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            },
+            {
+              "type": "Sort",
+              "rows": 25,
+              "loops": 1,
+              "totalMs": 1.629,
+              "sharedHits": 0,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 7998,
+              "loops": 1,
+              "totalMs": 0.807,
+              "sharedHits": 0,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            }
+          ]
+        },
+        {
+          "name": "calls",
+          "fingerprint": "e3e2bc89a444",
+          "planningMs": 5.282,
+          "executionMs": 7.826,
+          "jitMs": 0,
+          "nodes": [
+            {
+              "type": "Sort",
+              "rows": 25,
+              "loops": 1,
+              "totalMs": 7.332,
+              "sharedHits": 1971,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 25,
+              "loops": 1,
+              "totalMs": 7.276,
+              "sharedHits": 1971,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 1,
+              "loops": 25,
+              "totalMs": 0.134,
+              "sharedHits": 687,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            },
+            {
+              "type": "Limit",
+              "rows": 0,
+              "loops": 25,
+              "totalMs": 0.124,
+              "sharedHits": 625,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            },
+            {
+              "type": "Sort",
+              "rows": 0,
+              "loops": 25,
+              "totalMs": 0.124,
+              "sharedHits": 625,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 0,
+              "loops": 25,
+              "totalMs": 0.122,
+              "sharedHits": 625,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 25,
+              "loops": 1,
+              "totalMs": 2.768,
+              "sharedHits": 846,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            },
+            {
+              "type": "Unique",
+              "rows": 4,
+              "loops": 25,
+              "totalMs": 0.109,
+              "sharedHits": 415,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            }
+          ]
+        },
+        {
+          "name": "assignments",
+          "fingerprint": "50b035d47e98",
+          "planningMs": 0.084,
+          "executionMs": 0.474,
+          "jitMs": 0,
+          "nodes": [
+            {
+              "type": "Aggregate",
+              "rows": 1,
+              "loops": 1,
+              "totalMs": 0.446,
+              "sharedHits": 45,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            },
+            {
+              "type": "Seq Scan",
+              "relation": "bolna_assignments",
+              "rows": 1980,
+              "loops": 1,
+              "totalMs": 0.302,
+              "sharedHits": 45,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            }
+          ]
+        },
+        {
+          "name": "assignments",
+          "fingerprint": "7974ac716a89",
+          "planningMs": 2.771,
+          "executionMs": 6.184,
+          "jitMs": 0,
+          "nodes": [
+            {
+              "type": "Nested Loop",
+              "rows": 50,
+              "loops": 1,
+              "totalMs": 5.911,
+              "sharedHits": 663,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 50,
+              "loops": 1,
+              "totalMs": 3.405,
+              "sharedHits": 351,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 50,
+              "loops": 1,
+              "totalMs": 3.271,
+              "sharedHits": 351,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 50,
+              "loops": 1,
+              "totalMs": 2.317,
+              "sharedHits": 199,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 50,
+              "loops": 1,
+              "totalMs": 2.103,
+              "sharedHits": 49,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            },
+            {
+              "type": "Nested Loop",
+              "rows": 50,
+              "loops": 1,
+              "totalMs": 2.051,
+              "sharedHits": 47,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            },
+            {
+              "type": "CTE Scan",
+              "rows": 50,
+              "loops": 1,
+              "totalMs": 1.973,
+              "sharedHits": 45,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            },
+            {
+              "type": "Limit",
+              "rows": 50,
+              "loops": 1,
+              "totalMs": 1.951,
+              "sharedHits": 45,
+              "sharedReads": 0,
+              "tempReads": 0,
+              "tempWrites": 0
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "livePlansBefore": [
+    {
+      "name": "raw",
+      "fingerprint": "e4011f63d771",
+      "planningMs": 2.661,
+      "executionMs": 36.423,
+      "jitMs": 0,
+      "nodes": [
+        {
+          "type": "Aggregate",
+          "rows": 1,
+          "loops": 1,
+          "totalMs": 35.855,
+          "sharedHits": 53,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Index Only Scan",
+          "relation": "raw_records",
+          "index": "idx_raw_records_source",
+          "rows": 58821,
+          "loops": 1,
+          "totalMs": 31.686,
+          "sharedHits": 53,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        }
+      ]
+    },
+    {
+      "name": "raw",
+      "fingerprint": "5e8e0bbce46e",
+      "planningMs": 16.26,
+      "executionMs": 3232.131,
+      "jitMs": 0,
+      "nodes": [
+        {
+          "type": "Nested Loop",
+          "rows": 50,
+          "loops": 1,
+          "totalMs": 3224.189,
+          "sharedHits": 15224,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Nested Loop",
+          "rows": 50,
+          "loops": 1,
+          "totalMs": 2770.305,
+          "sharedHits": 11810,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Nested Loop",
+          "rows": 50,
+          "loops": 1,
+          "totalMs": 2577.347,
+          "sharedHits": 11008,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "CTE Scan",
+          "rows": 50,
+          "loops": 1,
+          "totalMs": 2401.59,
+          "sharedHits": 10352,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Limit",
+          "rows": 50,
+          "loops": 1,
+          "totalMs": 2399.213,
+          "sharedHits": 10352,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Sort",
+          "rows": 50,
+          "loops": 1,
+          "totalMs": 2399.19,
+          "sharedHits": 10352,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Seq Scan",
+          "relation": "raw_records",
+          "rows": 58821,
+          "loops": 1,
+          "totalMs": 2351.51,
+          "sharedHits": 10352,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Nested Loop",
+          "rows": 1,
+          "loops": 50,
+          "totalMs": 7.718,
+          "sharedHits": 2840,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        }
+      ]
+    },
+    {
+      "name": "calls",
+      "fingerprint": "660d00fc77f6",
+      "planningMs": 112.479,
+      "executionMs": 1919.299,
+      "jitMs": 0,
+      "nodes": [
+        {
+          "type": "Subquery Scan",
+          "rows": 1,
+          "loops": 1,
+          "totalMs": 1906.981,
+          "sharedHits": 19824,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Aggregate",
+          "rows": 1,
+          "loops": 1,
+          "totalMs": 1900.735,
+          "sharedHits": 19824,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "CTE Scan",
+          "rows": 7998,
+          "loops": 1,
+          "totalMs": 1899.278,
+          "sharedHits": 19824,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Subquery Scan",
+          "rows": 7998,
+          "loops": 1,
+          "totalMs": 1891.248,
+          "sharedHits": 19824,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Nested Loop",
+          "rows": 7998,
+          "loops": 1,
+          "totalMs": 1889.8,
+          "sharedHits": 19824,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Seq Scan",
+          "relation": "bolna_call_logs",
+          "rows": 7998,
+          "loops": 1,
+          "totalMs": 1779.796,
+          "sharedHits": 2734,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Limit",
+          "rows": 0,
+          "loops": 7998,
+          "totalMs": 0.013,
+          "sharedHits": 17090,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Sort",
+          "rows": 0,
+          "loops": 7998,
+          "totalMs": 0.012,
+          "sharedHits": 17090,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        }
+      ]
+    },
+    {
+      "name": "calls",
+      "fingerprint": "e3e2bc89a444",
+      "planningMs": 482.126,
+      "executionMs": 331.822,
+      "jitMs": 0,
+      "nodes": [
+        {
+          "type": "Sort",
+          "rows": 25,
+          "loops": 1,
+          "totalMs": 207.488,
+          "sharedHits": 1971,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Nested Loop",
+          "rows": 25,
+          "loops": 1,
+          "totalMs": 200.429,
+          "sharedHits": 1971,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Nested Loop",
+          "rows": 25,
+          "loops": 1,
+          "totalMs": 153.665,
+          "sharedHits": 846,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Nested Loop",
+          "rows": 25,
+          "loops": 1,
+          "totalMs": 129.688,
+          "sharedHits": 721,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Index Scan",
+          "relation": "bolna_call_logs",
+          "index": "bolna_call_logs_pkey",
+          "rows": 25,
+          "loops": 1,
+          "totalMs": 125.161,
+          "sharedHits": 665,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Aggregate",
+          "rows": 1,
+          "loops": 25,
+          "totalMs": 3.226,
+          "sharedHits": 258,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Limit",
+          "rows": 2,
+          "loops": 25,
+          "totalMs": 3.198,
+          "sharedHits": 258,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Sort",
+          "rows": 2,
+          "loops": 25,
+          "totalMs": 3.196,
+          "sharedHits": 258,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        }
+      ]
+    },
+    {
+      "name": "assignments",
+      "fingerprint": "d78e979dc7e8",
+      "planningMs": 4.642,
+      "executionMs": 515.091,
+      "jitMs": 0,
+      "nodes": [
+        {
+          "type": "Aggregate",
+          "rows": 1,
+          "loops": 1,
+          "totalMs": 514.969,
+          "sharedHits": 16983,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Nested Loop",
+          "rows": 1980,
+          "loops": 1,
+          "totalMs": 514.597,
+          "sharedHits": 16983,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Nested Loop",
+          "rows": 1980,
+          "loops": 1,
+          "totalMs": 481.844,
+          "sharedHits": 11844,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Limit",
+          "rows": 0,
+          "loops": 1980,
+          "totalMs": 0.187,
+          "sharedHits": 5858,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Sort",
+          "rows": 0,
+          "loops": 1980,
+          "totalMs": 0.187,
+          "sharedHits": 5858,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Nested Loop",
+          "rows": 0,
+          "loops": 1980,
+          "totalMs": 0.186,
+          "sharedHits": 5858,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Index Scan",
+          "relation": "raw_phones",
+          "index": "raw_phones_master_id_phone_id_key",
+          "rows": 0,
+          "loops": 1980,
+          "totalMs": 0.108,
+          "sharedHits": 3332,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Index Scan",
+          "relation": "raw_phone_numbers",
+          "index": "raw_phone_numbers_pkey",
+          "rows": 1,
+          "loops": 842,
+          "totalMs": 0.18,
+          "sharedHits": 2526,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        }
+      ]
+    },
+    {
+      "name": "assignments",
+      "fingerprint": "a719919e4dcd",
+      "planningMs": 6.216,
+      "executionMs": 672.158,
+      "jitMs": 0,
+      "nodes": [
+        {
+          "type": "Limit",
+          "rows": 50,
+          "loops": 1,
+          "totalMs": 671.649,
+          "sharedHits": 23292,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Result",
+          "rows": 50,
+          "loops": 1,
+          "totalMs": 671.631,
+          "sharedHits": 23292,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Sort",
+          "rows": 50,
+          "loops": 1,
+          "totalMs": 640.201,
+          "sharedHits": 22980,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Nested Loop",
+          "rows": 1980,
+          "loops": 1,
+          "totalMs": 634.691,
+          "sharedHits": 22980,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Nested Loop",
+          "rows": 1980,
+          "loops": 1,
+          "totalMs": 587.766,
+          "sharedHits": 17805,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Nested Loop",
+          "rows": 1980,
+          "loops": 1,
+          "totalMs": 570.847,
+          "sharedHits": 11947,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Nested Loop",
+          "rows": 1980,
+          "loops": 1,
+          "totalMs": 512.678,
+          "sharedHits": 6836,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        },
+        {
+          "type": "Index Scan",
+          "relation": "raw_records",
+          "index": "raw_records_pkey",
+          "rows": 0,
+          "loops": 1980,
+          "totalMs": 0.254,
+          "sharedHits": 6773,
+          "sharedReads": 0,
+          "tempReads": 0,
+          "tempWrites": 0
+        }
+      ]
+    }
+  ]
+}

@@ -1,22 +1,24 @@
 "use client";
-import { searchValues, filterValues } from "@/lib/filter-values";
+import { searchValues, filterValues, firstValue } from "@/lib/filter-values";
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useDashboardUI } from "./DashboardUI";
 import { HubCards } from "./HubCards";
-import { WorkColumns, WorkHeaders, WorkLegend, WorkStatusBar, WorkResultSummary } from "./my/WorkTableStructure";
+import { WorkColumns, WorkHeaders, WorkStatusBar, WorkResultSummary } from "./my/WorkTableStructure";
 import { WorkFilters } from "./my/WorkFilters";
 import { WorkContext } from "./my/WorkContext";
+import { ContactCardSkeleton } from "./ContactCard";
 import { AiCallStatus } from "./my/AiCallStatus";
 import { parseWorkFilters } from "@/lib/work-filters";
 import { TeamLoading } from "./team/TeamLoading";
-import { AiReviewNotice, AssignmentNotices, CallGridHint } from "./GridNotices";
+import { AiReviewNotice } from "./GridNotices";
 import { WalletBalance } from "./WalletBalance";
 import { RecordsHeader } from "./RecordsHeader";
 import { RecordsPagination } from "./RecordsPagination";
-import { AssignmentColumns, AssignmentHeaders, AssignmentStats } from "./assignments/AssignmentStructure";
+import { AssignmentColumns, AssignmentHeaders, AssignmentStats, AssignmentSummary } from "./assignments/AssignmentStructure";
 import { AssignmentFilters } from "./assignments/AssignmentFilters";
+import { AssigneeCardSkeleton } from "./assignments/AssigneeCard";
 import { FILTER_LABELS, filterLabel, filterValue } from "./filter-labels";
 import {
   ASSIGNMENT_COLUMNS, callColumns, RAW_COLUMNS,
@@ -25,7 +27,7 @@ import {
 import { IconClipboard, IconDataset, IconDownload, IconFilter, IconPhone, IconPhoneOutgoing, IconUsers } from "./icons";
 
 type View = "calls" | "raw" | "my" | "team" | "assignments" | "home";
-const TITLES = { calls: "Call Analytics", raw: "Raw Dataset", my: "My Work", team: "Team", assignments: "Assignments", home: "Dashboard" };
+const TITLES = { calls: "AI Calls", raw: "Raw Dataset", my: "My Work", team: "Team", assignments: "Assignments", home: "Dashboard" };
 
 function Placeholder({ width = "70%", height = 10, className = "" }: { width?: number | string; height?: number; className?: string }) {
   return <span className={`skeleton ${className}`} style={{ width, height }} />;
@@ -33,18 +35,13 @@ function Placeholder({ width = "70%", height = 10, className = "" }: { width?: n
 
 function LoadingTitle({ view }: { view: Exclude<View, "home"> }) {
   const Icon = view === "calls" ? IconPhone : view === "raw" ? IconDataset : view === "team" ? IconUsers : IconClipboard;
-  if (view === "raw" || view === "calls") return <RecordsHeader title={TITLES[view]} icon={<Icon size={18}/>} meta={view === "raw" ? <WalletBalance placeholder compact/> : undefined} actions={<>{view === "raw" && <button type="button" className="btn-row" disabled>Recent batches</button>}<span className="freshness"><span className="loading-timestamp"><Placeholder width="100%"/></span><button type="button" className="btn-row" disabled>Refresh</button></span></>}/>;
-  return <div className="page-title">
-    <span className="pt-icon"><Icon size={18} /></span>{TITLES[view]}
-    {(view === "my" || view === "team") && <span className="title-sub"><Placeholder width={view === "my" ? 62 : 77} /></span>}
-    <span className="freshness"><span className="loading-timestamp"><Placeholder width="100%" /></span><button type="button" className="btn-row" disabled>Refresh</button></span>
-  </div>;
+  return <RecordsHeader title={TITLES[view]} icon={<Icon size={18}/>} status={view === "my" ? <Placeholder width={62}/> : undefined} meta={view === "raw" ? <WalletBalance placeholder compact/> : view === "calls" ? <AiReviewNotice count="…"/> : undefined} actions={<>{view === "raw" && <button type="button" className="btn-row" disabled>Recent batches</button>}<span className="freshness"><span className="loading-timestamp"><Placeholder width="100%"/></span><button type="button" className="btn-row" disabled>Refresh</button></span></>}/>;
 }
 
 function LoadingFilters({ view, admin }: { view: "calls" | "raw" | "assignments"; admin: boolean }) {
   const params = useSearchParams();
   const active = [...params.entries()].filter(([key, value]) => value && FILTER_LABELS[key]);
-  const count = active.filter(([key]) => key !== "q").length;
+  const count = new Set(active.filter(([key]) => key !== "q").map(([key])=>key)).size;
   return <>
     <div className={`filterbar records-toolbar${active.length ? " has-filters" : ""}`}>
       <div className="toolbar-search">
@@ -105,7 +102,7 @@ function LoadingSheet({ view, admin }: { view: "calls" | "raw"; admin: boolean }
       </th>)}</tr></thead>
       <tbody>{Array.from({ length: 10 }, (_, row) => <tr className="skeleton-row" key={row}>
         {labels.map((label, index) => <td key={label} className={label === "Row" ? "rownum" : columnClass(label)}>
-          {label === "Row" || label === "Select" ? <Placeholder width={label === "Row" ? 10 : 13} height={label === "Row" ? 10 : 13} /> : <Placeholder width={`${55 + ((row + index) % 3) * 15}%`} />}
+          {label === "Row" || label === "Select" ? <Placeholder width={label === "Row" ? 10 : 13} height={label === "Row" ? 10 : 13} /> : label === "Contact" ? <ContactCardSkeleton metadata={view === "calls"} /> : <Placeholder width={`${55 + ((row + index) % 3) * 15}%`} />}
         </td>)}
       </tr>)}</tbody>
     </table>
@@ -120,7 +117,6 @@ function LoadingWork() {
     <WorkStatusBar filters={filters} loading />
     <WorkFilters filters={filters} loading />
     <WorkResultSummary filters={filters} loading />
-    <WorkLegend />
     <div className="stacked work-content">
       {sections.map(([,title]) => <section className="worklist" key={title}>
         <h2 className="section-head">{title}<span className="count"><Placeholder width={65} /></span></h2>
@@ -128,8 +124,8 @@ function LoadingWork() {
           <WorkColumns /><WorkHeaders />
           <tbody>{Array.from({ length: 2 }, (_, row) => <tr className="skeleton-row" key={row}>
             <td className="rownum"><Placeholder width={10} /></td>
-            <td className="who"><div className="work-person-heading"><span className="who-name"><Placeholder width="85%" height={14} /></span><span className="btn-row details-trigger loading-detail-button">Details</span></div><WorkContext loading /><div className="work-assignment-note"><span className="work-note-label"><IconClipboard size={12} />Assigner&apos;s note</span><span className="brief"><Placeholder width="90%" /></span></div><div className="work-assigned-meta"><Placeholder width="65%" /><Placeholder width={35} /></div></td>
-            <td className="work-phone"><Placeholder width="90%" /><AiCallStatus loading /></td>
+            <td className="who"><ContactCardSkeleton /><WorkContext loading /><div className="work-assignment-note"><span className="work-note-label"><IconClipboard size={12} />Assigner&apos;s note</span><span className="brief"><Placeholder width="90%" /></span></div><div className="work-assigned-meta"><Placeholder width="65%" /><Placeholder width={35} /></div></td>
+            <td className="work-ai-cell"><AiCallStatus loading /></td>
             <td data-label="Result" className="edit-cell edit-first"><Placeholder width="100%" height={31} /></td>
             <td data-label="Your notes" className="edit-cell notes-cell"><Placeholder width="100%" height={58} /></td>
             <td data-label="In DB?" className="edit-cell center"><Placeholder width={48} height={14} /></td>
@@ -148,15 +144,14 @@ function LoadingAssignments() {
   const [columns,setColumns]=useState<ReturnType<typeof readColumnPreferences>|null>(null);
   useEffect(()=>setColumns(readColumnPreferences("/dashboard/assignments",["Row",...ASSIGNMENT_COLUMNS])),[]);
   return <>
-    <AssignmentStats assignee={applied.assignee} state={applied.state} loading />
+    <AssignmentStats applied={applied} assignee={applied.assignee} state={applied.state} loading />
     <AssignmentFilters applied={applied} loading />
     {Object.entries(applied).some(([key, value]) => value && FILTER_LABELS[key]) && <div className="applied-filters">{Object.entries(applied).flatMap(([key,values]) => FILTER_LABELS[key]?filterValues(values).map(value=>[key,value]):[]).map(([key, value]) => <button type="button" className="filter-tag" key={`${key}:${value}`} disabled>{filterLabel(key, "/dashboard/assignments")}: {filterValue(key, value)}<span>×</span></button>)}<button type="button" className="btn-text" disabled>Clear filters</button></div>}
-    <AssignmentNotices />
-    <div className="assignment-summary"><Placeholder width={135} /><span>Newest first</span></div>
+    <AssignmentSummary sort={firstValue(applied.sort)}><Placeholder width={135} /></AssignmentSummary>
     <div className="gridwrap"><table className="sheet log-sheet assignment-sheet loading-log">
       <AssignmentColumns widths={columns?.widths} hidden={columns?.hiddenColumns}/><AssignmentHeaders hidden={columns?.hiddenColumns}/>
       <tbody>{Array.from({ length: 10 }, (_, row) => <tr className="skeleton-row" key={row}>
-        <td className="rownum"><Placeholder width={10} /></td>{ASSIGNMENT_COLUMNS.map(label => <td key={label} className={`${columns?.hiddenColumns.includes(label)?"column-hidden ":""}${label === "Assignee" ? "assignment-person" : label === "Actions" ? "actions" : ""}`}>{label === "Assignee" ? <><span className="assignee-name"><Placeholder width={110} height={14} /></span><span className="assignee-email"><Placeholder width={140} /></span></> : <Placeholder width={label === "Who" || label === "Notes" || label === "Brief" ? "80%" : label === "Phone" ? 120 : 45} />}</td>)}
+        <td className="rownum"><Placeholder width={10} /></td>{ASSIGNMENT_COLUMNS.map(label => <td key={label} className={`${columns?.hiddenColumns.includes(label)?"column-hidden ":""}${label === "Assignee" ? "assignment-person" : label === "Actions" ? "actions" : ""}`}>{label === "Assignee" ? <AssigneeCardSkeleton /> : label === "Contact" ? <ContactCardSkeleton /> : <Placeholder width={label === "Notes" || label === "Brief" ? "80%" : 45} />}</td>)}
       </tr>)}</tbody>
     </table></div>
     <LoadingPager />
@@ -171,11 +166,9 @@ export function GridLoading({ view }: { view: View }) {
     <div className="loading-page" data-loading-view={view} aria-hidden="true" inert>
       {view === "home" ? <HubCards isAdmin={isAdmin} loading /> : <>
         <LoadingTitle view={view} />
-        {view === "calls" && <AiReviewNotice count="…" />}
         {view === "my" ? <LoadingWork /> : view === "assignments" ? <LoadingAssignments /> : <>
           <LoadingFilters view={view} admin={isAdmin} />
           {(view === "raw" || isAdmin) && <div className="selection-summary">Select rows for bulk actions</div>}
-          {view === "calls" && <CallGridHint />}
           <LoadingSheet view={view} admin={isAdmin} />
           <LoadingPager />
         </>}

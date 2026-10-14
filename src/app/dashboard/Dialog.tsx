@@ -25,7 +25,7 @@ export function Dialog({ title, onClose, busy = false, wide = false, drawer = fa
     }}
     onCancel={e => { e.preventDefault(); if (!busy) closeRef.current(); }}
     onClick={e => { if (e.target === e.currentTarget && !busy) { const r = e.currentTarget.getBoundingClientRect(); if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) closeRef.current(); } }}>
-    <div className="modal-head"><div id={id} className="modal-title">{title}</div><button type="button" className="modal-close" disabled={busy} aria-label="Close" onClick={onClose}>×</button></div>
+    <div className="modal-head"><h2 id={id} className="modal-title">{title}</h2><button type="button" className="modal-close" disabled={busy} aria-label="Close" onClick={onClose}>×</button></div>
     {children}
     {busy && <p className="operation-note" role="status">Please wait while this action finishes.</p>}
   </dialog>, document.body);

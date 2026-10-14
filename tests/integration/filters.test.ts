@@ -1,12 +1,14 @@
 import {seedLegacyAssignments,seedConnectedCalls} from './fixtures';
-import { beforeAll,beforeEach,afterAll,it,expect } from 'vitest';
+import { beforeAll,beforeEach,afterAll,it,expect,vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { query,getPool } from '@/lib/db';
 import { getCalls,getCallIds,getCallDetailsByIds,callsExportQuery,countCalls } from '@/lib/calls';
 import { getRawRecords,getRawRecordIds,getRawRecordsByIds,rawExportQuery,getRawQueueRows } from '@/lib/raw';
 import { resolveAssignment,assignmentRequestSchema } from '@/lib/assignment-request';
 import { listAssignments,matchingAssignmentTotals } from '@/lib/assignments';
-import { toCallFilters,toRawFilters } from '@/lib/filters';
+import { toCallFilters,toRawFilters,assignmentFiltersSchema } from '@/lib/filters';
+import { parseWorkFilters, workHref } from '@/lib/work-filters';
+import { personalTotals, personalWork } from '@/lib/personal-work';
 const admin={email:'admin@test.example',name:null,isAdmin:true},employee={email:'employee@test.example',name:null,isAdmin:false};
 const agent=randomUUID();
 let ids:string[];
@@ -25,6 +27,22 @@ beforeEach(async()=>{
 });
 afterAll(async()=>{await getPool().end();});
 const exported=async(spec:ReturnType<typeof callsExportQuery>)=>(await query<{id:string}>(spec.sql,spec.params)).rows.map(r=>r.id).sort();
+it('My Work reads only task context while retaining source fallback, area priority, rent and scope', async () => {
+ await query("update raw_records set owner_name='Source owner',metadata=jsonb_build_object('rent','12000','unused',repeat('source metadata ',10000)) where id=$1",[ids[0]]);
+ await query("update bolna_call_logs set transcript=repeat('user: Long call evidence. ',10000),notes=repeat('Long AI notes. ',10000) where id=$1",[ids[0]]);
+ await seedLegacyAssignments("insert into bolna_assignments(entity_type,entity_id,assignee,assigned_by) values ('call',$1,$2,$3)",[ids[0],employee.email,admin.email]);
+ const spy=vi.spyOn(getPool(),'query');
+ try {
+  const result=await personalWork(employee,'call',{},1);
+  expect(result.rows[0]).toMatchObject({who:'Source owner',context:{city:'Bengaluru',area:'900 sqft carpet',rent:'45000/month'}});
+  expect(spy).toHaveBeenCalledTimes(2);
+  const reads=await Promise.all(spy.mock.results.map(result=>result.value)) as unknown as {rows:unknown[]}[];
+  expect(reads.reduce((bytes,result)=>bytes+Buffer.byteLength(JSON.stringify(result.rows)),0)).toBeLessThan(5000);
+ } finally { spy.mockRestore(); }
+ expect((await personalWork(admin,'call',{},1)).rows).toEqual([]);
+ await query("update bolna_assignments set state='dropped' where entity_id=$1",[ids[0]]);
+ expect((await personalWork(employee,'call',{},1)).rows).toEqual([]);
+});
 it('ORs selected values within categories, ANDs across categories; grid/count/export/assignment agree',async()=>{
  const f=toCallFilters({availability:['Available','Unavailable'],source:['alpha','beta'],state:['Delhi'],agent_id:[agent],call_type:['outbound','inbound']});
  const expected=[ids[1],ids[3]].sort(),grid=await getCalls(admin,f);
@@ -70,6 +88,59 @@ it('onboarding needs both a staff flag and valid WH ID, and manual result never 
 it('IST date bounds include both midnight edges correctly',async()=>{
  expect((await getCalls(admin,{date_from:'2026-08-02',date_to:'2026-08-02'})).rows.map(r=>r.id)).toEqual([ids[0]]);
  expect(()=>toCallFilters({date_from:'2026-08-03',date_to:'2026-08-02'})).toThrow();
+});
+
+it('latest raw call filters use one execution and retain count, queue and export parity',async()=>{
+ await query("update bolna_call_logs set recording_url='https://example.test/latest.mp3',transcript='Owner answered' where id=$1",[ids[0]]);
+ const f=toRawFilters({last_status:['completed'],date_from:'2026-08-02',date_to:'2026-08-02',has_recording:'yes',has_transcript:'yes'});
+ expect((await getRawRecords(admin,f)).rows.map(r=>r.id)).toEqual([ids[0]]);
+ expect(await exported(rawExportQuery(admin,f))).toEqual([ids[0]]);
+ expect((await getRawRecordIds(admin,f,100)).ids).toEqual([ids[0]]);
+ expect((await getRawQueueRows(admin,f)).rows.map(r=>r.id)).toEqual([ids[0]]);
+ const later=randomUUID();
+ await query("insert into bolna_call_logs(id,phone_id,status,call_created_at) select $1,phone_id,'busy','2026-08-03T01:00:00Z' from bolna_call_logs where id=$2",[later,ids[0]]);
+ expect((await getRawRecords(admin,f)).total).toBe(0);
+ expect((await getRawRecords(admin,toRawFilters({last_status:'busy',has_recording:'no',date_from:'2026-08-03',date_to:'2026-08-03'}))).rows.map(r=>r.id)).toEqual([ids[0]]);
+ expect(()=>toRawFilters({date_from:'2026-08-03',date_to:'2026-08-02'})).toThrow();
+});
+
+it('AI attempt presence matches cards rather than treating execution snapshots as recorded dials',async()=>{
+ await query(`insert into bolna_ai_attempts(execution_id,provider_call_id,phone_last10,direction,first_observed_at,last_observed_at,raw)
+  values($1,'filter-dial','9876543210','outbound',now(),now(),'{}')`,[ids[0]]);
+ for(const entity of ['record','call'])await query("insert into bolna_assignments(entity_type,entity_id,assignee,assigned_by) values ($1,$2,$3,$4)",[entity,ids[0],employee.email,admin.email]);
+ for(const value of ['yes','no'] as const) {
+  const count=value==='yes'?1:3,rf=toRawFilters({has_ai_calls:value}),cf=toCallFilters({has_ai_calls:value});
+  expect((await getRawRecords(admin,rf)).total).toBe(count);expect((await getCalls(admin,cf)).total).toBe(count);
+  expect(await exported(rawExportQuery(admin,rf))).toHaveLength(count);expect(await exported(callsExportQuery(admin,cf))).toHaveLength(count);
+ }
+ expect((await listAssignments(admin,{has_ai_calls:'yes'})).total).toBe(2);
+ expect((await getCalls(employee,{has_ai_calls:'no'})).total).toBe(0);
+ const work=await personalWork(employee,'record',parseWorkFilters({has_ai_calls:'yes'}),1);
+ expect(work.total).toBe(1);expect(work.rows[0].aiCount).toBe(1);
+});
+
+it('warehouse type must match the same source listing and unmatched calls remain filterable',async()=>{
+ await query("update raw_records set warehouse_type='warehouse' where id=$1",[ids[0]]);
+ const extra=randomUUID();await query("insert into raw_records(id,source,source_record_id,warehouse_type) values ($1::uuid,'extra',$1::text,'factory')",[extra]);
+ await query('insert into raw_phones(master_id,phone_id,is_primary) select $1,phone_id,true from raw_phones where master_id=$2',[extra,ids[0]]);
+ const f=toCallFilters({warehouse_type:['factory'],source:'extra',has_listing:'yes'});
+ expect((await getCalls(admin,f)).rows.map(r=>r.id)).toEqual([ids[0]]);expect(await exported(callsExportQuery(admin,f))).toEqual([ids[0]]);
+ expect((await getCalls(admin,{...f,source:'alpha'})).total).toBe(0);
+ await query('delete from raw_phones where master_id=$1',[ids[1]]);
+ expect((await getCalls(admin,toCallFilters({has_listing:'no'}))).rows.map(r=>r.id)).toEqual([ids[1]]);
+});
+
+it('completion dates and manual call statuses compose without losing caller scope or multi-select values',async()=>{
+ for(let i=0;i<3;i++)await seedLegacyAssignments(`insert into bolna_assignments(entity_type,entity_id,assignee,assigned_by,state,completed_at,disposition)
+  values ('record',$1,$2,$3,$4,$5,$6)`,[ids[i],i===2?admin.email:employee.email,admin.email,i===1?'open':'done',i===1?null:'2026-08-01T18:30:00Z',i===1?'busy':'connected']);
+ const f=assignmentFiltersSchema.parse({completed_from:'2026-08-02',completed_to:'2026-08-02',manual_disposition:['connected','busy']});
+ expect((await listAssignments(admin,f)).total).toBe(2);expect((await listAssignments(employee,f)).total).toBe(1);
+ const work=parseWorkFilters({completed_from:f.completed_from,completed_to:f.completed_to,manual_disposition:f.manual_disposition,view:'done'});expect(new URL(workHref(work),'http://test').searchParams.getAll('manual_disposition')).toEqual(['connected','busy']);
+ expect((await personalTotals(employee.email,work)).record).toEqual({open:0,done:1});
+ expect((await personalWork(employee,'record',work,1)).rows.map(r=>r.entityId)).toEqual([ids[0]]);
+ expect((await getRawRecords(employee,{manual_disposition:['busy','connected']})).total).toBe(2);
+ expect((await getRawRecords(employee,{manual_disposition:'none'})).total).toBe(0);
+ expect(()=>assignmentFiltersSchema.parse({completed_from:'2026-08-03',completed_to:'2026-08-02'})).toThrow();
 });
 it('pagination clamps invalid and excessive pages without dropping criteria; injection stays a bound value',async()=>{
  const f={source:['alpha','beta'],pageSize:1};expect((await getCalls(admin,{...f,page:100})).page).toBe(4);

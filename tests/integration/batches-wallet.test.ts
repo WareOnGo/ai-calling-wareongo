@@ -5,6 +5,7 @@ import {query,getPool} from '@/lib/db';
 import {assignEntities} from '@/lib/assignments';
 import {getBatch,listBatches,batchMembers,batchMembersExport,batchListExport,batchListSchema,AI_CARDS,MANUAL_CARDS} from '@/lib/batch-browser';
 import {createWalletReader} from '@/lib/wallet';
+import {assignmentBatchPreview} from '@/lib/assignment-batch-preview';
 const admin={email:'admin@test.example',isAdmin:true},employee={email:'employee@test.example',isAdmin:false};
 let records:string[];
 let getWallet=createWalletReader();
@@ -23,6 +24,24 @@ beforeEach(async()=>{
 });
 afterEach(()=>{vi.unstubAllGlobals();vi.unstubAllEnvs();vi.useRealTimers();vi.restoreAllMocks();});afterAll(async()=>{await getPool().end();});
 const manual=async(entity:'record'|'call'='record')=>{const r=await assignEntities({entity,ids:records,assignee:employee.email,assignedBy:admin.email});return getBatch(admin,'manual',r.batchId);};
+it('assignment previews follow recorded batch membership after reassignment',async()=>{
+ const batch=await manual();
+ const id=(await query('select id::text from bolna_assignments where batch_id=$1 and entity_id=$2',[batch.id,records[0]])).rows[0].id;
+ await assignEntities({entity:'record',ids:[records[0]],assignee:admin.email,assignedBy:admin.email,reassign:true});
+ const preview=await assignmentBatchPreview(admin,id);
+ expect(preview.batch?.id).toBe(batch.id);expect(preview.members?.total).toBe(4);
+ expect(preview.assignment.state).toBe('dropped');
+ expect(preview.members?.rows.find(row=>row.assignment_id===id)?.current_owner).toBe(admin.email);
+ await expect(assignmentBatchPreview(employee,id)).rejects.toMatchObject({status:403});
+});
+it('legacy previews return one assignment without fabricating a batch',async()=>{
+ await seedLegacyAssignments("insert into bolna_assignments(entity_type,entity_id,assignee,assigned_by,state,outcome) values ('record',$1,$2,$3,'done','Unavailable'),('record',$4,$2,$3,'done','Unavailable')",[records[0],employee.email,admin.email,records[1]]);
+ const id=(await query('select id::text from bolna_assignments where entity_id=$1',[records[0]])).rows[0].id;
+ const preview=await assignmentBatchPreview(admin,id);
+ expect(preview.assignment.entity_id).toBe(records[0]);expect(preview.batch).toBeNull();expect(preview.members).toBeNull();
+ await expect(assignmentBatchPreview(admin,'99999999')).rejects.toMatchObject({status:404});
+ await expect(assignmentBatchPreview(admin,'not-an-id')).rejects.toThrow();
+});
 async function ai(){
  const id=randomUUID();await query("insert into call_batches(id,created_by,agent_id,agent_language,state,bolna_batch_id,callable) values ($1,$2,'agent-a','hindi','scheduled','provider-batch',4)",[id,admin.email]);
  for(let i=0;i<4;i++)await query('insert into call_batch_items(batch_id,record_id,name,contact_number) values ($1,$2,$3,$4)',[id,records[i],`Person ${i}`,`+91987654321${i}`]);
@@ -77,20 +96,20 @@ it('paginates beyond the previous latest-20 limit and rejects unauthorized batch
  const batch=await manual();expect(()=>batchMembersExport(employee,batch)).toThrow('forbidden');await expect(getBatch(employee,'manual',batch.id)).rejects.toMatchObject({status:403});
  await expect(batchMembers(admin,batch,"all;drop table raw_records")).rejects.toMatchObject({status:400});
 });
-it.each([0,42.42,-5])('wallet returns numeric %s without exposing identity or credentials',async(wallet)=>{
+it.each([0,42.42,2778.9521,-5])('wallet converts cents %s to USD without exposing identity or credentials',async(wallet)=>{
  const fetch=vi.fn(async()=>new Response(JSON.stringify({wallet,email:'private@example.com',name:'Secret',api_key:'NEVER-EXPOSE'})));vi.stubGlobal('fetch',fetch);
- const value=await getWallet(admin);expect(value.balance).toBe(wallet);expect(value.state).toBe('fresh');expect(value.low).toBe(wallet<=0);expect(JSON.stringify(value)).not.toMatch(/private|Secret|NEVER|Bearer/);expect(value.unit).toBe('provider units');
+ const value=await getWallet(admin);expect(value.balance).toBe(wallet/100);expect(value.state).toBe('fresh');expect(value.low).toBe(wallet<=0);expect(JSON.stringify(value)).not.toMatch(/private|Secret|NEVER|Bearer/);expect(value.unit).toBe('USD');
 });
 it('serializes concurrent wallet refreshes, caches successes and honors the manual-refresh cooldown',async()=>{
  const fetch=vi.fn(async()=>new Response('{"wallet":7}'));vi.stubGlobal('fetch',fetch);
- const values=await Promise.all(Array.from({length:10},()=>getWallet(admin,true)));expect(values.every(v=>v.balance===7)).toBe(true);expect(fetch).toHaveBeenCalledTimes(1);
+ const values=await Promise.all(Array.from({length:10},()=>getWallet(admin,true)));expect(values.every(v=>v.balance===0.07)).toBe(true);expect(fetch).toHaveBeenCalledTimes(1);
  const clock=vi.spyOn(Date,'now').mockReturnValue(Date.now()+15000);await getWallet(admin);expect(fetch).toHaveBeenCalledTimes(1);await getWallet(admin,true);expect(fetch).toHaveBeenCalledTimes(2);clock.mockRestore();
 });
 it('provider failures preserve stale success and never turn an unavailable balance into zero',async()=>{
  vi.stubGlobal('fetch',vi.fn(async()=>new Response('{"wallet":25}')));await getWallet(admin);
  vi.spyOn(Date,'now').mockReturnValue(Date.now()+120000);
  vi.stubGlobal('fetch',vi.fn(async()=>new Response('sensitive error text',{status:401})));
- const stale=await getWallet(admin);expect(stale).toMatchObject({balance:25,state:'stale',message:'Provider authentication failed.'});
+ const stale=await getWallet(admin);expect(stale).toMatchObject({balance:0.25,state:'stale',message:'Provider authentication failed.'});
  getWallet=createWalletReader();expect(await getWallet(admin)).toMatchObject({balance:null,state:'unavailable',low:false});
 });
 it.each(['{}','{"wallet":"42"}','{"wallet":null}'])('rejects malformed wallet response %s',async(body)=>{
@@ -126,4 +145,14 @@ it('manual batch filters distinguish original caller from current owner',async()
  const data=await batchMembers(admin,batch,'all',1,filters);
  expect(data.total).toBe(1);expect(data.rows[0]).toMatchObject({entity_id:records[0],assignee:employee.email,current_owner:admin.email});
  const spec=batchMembersExport(admin,batch,'all',filters);expect((await query(spec.sql,spec.params)).rows).toHaveLength(1);
+});
+
+it('manual batch creators and allocation outcomes are independently filterable',async()=>{
+ const batch=await manual();
+ expect((await listBatches(admin,{kind:'manual',created_by:admin.email,caller:employee.email})).total).toBe(1);
+ expect((await listBatches(admin,{kind:'manual',created_by:employee.email})).total).toBe(0);
+ await query("update bolna_assignment_batch_items set disposition='duplicate' where batch_id=$1 and entity_id=$2",[batch.id,records[0]]);
+ const filters={allocation:['duplicate']},data=await batchMembers(admin,batch,'all',1,filters);
+ expect(data.total).toBe(1);expect(data.metrics.all).toBe(4);expect(data.rows[0].disposition).toBe('duplicate');
+ const csv=batchMembersExport(admin,batch,'all',filters);expect((await query(csv.sql,csv.params)).rows).toHaveLength(1);
 });

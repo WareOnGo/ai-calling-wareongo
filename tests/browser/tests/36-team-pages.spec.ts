@@ -22,9 +22,11 @@ for (const width of [1366, 390]) for (const theme of ['light', 'dark']) {
     await expect(page.locator('.person')).toHaveCount(4);
     await expect(page.getByRole('switch', { name: 'Access for admin@eval.test', exact: true })).toBeDisabled();
     await page.getByRole('searchbox', { name: 'Search team members' }).fill('priya');
+    await page.getByRole('button',{name:'Apply',exact:true}).click();
     await expect(page.locator('.person')).toHaveCount(1);
     await expect(page.locator('.person')).toContainText('priya@eval.test');
     await page.getByRole('searchbox', { name: 'Search team members' }).fill('no-such-person');
+    await page.getByRole('button',{name:'Apply',exact:true}).click();
     await expect(page.locator('.team-no-matches')).toBeVisible();
     await page.getByRole('button', { name: 'Clear filters', exact: true }).click();
     await expect(page.locator('.person')).toHaveCount(4);

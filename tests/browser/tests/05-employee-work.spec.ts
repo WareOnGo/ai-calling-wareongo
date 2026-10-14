@@ -122,7 +122,7 @@ test.describe("employee recording outcomes @shot", () => {
     // every nested label and could make corrections look unavailable.
     expect(Number(sysOpacity)).toBe(1);
     expect(Number(editOpacity)).toBe(1);
-    const nameColor = (name: string) => row(page, name).locator('.who-name').evaluate(e => getComputedStyle(e).color);
+    const nameColor = (name: string) => row(page, name).locator('.contact-card-name').evaluate(e => getComputedStyle(e).color);
     expect(await nameColor('Meera Nair')).not.toBe(await nameColor('Raghav Sharma'));
     await expect(doneRow.locator('.btn-done')).toHaveAttribute('aria-pressed', 'true');
     await expect(doneRow.locator("select.field-select")).toBeEnabled();
@@ -131,7 +131,7 @@ test.describe("employee recording outcomes @shot", () => {
   test("the caller gets the standard listing details, not just a name",
     async ({ employeePage: page }) => {
     await page.goto("/dashboard/my");
-    await expect(recTable(page).locator("th").filter({hasText:"Who to call"})).toBeVisible();
+    await expect(recTable(page).locator("th").filter({hasText:"Contact"})).toBeVisible();
     await expect(row(page, "Raghav Sharma").locator(".work-context")).toContainText("Rajkot");
     const r = row(page, "Raghav Sharma");
     await expect(r).toContainText("12,000 sqft");

@@ -1,10 +1,10 @@
-import { ReportingFilters, REPORTING_FILTER_KEYS, SelectFilter, YesNoFilter, DateFilters } from "../FilterFields";
-import {AiHistoryButton} from '../AiTimeline';
+import { AiActivityFilter, ReportingFilters, REPORTING_FILTER_KEYS, SelectFilter, YesNoFilter, DateFilters } from "../FilterFields";
+import {AiAttemptCard} from '../AiAttemptCard';
 import { firstValue } from "@/lib/filter-values";
 import { MultiSelect } from "../MultiSelect";
 import { RecordsPagination } from "../RecordsPagination";
 import { RecordsHeader } from "../RecordsHeader";
-import { AiReviewNotice, CallGridHint } from "../GridNotices";
+import { AiReviewNotice } from "../GridNotices";
 import { callFiltersSchema } from "@/lib/filters";
 import { callColumns } from "../sheet-columns";
 import { dateTime as fmtDate, rent, number } from "@/lib/display";
@@ -28,7 +28,7 @@ import { IconPhone, IconDownload } from "../icons";
 import { FilterPanel } from "../FilterPanel";
 import { FiltersToggle } from "../FiltersToggle";
 import { AssignButton } from "../AssignButton";
-import { CopyText } from "../CopyText";
+import { ContactCard } from "../ContactCard";
 
 export const dynamic = "force-dynamic";
 
@@ -84,13 +84,12 @@ export default async function Dashboard({
   const startRow = (page - 1) * pageSize;
 
   // active filter count (everything except free-text search) for the Filters badge
-  const activeFilters = ["availability", "call_type", "source", "state", "contact", "agent_id", "status", "date_from", "date_to", "needs_review", "assignee", "assignment_state", "manual_outcome", "rent_mentioned", "onboarded", "warehouse_type", "min_area", "max_area", "city", "area_basis", "include_blocked", "batch_id", "has_recording", "has_transcript", ...REPORTING_FILTER_KEYS]
+  const activeFilters = ["availability", "call_type", "source", "state", "contact", "agent_id", "status", "date_from", "date_to", "needs_review", "assignee", "assignment_state", "manual_outcome", "rent_mentioned", "onboarded", "warehouse_type", "min_area", "max_area", "city", "area_basis", "include_blocked", "batch_id", "has_recording", "has_transcript", "has_ai_calls", "has_listing", ...REPORTING_FILTER_KEYS]
     .filter((k) => sp[k]).length;
 
   return (
     <SelectionProvider key={JSON.stringify(sp)} total={total}>
-      <RecordsHeader title="Call Analytics" icon={<IconPhone size={18}/>} actions={<Freshness updatedAt={new Date().toISOString()}/>}/>
-      <AiReviewNotice count={aiReviewCount} />
+      <RecordsHeader title="AI Calls" icon={<IconPhone size={18}/>} meta={<AiReviewNotice count={aiReviewCount}/>} actions={<Freshness updatedAt={new Date().toISOString()}/>}/>
       {/* Search and optional filters */}
       <FilterForm key={JSON.stringify(sp)} applied={sp} action="/dashboard/calls" viewTools={<ColumnChooser/>} actions={<><ExportButton entity="calls"/>{user.isAdmin&&<AssignButton entity="call" total={total} assignees={assignees}/>}</>}>
         <div className="search">
@@ -105,31 +104,34 @@ export default async function Dashboard({
 
         <a className="btn-text toolbar-reset" href="/dashboard/calls">Reset</a>
 
-        {firstValue(sp.batch_id)&&<input type="hidden" name="batch_id" value={firstValue(sp.batch_id)}/>}
         <FilterPanel groups={[
           { label: "Call outcome", count: ["availability", "manual_outcome", "status", "needs_review"].filter(key => sp[key]).length, content: <>
             <MultiSelect name="availability" label="AI result" value={sp.availability} options={[...opts.availabilities,{value:"none",label:"No AI result"}]}/>
             <MultiSelect name="manual_outcome" label="Manual result" value={sp.manual_outcome} options={["Available","Unavailable","Unclear",{value:"none",label:"No manual result"}]}/>
             <MultiSelect name="status" label="Status" value={sp.status} options={opts.statuses}/>
-            <label className="toggle"><input type="checkbox" name="needs_review" value="1" defaultChecked={sp.needs_review==="1"}/>Needs AI review</label>
+            <SelectFilter name="needs_review" label="AI review" applied={{...sp,needs_review:filters.needs_review===undefined?undefined:filters.needs_review?"1":"0"}} options={[{value:"1",label:"Needs AI review"},{value:"0",label:"Does not need review"}]}/>
           </> },
-          { label: "Property", count: ["city", "state", "source", "contact", "min_area", "max_area", "area_basis", "rent_mentioned"].filter(key => sp[key]).length, content: <>
+          { label: "Property", count: ["city", "state", "source", "contact", "min_area", "max_area", "area_basis", "rent_mentioned", "warehouse_type", "has_listing"].filter(key => sp[key]).length, content: <>
             <label className="chip"><span>City</span><input name="city" aria-label="City" placeholder="City" defaultValue={firstValue(sp.city) || ""}/></label>
             <MultiSelect name="state" label="State" value={sp.state} options={opts.states}/>
             <MultiSelect name="source" label="Source" value={sp.source} options={opts.sources}/>
-            <MultiSelect name="contact" label="Contact" value={sp.contact} options={[{value:"owner",label:"Owner"},{value:"broker",label:"Probable broker"}]}/>
+            <MultiSelect name="warehouse_type" label="Warehouse type" value={sp.warehouse_type} options={opts.warehouseTypes}/>
+            <YesNoFilter name="has_listing" label="Source listing match" applied={sp} yes="Matched to Raw Dataset" no="No matching listing"/>
+            <MultiSelect name="contact" label="Contact type" value={sp.contact} options={[{value:"owner",label:"Owner"},{value:"broker",label:"Probable broker"}]}/>
             <label className="filter-field"><span>Minimum square feet</span><input className="num-filter" type="number" aria-label="Minimum square feet" min="0" name="min_area" defaultValue={firstValue(sp.min_area)||""} placeholder="min sqft"/></label>
             <label className="filter-field"><span>Maximum square feet</span><input className="num-filter" type="number" aria-label="Maximum square feet" min="0" name="max_area" defaultValue={firstValue(sp.max_area)||""} placeholder="max sqft"/></label>
             <label className="chip filter-field"><span>Square feet basis</span><select name="area_basis" aria-label="Square feet basis" defaultValue={firstValue(sp.area_basis)||""}><option value="">Source sqft</option><option value="built_up">AI built-up sqft</option><option value="carpet">AI carpet sqft</option></select></label>
             <label className="chip filter-field"><span>Rent mentioned</span><select name="rent_mentioned" aria-label="Rent mentioned" defaultValue={firstValue(sp.rent_mentioned)||""}><option value="">Any rent</option><option value="yes">Rent mentioned</option><option value="no">Rent missing / unknown</option></select></label>
           </> },
-          { label: "Call details", count: ["call_type", "agent_id", "date_from", "date_to", "include_blocked", "has_recording", "has_transcript"].filter(key => sp[key]).length, content: <>
+          { label: "Call details", count: ["call_type", "agent_id", "date_from", "date_to", "include_blocked", "has_recording", "has_transcript", "has_ai_calls", "batch_id"].filter(key => sp[key]).length, content: <>
             <MultiSelect name="call_type" label="Direction" value={sp.call_type} options={[{value:"inbound",label:"Inbound"},{value:"outbound",label:"Outbound"}]}/>
             <MultiSelect name="agent_id" label="Agent" value={sp.agent_id} options={opts.agents.map(v=>({value:v,label:agentLabel(v)}))}/>
+            <AiActivityFilter applied={sp}/>
             <DateFilters applied={sp} label="Call date" />
+            <label><span>Provider batch ID</span><input name="batch_id" defaultValue={firstValue(sp.batch_id)||""} placeholder="Exact provider batch ID"/></label>
             <YesNoFilter name="has_recording" label="Recording" applied={sp} yes="Has recording" no="No recording" />
             <YesNoFilter name="has_transcript" label="Transcript" applied={sp} yes="Has transcript" no="No transcript" />
-            <label className="toggle"><input type="checkbox" name="include_blocked" value="1" defaultChecked={sp.include_blocked==="1"}/>Include balance-blocked executions</label>
+            <label className="toggle"><input type="checkbox" name="include_blocked" value="1" defaultChecked={filters.include_blocked===true}/>Include balance-blocked executions</label>
           </> },
           { label: "Reporting", count: REPORTING_FILTER_KEYS.filter(key => sp[key]).length, content: <ReportingFilters applied={sp} /> },
           { label: "Assignment", count: ["assignee", "assignment_state", "onboarded"].filter(key => sp[key]).length, content: <>
@@ -141,7 +143,6 @@ export default async function Dashboard({
       </FilterForm>
 
       {user.isAdmin && <SelectionSummary />}
-      <CallGridHint />
       <div className="gridwrap">
         <table className="sheet">
           <thead>
@@ -170,14 +171,12 @@ export default async function Dashboard({
                     <input type="checkbox" className="rowsel" aria-label={`Select ${r.owner_name || r.to_number || "call"}`} data-id={r.id} />
                   </td>
                 )}
-                <td className="identity-owner">{hl(r.owner_name, terms)}{r.source_cities && <span className="record-meta">{hl(r.source_cities, terms)}</span>} <RecordDetails id={r.id} entity="call" /></td>
-                <td>
-                  <CopyText
-                    value={r.call_type === "inbound" ? r.from_number : r.to_number}
-                    display={hl(r.call_type === "inbound" ? r.from_number : r.to_number, terms)}
-                    label="phone number"
-                  /><span className="record-meta">{fmtDate(r.call_created_at)}</span>
-                </td>
+                <td className="identity-owner"><ContactCard name={r.owner_name} nameDisplay={hl(r.owner_name, terms)}
+                  phone={r.call_type === "inbound" ? r.from_number : r.to_number}
+                  phoneDisplay={hl(r.call_type === "inbound" ? r.from_number : r.to_number, terms)}
+                  details={{id: r.id, entity: "call"}}
+                  metadata={<span title={[r.source_cities, fmtDate(r.call_created_at)].filter(Boolean).join(" · ")}>{r.source_cities && <>{hl(r.source_cities, terms)} · </>}{fmtDate(r.call_created_at)}</span>}
+                /></td>
                 <td>{fmtDate(r.call_created_at)}</td>
                 <td>{r.call_type === "inbound" ? "Inbound" : "Outbound"}</td>
                 <td title={r.agent_id || undefined}>{agentLabel(r.agent_id)}</td>
@@ -186,7 +185,7 @@ export default async function Dashboard({
                   {r.needs_review && <span className="review-tag" title="The AI inference has low confidence; review the transcript or recording.">Needs AI review</span>}
                   {!r.inferred && r.can_enrich && <EnrichButton id={r.id} />}
                 </td>
-                <td className="record-history">{r.ai_attempt_count} known{r.ai_attempt_count>0&&<AiHistoryButton entity="call" id={r.id} name={r.owner_name}/>}</td>
+                <td className="record-history"><AiAttemptCard entity="call" id={r.id} summary={r.ai_summary}/></td>
                 <td className="call-toggle">{r.status}</td>
                 <td className="call-col clip" title={r.notes ?? ""}><span className="record-preview">{hl(r.notes, terms)}</span></td>
                 <td className="call-col clip" title="Transcript preview; open Details for the full transcript"><span className="record-preview">{hl(r.transcript, terms)}</span></td>
@@ -196,7 +195,7 @@ export default async function Dashboard({
                     <AssignedCaller current={r.assigned_to} previous={r.assignment_assignee} state={r.assignment_state} people={assignees}/>
                   </td>
                 )}
-                <td><ResultBadge value={r.assignment_outcome} empty="No manual result"/>{r.assignment_closure_reason==='exhausted'&&<><br/>Closed: Exhausted</>}{(r.manual_attempt_count||0)>0&&<><br/><RecordDetails id={r.id} entity="call" label="Manual history"/></>}</td>
+                <td><ResultBadge value={r.assignment_outcome} empty="No manual result"/>{r.assignment_closure_reason==='exhausted'&&<><br/>Closed: Exhausted</>}{(r.manual_attempt_count||0)>0&&<><br/><RecordDetails id={r.id} entity="call" label="Manual history" initialSection="Manual activity"/></>}</td>
                 <td className="report-notes"><AssignmentNotes text={r.assignment_remarks}/></td>
                 <td><span className={r.assignment_added_to_db ? undefined : "muted"}>{r.assignment_added_to_db ? "Yes" : "No"}</span></td>
                 <td>

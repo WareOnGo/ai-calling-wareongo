@@ -8,7 +8,7 @@ test('old Result and RNR notes cannot close a task without a logged call',async(
  await row.getByLabel('Your notes').fill('RNR; call back later');await row.getByLabel('Your notes').blur();await expect(row.locator('.save-status')).toHaveText('Saved');
  await row.getByRole('button',{name:'Mark done'}).click();await expect(row).toContainText('Log an actual manual call');await expect(row.getByRole('button',{name:'Mark done'})).toHaveAttribute('aria-pressed','false');
 });
-test('Call Analytics reports saved My Work values without editable fields and keeps onboarding filters and exports',async({adminPage:page,employeePage:caller})=>{
+test('AI Calls reports saved My Work values without editable fields and keeps onboarding filters and exports',async({adminPage:page,employeePage:caller})=>{
  await caller.goto('/dashboard/my');const work=caller.locator('[data-entity="call"] tbody tr').filter({hasText:'Raghav'});
  await work.getByLabel('Your notes').fill('Site visit requested after confirming availability.');await work.getByLabel('Your notes').blur();await expect(work.locator('.save-status')).toHaveText('Saved');
  await work.getByLabel('Warehouse ID').fill('123456');await work.getByLabel('Warehouse ID').blur();await expect(work.locator('.save-status')).toHaveText('Saved');
@@ -40,6 +40,6 @@ test('Bolna preview shows alternate-number human ownership before any send',asyn
  const dialog=page.getByRole('dialog');await dialog.getByText('Selection details',{exact:true}).click();await expect(dialog.getByLabel('Calling ownership preview')).toContainText('1 contacts held');await expect(dialog.getByLabel('Calling ownership preview')).toContainText('Priya Eval');await expect(dialog.getByRole('button',{name:/Send to Bolna/})).toHaveCount(0);
 });
 test('Bangalore matches Bengaluru and the five-metric Team view discloses unknown history',async({adminPage:page})=>{
- await page.goto('/dashboard/raw?city=Bangalore');await expect(page.locator('tbody tr')).toHaveCount(1);await expect(page.locator('tbody')).toContainText('Anil Broker');
+ await page.goto('/dashboard/raw?city=Bangalore');await expect(page.locator('.gridwrap table.sheet tbody tr')).toHaveCount(1);await expect(page.locator('.gridwrap table.sheet tbody')).toContainText('Anil Broker');
  await page.goto('/dashboard/team');await expect(page.getByLabel('Team metrics table').locator('thead th')).toHaveCount(6);await expect(page.getByText('Historical call counts are unknown',{exact:false})).toBeVisible();await expect(page.getByLabel('Metric evidence table')).toHaveCount(0);
 });

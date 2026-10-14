@@ -31,7 +31,7 @@ for (const width of [1366, 390]) for (const theme of ['light', 'dark']) {
         const visible = (element: Element) => { const bounds = element.getBoundingClientRect(); return bounds.width > 0 && bounds.height > 0 && bounds.top >= 0 && bounds.bottom <= innerHeight; };
         const grid = document.querySelector('.gridwrap')?.getBoundingClientRect();
         const rows = [...document.querySelectorAll('table.sheet tbody tr')].filter(element => visible(element) && (!grid || element.getBoundingClientRect().bottom <= grid.bottom));
-        return { visibleRows: rows.length, visibleControls: [...document.querySelectorAll('button,input,select,textarea,summary')].filter(visible).length };
+        return { visibleRows: rows.length, tableTop: document.querySelector('table.sheet')?.getBoundingClientRect().top ?? null, visibleControls: [...document.querySelectorAll('button,input,select,textarea,summary')].filter(visible).length };
       });
       const file = `${name}-${width}-${theme}.png`;
       await target.screenshot({ path: resolve(output, file), animations: 'disabled' });
@@ -69,7 +69,7 @@ for (const width of [1366, 390]) for (const theme of ['light', 'dark']) {
     for (const [name, path, label] of [
       ['home', '/dashboard', 'Dashboard overview'],
       ['raw', '/dashboard/raw', 'Raw Dataset: primary record list'],
-      ['calls', '/dashboard/calls', 'Call Analytics: primary record list'],
+      ['calls', '/dashboard/calls', 'AI Calls: primary record list'],
       ['assignments', '/dashboard/assignments', 'Assignment management'],
       ['batches', '/dashboard/batches', 'AI batches'],
       ['manual-batches', '/dashboard/batches?kind=manual', 'Manual batches'],
@@ -79,6 +79,11 @@ for (const width of [1366, 390]) for (const theme of ['light', 'dark']) {
       ['team-access', '/dashboard/team/access', 'Team: access control'],
     ]) {
       await page.goto(path); await capture(page, name, label);
+      if(name==='calls'){
+        await page.locator('.report-guide > summary').focus();await page.keyboard.press('Enter');
+        await expect(page.locator('.report-guide > p')).toBeVisible();
+        await capture(page,'calls-report-guide','AI Calls: optional report explanation');
+      }
       if(name==='home'){
         await page.locator('.account-menu > summary').click();
         await capture(page,'account-menu','Navigation: account and view controls');
@@ -126,10 +131,23 @@ for (const width of [1366, 390]) for (const theme of ['light', 'dark']) {
     await page.goto('/dashboard/raw?q=Raghav');
     await page.getByRole('button', { name: 'Show AI attempts' }).click();
     await expect(page.locator('.attempt-card')).toHaveCount(2);
-    await capture(page, 'ai-history', 'AI attempts: timeline drawer');
-    await page.locator('.attempt-card').first().getByText('Provider details', { exact: true }).click();
+    await expect(page.getByRole('tab', { name: 'AI activity', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await capture(page, 'ai-history', 'AI attempts: Details panel, AI activity');
+    await page.locator('.attempt-card').first().locator('.attempt-transcript > summary').click();
+    await capture(page, 'ai-transcript', 'AI calls: chat transcript');
+    await page.locator('.attempt-card').first().locator('.attempt-transcript > summary').click();
+    await page.locator('.attempt-card').first().locator('.attempt-info > summary').click();
     await capture(page, 'ai-evidence', 'AI attempts: optional provider evidence');
     await page.keyboard.press('Escape');
+    for (const path of ['calls', 'assignments']) {
+      await page.goto(`/dashboard/${path}?q=Raghav`);
+      await page.getByRole('button', { name: 'Show AI attempts', exact: true }).first().click();
+      await expect(page.getByRole('tab', { name: 'AI activity', exact: true })).toHaveAttribute('aria-selected', 'true');
+      await expect(page.locator('.record-details-dialog .history-count')).toBeVisible();
+      await capture(page, `${path}-ai-details`, `${path === 'calls' ? 'AI Calls' : 'Assignments'}: shared AI Details panel`);
+      await page.keyboard.press('Escape');
+    }
+    await page.goto('/dashboard/raw?q=Raghav');
     await page.getByRole('button', { name: 'Details for record', exact: true }).click();
     await expect(page.locator('.detail-facts').first()).toBeVisible();
     await capture(page, 'record-details', 'Record details: property and history');
@@ -137,7 +155,7 @@ for (const width of [1366, 390]) for (const theme of ['light', 'dark']) {
     await page.locator('.detail-listing').first().scrollIntoViewIfNeeded();
     await capture(page, 'record-listings', 'Record details: separate source listings');
     await page.getByRole('tab', { name: 'AI activity', exact: true }).click();
-    await expect(page.locator('.record-details-dialog .history-summary')).toBeVisible();
+    await expect(page.locator('.record-details-dialog .history-count')).toBeVisible();
     await capture(page, 'record-ai', 'Record details: AI activity and recording');
     await page.getByRole('tab', { name: 'Manual activity', exact: true }).click();
     await capture(page, 'record-manual', 'Record details: manual calls and verification');
@@ -171,6 +189,10 @@ for (const width of [1366, 390]) for (const theme of ['light', 'dark']) {
 
     await employeePage.goto('/dashboard/my');
     await capture(employeePage, 'my-work', 'My Work: calling assignments');
+    await employeePage.locator('.work-guide > summary').focus();await employeePage.keyboard.press('Enter');
+    await expect(employeePage.locator('.work-guide .legend')).toBeVisible();
+    await capture(employeePage,'work-save-help','My Work: optional update guidance');
+    await employeePage.locator('.work-guide > summary').click();
     const task = employeePage.locator('[data-entity="record"] tbody tr').filter({ hasText: 'Raghav' });
     await task.getByRole('button', { name: 'Log manual call' }).click();
     await capture(employeePage, 'manual-call', 'Manual call: recording a result');

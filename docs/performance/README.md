@@ -1,5 +1,7 @@
 # Performance validation — review build
 
+For the latest dashboard investigation and measurements, see the [14 October loading audit](LOADING_AUDIT.md). The figures below describe the earlier review build.
+
 This is synthetic local evidence, not a production SLA. PostgreSQL 17, six application connections, 50,000 source records/phones, 10,000 calls with approximately 3 KB transcripts, 5,000 assignments and manual attempts, 2,000 identified AI attempts and ten callers.
 
 Run `npm run test:stage -- performance audit5` on the dedicated local port 55439 database. It replaces that disposable fixture. All 19 benchmark workloads completed in one passing test, including a query-plan assertion that selective Raw search uses `bolna_raw_search_trgm`. Broad terms and short fragments can still scan many matches; indexing does not promise constant-time search.
@@ -28,7 +30,7 @@ Five sequential samples per reader. “Sample p95” below means the maximum of 
 | Manual batch, 250 targets | 30 ms |
 | AI batch, 250 targets | 9 ms |
 
-The initial before-fix fixture hit 15-second statement timeouts on core grid reads. [Historical baseline](database-before.json), [current benchmark samples](database-review.json), [selective index-plan summary](search-index-review.json). These are the sole current timing figures used by the changelog and audit.
+The initial before-fix fixture hit 15-second statement timeouts on core grid reads. [Historical baseline](database-before.json), [review benchmark samples](database-review.json), [selective index-plan summary](search-index-review.json). These figures are retained as evidence for that review.
 
 ## Production browser workflow
 

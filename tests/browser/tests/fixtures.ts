@@ -40,7 +40,7 @@ function instrumentContext(context: BrowserContext) {
 
 async function signedIn(browser: BrowserContext["browser"], email: string) {
   const ctx = await browser!.newContext({ viewport: { width: 1600, height: 1000 } });
-  await ctx.route('**/api/balance*', route=>route.fulfill({json:{balance:42.42,unit:'provider units',state:'fresh',refreshedAt:new Date().toISOString(),low:false,message:null}}));
+  await ctx.route('**/api/balance*', route=>route.fulfill({json:{balance:42.42,unit:'USD',state:'fresh',refreshedAt:new Date().toISOString(),low:false,message:null}}));
   // Provider reconciliation is covered against mocked provider snapshots in the
   // integration suite. Browser previews must never contact the calling provider.
   await ctx.route('**/api/batches/sync', route=>route.fulfill({json:{checked:0,completed:0,failed:0}}));

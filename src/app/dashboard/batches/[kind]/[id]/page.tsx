@@ -10,6 +10,7 @@ import {dateTime} from '@/lib/display';
 import {ResultBadge} from '../../../ResultBadge';
 import {agentLabel} from '@/lib/agents';
 import {RecordDetails} from '../../../RecordDetails';
+import {ContactCard} from '../../../ContactCard';
 import {RecordsPagination} from '../../../RecordsPagination';
 import {RecordsHeader} from '../../../RecordsHeader';
 import {CopyText} from '../../../CopyText';
@@ -47,8 +48,20 @@ export default async function BatchDetail({params,searchParams}:{params:Promise<
   <div className="batch-context-row"><span><strong>{data.metrics.attempts.toLocaleString()}</strong> {kind==='ai'?'known provider attempts':'recorded manual attempts'} across this batch</span><details><summary>How counts work</summary><p>Cards count {kind==='ai'?'unique targeted phone contacts using their latest execution result; attempts and conversations require provider evidence. Completion is confirmed with Bolna after pending calls and retries have finished.':'original membership records; completion requires the current quality checks. Membership is fixed at allocation. Original caller and current contact owner are shown separately. Onboarding is staff-recorded, with a valid WH reference.'}</p></details>{kind==='ai'&&<WalletBalance compact/>}</div>
   <BatchMemberFilters path={base} applied={sp} kind={kind} options={data.options} />
   <div className="batch-results-heading"><h2>{cards.find(([key])=>key===metric)?.[1]||'Contacts'} <span>{data.total.toLocaleString()} matching {kind==='ai'?'contacts':'records'}</span></h2><a href={'/api/batches/'+id+'/export?'+searchQuery({...sp,kind,metric},['page'])}>Export matching members</a></div>
-  <div className="gridwrap batch-grid"><table className="sheet"><thead><tr className="colheads"><th>Contact</th><th>Phone</th>{kind==='manual'&&<><th>Original caller / current owner</th><th>Allocation</th></>}<th>{kind==='ai'?'Call status':'State'}</th><th>{kind==='ai'?'AI result':'Manual result'}</th><th>Recorded attempts</th><th>Details</th></tr></thead>
-   <tbody>{data.rows.map(r=><tr key={r.member_id}><td><strong className="batch-contact-name">{r.name||'Unnamed'}</strong><span className="batch-contact-city">{r.city||'Unknown city'}</span></td><td><CopyText value={r.phone} label="phone number"/></td>{kind==='manual'&&<><td><span>{r.assignee||'Not assigned'}</span><span className="batch-contact-city">Now: {r.current_owner||'Unassigned'}</span></td><td>{allocationLabel(r.disposition)}</td></>}<td><span className="batch-call-state">{r.state}</span>{r.quality_issue&&<span className="review-tag">Needs completion review</span>}</td><td><ResultBadge value={r.outcome}/>{r.wh_id&&<small className="batch-contact-city">WH ID: {r.wh_id}</small>}</td><td><strong>{r.attempts}</strong>{r.connected&&<span className="batch-contact-city">Connected</span>}</td><td>{r.execution_id?<RecordDetails aiBatch={batch.bolna_batch_id||undefined} aiScope="contact" entity="call" id={r.execution_id} label="AI timeline"/>:r.entity_id&&/^[0-9a-f-]{36}$/i.test(r.entity_id)&&r.entity_type?<RecordDetails entity={r.entity_type} id={r.entity_id}/>:null}</td></tr>)}</tbody>
+  <div className="gridwrap batch-grid"><table className="sheet"><thead><tr className="colheads"><th>Contact</th>{kind==='manual'&&<><th>Original caller / current owner</th><th>Allocation</th></>}<th>{kind==='ai'?'Call status':'State'}</th><th>{kind==='ai'?'AI result':'Manual result'}</th><th>Recorded attempts</th></tr></thead>
+   <tbody>{data.rows.map(r => {
+    const details = r.execution_id
+      ? {id: r.execution_id, entity: 'call' as const, aiBatch: batch.bolna_batch_id || undefined, aiScope: 'contact' as const}
+      : r.entity_id && /^[0-9a-f-]{36}$/i.test(r.entity_id) && r.entity_type
+        ? {id: r.entity_id, entity: r.entity_type} : undefined;
+    return <tr key={r.member_id}>
+      <td><ContactCard name={r.name} phone={r.phone} details={details} metadata={r.city || 'Unknown city'}/></td>
+      {kind==='manual'&&<><td><span>{r.assignee||'Not assigned'}</span><span className="batch-contact-city">Now: {r.current_owner||'Unassigned'}</span></td><td>{allocationLabel(r.disposition)}</td></>}
+      <td><span className="batch-call-state">{r.state}</span>{r.quality_issue&&<span className="review-tag">Needs completion review</span>}</td>
+      <td><ResultBadge value={r.outcome}/>{r.wh_id&&<small className="batch-contact-city">WH ID: {r.wh_id}</small>}</td>
+      <td><strong>{r.attempts}</strong>{r.connected&&<span className="batch-contact-city">Connected</span>}{r.execution_id&&<div className="record-meta"><RecordDetails aiBatch={batch.bolna_batch_id||undefined} aiScope="contact" initialSection="AI activity" entity="call" id={r.execution_id} label="AI timeline"/></div>}</td>
+    </tr>;
+   })}</tbody>
   </table>{!data.rows.length&&<p className="batch-empty">No batch members match these filters.</p>}</div>
   <RecordsPagination page={data.page} pages={data.pages} total={data.total} pageSize={50} applied={sp} empty="No matching members" label="Batch member pages"/>
  </>;

@@ -5,6 +5,15 @@ export function dateTime(value: string | Date | null) {
   if(!Number.isFinite(date.getTime()))return "—";
   return date.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" }) + " IST";
 }
+export function shortDate(value: string | Date | null) {
+  if (!value) return "—";
+  const date = value instanceof Date ? value : new Date(providerTimestamp(value) ?? NaN);
+  if (!Number.isFinite(date.getTime())) return "—";
+  return date.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "2-digit", timeZone: "Asia/Kolkata" });
+}
+export function personName(name: string | null | undefined, email: string) {
+  return (name?.trim() || email).split('@')[0] || 'Unknown';
+}
 export function rent(value: string | null) {
   if (!value) return "—";
   const digits = value.replace(/[,\s₹]/g, "");
