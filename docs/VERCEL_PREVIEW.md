@@ -46,8 +46,13 @@ not be added to Vercel. The local preview remains on port 3000.
 ## Database and provider configuration
 
 Preview edits affect the shared live database. Keep the existing production
-webhook and worker URLs; another dashboard URL does not require repointing them.
-Builds do not run migrations or backfills.
+webhook and worker URLs **only with compatible ingestion deployed there**. The
+older production handlers do not populate this preview's AI attempt history and
+ignore final updates at the same retry number. Publishing a preview does not
+upgrade those handlers. Deploy the focused production ingestion patch and recover
+affected history as described in [the ingestion compatibility runbook](INGESTION_COMPATIBILITY.md).
+No provider URLs or environment values need changing for that patch. Builds do
+not run migrations or backfills.
 
 A read-only check confirmed that baseline and migrations 001–008 are present
 with matching checksums. The existing rollback's two disabled assignment triggers

@@ -18,6 +18,7 @@ scripts/
 !/scripts/
 /scripts/*
 !/scripts/dev-preview.mjs
+!/scripts/recover-batch-history.mjs
 sql/
 # Prisma owns the schema now; schema.prisma + migrations describe it in full,
 # so they stay private for the same reason sql/ does.
