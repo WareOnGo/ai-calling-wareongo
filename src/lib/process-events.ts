@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { query, transaction } from "./db";
-import { executionSchema, normalize } from "./bolna";
+import { executionSchema } from "./bolna";
+import { writeCallSnapshots } from "./write-call-snapshots";
 import { envInt } from "./api";
 
 type Event = { id: string; raw: unknown; attempts: number; lease_token: string };
@@ -20,34 +21,14 @@ export async function claimEvent(): Promise<Event | undefined> {
 }
 
 export async function storeEvent(row: Event): Promise<boolean> {
-  const c = normalize(executionSchema.parse(row.raw));
+  const raw = executionSchema.parse(row.raw);
   return transaction(async client => {
     // A reclaimed claim fences the previous worker, including its call-log write.
     const owned = await client.query(`select id from bolna_webhook_events
       where id = $1 and lease_token = $2 and status = 'processing' and lease_until > now() for update`, [row.id, row.lease_token]);
     if (!owned.rowCount) return false;
-    const number = c.call_type === "inbound" ? c.from_number : c.to_number;
-    const digits = String(number ?? "").replace(/\D/g, "").slice(-10);
-    let phoneId: string | null = null;
-    if (digits.length === 10) {
-      const phone = await client.query(`insert into raw_phone_numbers(phone_last10, phone) values ($1, $2)
-        on conflict(phone_last10) do update set phone = coalesce(raw_phone_numbers.phone, excluded.phone) returning phone_id`, [digits, `+91${digits}`]);
-      phoneId = phone.rows[0].phone_id;
-    }
-    const facts = { ...c, raw: row.raw, phone_id: phoneId };
-    const columns = ["id", "agent_id", "batch_id", "status", "call_type", "from_number", "to_number", "duration_secs", "total_cost",
-      "cost_breakdown", "recording_url", "hangup_by", "hangup_reason", "answered_by_vm", "transcript", "context_details", "raw", "call_created_at", "phone_id"] as const;
-    const changed = `(bolna_call_logs.transcript is distinct from excluded.transcript or
-      bolna_call_logs.status is distinct from excluded.status or bolna_call_logs.total_cost is distinct from excluded.total_cost)`;
-    const inferenceColumns = ["llm_availability", "built_up_area_sqft", "carpet_area_sqft", "city_area", "expected_rent", "possession", "confidence", "notes", "enrichment", "inference_model"];
-    await client.query(`insert into bolna_call_logs (${columns.join(",")}) values (${columns.map((_, i) => `$${i + 1}`).join(",")})
-      on conflict(id) do update set ${columns.filter(k => k !== "id").map(k => `${k} = excluded.${k}`).join(",")},
-      ${inferenceColumns.map(k => `${k} = case when ${changed} then null else bolna_call_logs.${k} end`).join(",")},
-      enriched = case when ${changed} then false else bolna_call_logs.enriched end,
-      inference_version = case when ${changed} then 0 else bolna_call_logs.inference_version end,
-      needs_review = case when ${changed} then false else bolna_call_logs.needs_review end,
-      inferred_district = case when ${changed} or bolna_call_logs.context_details is distinct from excluded.context_details then null else bolna_call_logs.inferred_district end,
-      processed_at = now()`, columns.map(k => facts[k]));
+    await client.query("select bolna_record_ai_evidence($1::jsonb,'worker')", [raw]);
+    await writeCallSnapshots(client, [raw]);
     await client.query(`update bolna_webhook_events set status = 'processed', processed_at = now(), last_error = null,
       lease_token = null, lease_until = null where id = $1 and lease_token = $2`, [row.id, row.lease_token]);
     return true;

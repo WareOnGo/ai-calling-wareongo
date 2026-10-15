@@ -1,4 +1,5 @@
 import { z } from "zod";
+import {providerTimestamp} from './time';
 
 // Statuses that mean "the call is over" — only these get processed.
 // (Mirrors the AgentExecution status enum in Bolna's Get Execution API.)
@@ -27,19 +28,27 @@ export const telephonySchema = z
     to_number: z.string().nullish(),
     from_number: z.string().nullish(),
     recording_url: z.string().nullish(),
+    provider_call_id: z.string().nullish(),
+    provider: z.string().nullish(),
     call_type: z.string().nullish(),
     hangup_by: z.string().nullish(),
     hangup_reason: z.string().nullish(),
   })
   .passthrough();
 
-export const executionSchema = z
-  .object({
+export const executionMetadataSchema=z.object({
+  status:z.string(),
+  retry_count:z.union([z.number(),z.string()]).nullish(),
+  batch_run_details:z.object({retried:z.union([z.number(),z.string()]).nullish()}).passthrough().nullish(),
+  telephony_data:telephonySchema.nullish(),
+}).passthrough();
+
+export const executionSchema = executionMetadataSchema
+  .extend({
     id: z.string().uuid(),
     agent_id: z.string().nullish(),
     batch_id: z.string().nullish(),
     status: z.string(),
-  retry_count: z.number().int().nonnegative().max(2147483647).optional(),
     total_cost: z.number().nullish(),
     cost_breakdown: z.record(z.any()).nullish(),
     transcript: z.string().nullish(),
@@ -47,7 +56,9 @@ export const executionSchema = z
     extracted_data: z.record(z.any()).nullish(),
     context_details: z.record(z.any()).nullish(),
     created_at: z.string().nullish(),
-    telephony_data: telephonySchema.nullish(),
+    initiated_at: z.string().nullish(),
+    updated_at: z.string().nullish(),
+    conversation_duration: z.union([z.number(), z.string()]).nullish(),
   })
   .passthrough();
 
@@ -75,7 +86,7 @@ export function normalize(e: Execution) {
     answered_by_vm: e.answered_by_voice_mail ?? null,
     transcript: e.transcript?.trim() || null,
     context_details: e.context_details ?? null,
-    call_created_at: e.created_at ?? null,
+    call_created_at: providerTimestamp(e.created_at),
   };
 }
 
