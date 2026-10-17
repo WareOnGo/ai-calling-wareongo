@@ -461,13 +461,21 @@ array and aggregate `state` (`partial` when only some children are confirmed).
 Replaying the parent never resends either child. Resolve each affected batch in
 Recent batches; only that child's reservations are released.
 
-`/api/batches/reconcile` polls known provider IDs. Completion requires an executed
-batch, coverage of every reserved contact, terminal executions and exhaustion of
-retryable failures. Unknown retry metadata remains reserved. Recent batches lets
+`/api/batches/reconcile` polls known provider IDs, including running batches, and
+imports missed execution updates into both call results and attempt history.
+Current Bolna batches finish as `completed`; verified `stopped` batches become
+locally canceled. Completion requires matching contact counts, coverage of every
+target, and finished executions. A disconnected call still awaits its final update.
+Legacy `executed` snapshots additionally require explicit retry exhaustion.
+Recent batches lets
 an admin check provider status or record a verified completion/cancellation note,
 including who released the numbers. That action does not cancel calls remotely.
 Stale in-flight states and legacy failures require reconciliation; a timeout alone
-never frees a phone.
+never frees a phone. Imports commit in pages of 250, up to 1,000 executions per
+invocation. Active batches resume by execution ID and wrap for another sweep;
+finished batches use a snapshot fingerprint so changed results are rechecked before
+completion. Expiring leases fence overlapping workers. Background and visible-page
+polls share a five-minute throttle; manual status checks can run sooner.
 
 Provider contracts: [batch status](https://www.bolna.ai/docs/api-reference/batches/get_batch),
 [batch executions](https://www.bolna.ai/docs/api-reference/batches/executions), and
@@ -872,7 +880,8 @@ Schedule `/api/batches/reconcile` every five minutes alongside process and enric
 Run district inference if missing source areas need filling. Overlapping worker
 runs are safe through leases and fencing; no cross-request single-runner rule is
 required. Scheduling configuration is external and must be installed explicitly.
-The source checkout does not establish that any production cron exists.
+The source checkout does not establish that any production cron exists. Install
+and verify the production job using the [batch polling runbook](database/README.md#background-batch-polling).
 
 ### Trigger one processing batch
 

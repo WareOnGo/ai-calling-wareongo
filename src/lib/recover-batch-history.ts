@@ -1,8 +1,7 @@
 import { z } from "zod";
 import { query, transaction } from "./db";
 import { executionSchema, isTerminal } from "./bolna";
-import { captureExecutions } from "./capture-executions";
-import { writeCallSnapshots } from "./write-call-snapshots";
+import { applyExecutionSnapshots } from "./apply-execution-snapshots";
 
 const PAGE_SIZE = 100;
 const pageSchema = z.object({ page_number: z.number().int(), total: z.number().int().nonnegative().max(80000),
@@ -95,19 +94,7 @@ export async function recoverBatchHistory(id: string, options: { apply?: boolean
       const wouldUpdate = Number((await client.query(`select count(*) n from jsonb_array_elements($1::jsonb) p
         left join bolna_call_logs c on c.id=(p->>'id')::uuid where bolna_execution_newer(p,c.raw)`, [JSON.stringify(terminal)])).rows[0].n);
       if (!options.apply) return { wouldUpdate, written: 0, deferred: 0 };
-      await captureExecutions(client, page.data, "recovery-provider");
-      // The inbox lock fences existing workers. Active worker leases are deferred;
-      // rerunning recovery or the normal worker will finish them without interference.
-      const ready = (await client.query<{ id: string; raw: unknown }>(`select id,raw from bolna_webhook_events
-        where id=any($1::uuid[]) and (status in ('pending','failed') or
-          (status='processing' and coalesce(lease_until,'-infinity')<=now()))
-        order by id for update skip locked`, [terminal.map(e => e.id)])).rows;
-      const written = await writeCallSnapshots(client, ready.map(row => row.raw));
-      await client.query(`update bolna_webhook_events set status='processed',processed_at=now(),last_error=null,
-        attempts=attempts+1,lease_token=null,lease_until=null where id=any($1::uuid[])`, [ready.map(row => row.id)]);
-      const deferred = Number((await client.query(`select count(*) n from bolna_webhook_events
-        where id=any($1::uuid[]) and status<>'processed'`, [terminal.map(e => e.id)])).rows[0].n);
-      return { wouldUpdate, written, deferred };
+      return { wouldUpdate, ...await applyExecutionSnapshots(client, page.data, "recovery-provider") };
     });
     report.providerExecutions += page.data.length; report.terminalExecutions += terminal.length;
     report.wouldUpdate += delta.wouldUpdate; report.written += delta.written; report.deferred += delta.deferred; report.pages++;

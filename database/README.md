@@ -100,3 +100,40 @@ Dispatch has no automatic create/schedule retry. Unknown provider outcomes remai
 reserved. Recent batches can check the provider or record an administrator's
 verified completion/cancellation. This records who released the reservation and
 why; it does not itself cancel remote calls.
+
+## Background batch polling
+
+After migration `011_batch_polling.sql` and the updated backend are deployed,
+install the production scheduler explicitly. The scheduler is separate from schema
+migrations because a local or preview database must not install a production job.
+Both dashboard branches share the production database, so only one schedule is needed.
+
+```bash
+# Rehearse configuration; all DDL and cron changes roll back.
+node --env-file=.env.local database/schedule-batch-polling.mjs
+# Install or update only the named reconcile-batches job.
+node --env-file=.env.local database/schedule-batch-polling.mjs --apply
+```
+
+The installer verifies that the existing Vault `process_secret` equals the supplied
+`PROCESS_SECRET`. It reuses that secret without printing or changing it. The
+private `call_batch_reconcile_endpoint()` function posts to the production
+`/api/batches/reconcile` endpoint every five minutes, with a 280-second HTTP timeout
+for the 300-second worker. Other scheduler jobs and their timeouts are untouched.
+The application performs provider GET requests only; polling cannot schedule,
+retry, stop or cancel calls. It imports missed snapshots in bounded pages and only
+releases reservations after every target and current final snapshot is verified.
+Balance-blocked and pending executions remain visible without inventing calls.
+
+Verify **HTTP delivery as well as cron execution**: a successful cron invocation
+only queues a request. Check `cron.job_run_details`, the corresponding
+`net._http_response` entry, and the batch's `reconciliation_checked_at`,
+`reconciliation_provider_state`, `reconciliation_counts` and cursor fields. A
+successful endpoint response reports `checked` and `succeeded`; investigate any
+failed checks using `call_batches.last_error`. Keep request headers and Vault values
+out of logs. To pause only this scheduler, use
+`select cron.unschedule('reconcile-batches');`. This leaves saved results intact.
+
+References: [Supabase Cron](https://supabase.com/docs/guides/cron/quickstart),
+[pg_net HTTP timeouts and responses](https://supabase.com/docs/guides/database/extensions/pg_net),
+and [Bolna batch states](https://www.bolna.ai/docs/api-reference/batches/get_batch).
