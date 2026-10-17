@@ -128,10 +128,14 @@ it('a changed provider snapshot restarts safely and an expired worker lease can 
  snapshot=executions.map((e,i)=>i===0?{...e,status:'call-disconnected'}:e);
  await query("update call_batches set reconciliation_lease_until=now()-interval '1 second' where id=$1",[id]);
  expect((await reconcileBatch(id)).state).toBe('scheduled');expect((await query('select reconciliation_offset from call_batches where id=$1',[id])).rows[0].reconciliation_offset).toBe(1000);
+ expect((await reconcileBatch(id)).state).toBe('scheduled');
+ expect((await query('select count(*)::int n from bolna_dispatch_reservations')).rows[0].n).toBe(1);
+ snapshot=executions;
+ expect((await reconcileBatch(id)).state).toBe('scheduled');
  expect((await reconcileBatch(id)).state).toBe('completed');expect((await query('select count(*)::int n from bolna_ai_attempts')).rows[0].n).toBe(1001);
 });
 it('cron visits other batches while a large batch waits for its next reconciliation page',async()=>{
  const {id,executions}=await largeBatch();const other=randomUUID();await query("insert into call_batches(id,state,bolna_batch_id,updated_at) values($1::uuid,'scheduled',$1::text,now()-interval '12 hours')",[other]);
- const visited:string[]=[];vi.stubGlobal('fetch',vi.fn(async(url:string)=>{const batch=url.split('/batches/')[1].split('/')[0];visited.push(batch);return Response.json(url.endsWith('/executions')?executions:{batch_id:batch,status:batch===id?'executed':'scheduled',valid_contacts:1});}));
+ const visited:string[]=[];vi.stubGlobal('fetch',vi.fn(async(url:string)=>{const batch=url.split('/batches/')[1].split('/')[0];visited.push(batch);return Response.json(url.endsWith('/executions')?(batch===id?executions:[]):{batch_id:batch,status:batch===id?'executed':'scheduled',valid_contacts:1});}));
  expect((await reconcileBatches()).checked).toBe(2);expect(visited).toContain(other);expect((await query('select state,reconciliation_offset from call_batches where id=$1',[id])).rows[0]).toMatchObject({state:'scheduled',reconciliation_offset:1000});
 });

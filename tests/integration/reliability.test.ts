@@ -240,7 +240,7 @@ describe("dispatch consistency", () => {
     vi.stubGlobal("fetch", provider());
     const sent = await dispatchBatch(admin, input());
     vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(JSON.stringify(url.endsWith("/executions")
-      ? [{ status: "completed", telephony_data: { to_number: "+919876543210" } }]
+      ? [{ id: randomUUID(), batch_id: "provider-batch", status: "completed", telephony_data: { to_number: "+919876543210" } }]
       : { batch_id: "provider-batch", status: "executed", valid_contacts: 1 }))));
     expect((await reconcileBatch(sent.batchId)).state).toBe("completed");
     expect((await query("select count(*) n from bolna_dispatch_reservations")).rows[0].n).toBe("0");

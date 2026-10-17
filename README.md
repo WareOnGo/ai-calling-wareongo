@@ -476,7 +476,9 @@ array and aggregate `state` (`partial` when only some children are confirmed).
 Replaying the parent never resends either child. Resolve each affected batch in
 Recent batches; only that child's reservations are released.
 
-`/api/batches/reconcile` polls known provider IDs. Current Bolna batches report
+`/api/batches/reconcile` polls known provider IDs, including running batches, and
+imports missed execution updates into both call results and attempt history.
+Current Bolna batches report
 `completed` after their configured retry cycle. Completion requires that provider
 state, matching contact counts, coverage of every target and finished executions.
 Legacy `executed` snapshots still require explicit retry exhaustion. A provider
@@ -485,13 +487,14 @@ finished; no stop or cancel request is sent to Bolna. Recent batches lets
 an admin check provider status or record a verified completion/cancellation note,
 including who released the numbers. That action does not cancel calls remotely.
 Stale in-flight states and legacy failures require reconciliation; a timeout alone
-never frees a phone. Reconciliation commits a snapshot fingerprint and cursor with
-each 250-execution page, yielding after 1,000 executions per invocation. It resumes
-unchanged snapshots and safely restarts changed ones; expiring leases fence
-concurrent checks.
+never frees a phone. A disconnected call still awaits its final update. Imports
+commit in pages of 250, up to 1,000 executions per invocation. Active batches resume
+by execution ID and wrap for another sweep; finished batches use a snapshot
+fingerprint so changed results are rechecked before completion. Expiring leases
+fence overlapping workers.
 
 While a batch page is visible, `/api/batches/sync` checks up to three of its active
-batches, throttled to once per minute per batch, and refreshes the page every
+batches, sharing a five-minute throttle with background polling, and refreshes the page every
 30 seconds. It pauses during edits, dialogs and background tabs. The existing
 reconciliation cron remains responsible for checks when the page is closed.
 Provider metadata requests time out after 15 seconds; large execution snapshots
@@ -937,7 +940,8 @@ Schedule `/api/batches/reconcile` every five minutes alongside process and enric
 Run district inference if missing source areas need filling. Overlapping worker
 runs are safe through leases and fencing; no cross-request single-runner rule is
 required. Scheduling configuration is external and must be installed explicitly.
-The source checkout does not establish that any production cron exists.
+The source checkout does not establish that any production cron exists. Install
+and verify the production job using the [batch polling runbook](database/README.md#background-batch-polling).
 
 ### Trigger one processing batch
 

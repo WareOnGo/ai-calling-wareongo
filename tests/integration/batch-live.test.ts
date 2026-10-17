@@ -31,11 +31,11 @@ it('automatically completes only after all target results and retries are confir
  vi.stubGlobal('fetch',fetcher);
  expect((await syncVisibleBatches([b.id])).completed).toBe(0);
  executions.push(execution('9876543211','no-answer',1));
- await query("update call_batches set updated_at=now()-interval '2 minutes' where id=$1",[b.id]);
+ await query("update call_batches set updated_at=now()-interval '6 minutes' where id=$1",[b.id]);
  expect((await syncVisibleBatches([b.id])).completed).toBe(0);
  expect((await query('select count(*)::int n from bolna_dispatch_reservations')).rows[0].n).toBe(1);
  executions.push(execution('9876543211','no-answer',3));
- await query("update call_batches set updated_at=now()-interval '2 minutes' where id=$1",[b.id]);
+ await query("update call_batches set updated_at=now()-interval '6 minutes' where id=$1",[b.id]);
  expect(await syncVisibleBatches([b.id])).toEqual({checked:1,completed:1,failed:0});
  expect((await query('select state,completed_at from call_batches where id=$1',[b.id])).rows[0]).toMatchObject({state:'completed',completed_at:expect.any(Date)});
  expect((await query('select count(*)::int n from bolna_dispatch_reservations')).rows[0].n).toBe(0);
