@@ -18,8 +18,8 @@ const inter = localFont({
 });
 
 export const metadata = {
-  title: "Bolna Calls — WareOnGo",
-  description: "Call data dashboard for Bolna voice-AI verification calls.",
+  title: "CallOnGo — WareOnGo",
+  description: "WareOnGo's workspace for AI calls, manual follow-ups and warehouse verification.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

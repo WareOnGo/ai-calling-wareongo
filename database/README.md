@@ -182,3 +182,11 @@ The local rehearsals cover fresh, legacy, through-005, interrupted recovery and
 concurrent-index timeout/retry. They check co-tenant preservation, legacy onboarding,
 unknown dates, retired-history rejection and an index wait exceeding two seconds.
 They do not replace a representative staging migration and restore rehearsal.
+
+## V2 manual-call tags
+
+`012_manual_call_tags.sql` adds Owner unresponsive, Leased out and No property for rent to the assignment and manual-event constraints. Owner unresponsive joins the retryable dispositions used by follow-up and completion checks. Existing events, audit history and trigger enablement are preserved. Apply this forward migration before deploying the V2 tag controls; no new credentials are needed.
+
+Migration 012 was applied to the shared production database on 21 October 2026 with explicit approval. The transaction verified unchanged fingerprints for all 2,379 assignments, 2 manual attempts and 3,084 assignment-audit records, and preserved every trigger's enabled/disabled state. The migration ledger and validated constraints were rechecked after commit. Migration 009 remains pending and was not included.
+
+Both app URLs now use the expanded database vocabulary. The V2 UI and the explicit ownership check for reopening a single assignment are implemented on the feature branch and take effect when that code is deployed. The reopening check must run in the application because the shared database still has `bolna_assignment_contacts_sync` and `bolna_assignment_quality_guard` disabled for compatibility with the older dashboard.

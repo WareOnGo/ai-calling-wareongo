@@ -6,7 +6,7 @@ test.describe("auth and role boundaries", () => {
   test("anonymous visitor gets the sign-in page, not the dashboard", async ({ page }) => {
     await page.goto("/dashboard/calls");
     await expect(page).toHaveURL(/\/$/);
-    await expect(page.locator(".login .card h1")).toHaveText("Bolna Calls");
+    await expect(page.locator(".login .card h1")).toHaveText("CallOnGo");
   });
 
   test("a forged cookie is rejected (HMAC, not just httpOnly)", async ({ browser }) => {

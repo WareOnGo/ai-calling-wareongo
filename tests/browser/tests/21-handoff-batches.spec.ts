@@ -6,8 +6,8 @@ test('manual batch cards retain all targeted rows, drill down and export assigne
  const ids=[2,3,5,6].map(i=>`a0000000-0000-4000-8000-00000000000${i}`);
  const res=await page.request.post('/api/assignments',{data:{entity_type:'record',ids,assignee:'priya@eval.test'}});expect(res.status()).toBe(200);const data=await res.json();expect(data.assigned).toBe(2);
  await page.goto('/dashboard/batches?kind=manual');await page.getByRole('link',{name:`Manual batch ${data.batchId.slice(0,8)}`}).click();
- await expect(page.locator('.batch-metrics').getByRole('link',{name:'4 Targeted records'})).toBeVisible();await expect(page.locator('table.sheet tbody tr')).toHaveCount(4);
- await page.locator('.batch-metrics').getByRole('link',{name:'2 Open',exact:true}).click();await expect(page).toHaveURL(/metric=open/);await expect(page.locator('table.sheet tbody tr')).toHaveCount(2);
+ await expect(page.locator('.batch-metrics').getByRole('link',{name:'4 Records in batch'})).toBeVisible();await expect(page.locator('table.sheet tbody tr')).toHaveCount(4);
+ await page.locator('.batch-metrics').getByRole('link',{name:'2 Still open',exact:true}).click();await expect(page).toHaveURL(/metric=open/);await expect(page.locator('table.sheet tbody tr')).toHaveCount(2);
  const exported=await page.request.get(`/api/batches/${data.batchId}/export?kind=manual&metric=open`);expect(exported.status()).toBe(200);expect(exported.headers()['x-export-row-count']).toBe('2');
  await page.setViewportSize({width:390,height:844});expect(await bodyOverflowsX(page)).toBe(false);await shot(page,'handoff-f-manual-batch');
  await page.goto('/dashboard/batches/manual/legacy');await expect(page.locator('.page-title')).toContainText('Legacy / no recorded batch');

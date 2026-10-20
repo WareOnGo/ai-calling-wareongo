@@ -28,7 +28,7 @@ export default async function Home({
   return (
     <div className="login">
       <div className="card">
-        <h1 style={{ marginTop: 0 }}>Bolna Calls</h1>
+        <h1 style={{ marginTop: 0 }}>CallOnGo</h1>
         <p className="muted" style={{ marginTop: 4, marginBottom: 24 }}>
           WareOnGo voice-AI call dashboard
         </p>

@@ -136,11 +136,8 @@ table.assignment-sheet td.assignment-person { padding-block: 7px; }
 .assignment-statusbar .stat-n { display: inline-flex; align-items: center; height: 24px; font-size: var(--text-section); font-weight: 600; line-height: 1.5; }
 .assignment-statusbar .stat-l { margin: 0; font-size: var(--text-support); }
 .assignment-stat-scope { margin-left: auto; color: var(--muted); font-size: var(--text-caption); overflow-wrap: anywhere; }
-.assignment-summary { padding: var(--space-2) var(--page-gutter); min-height: 38px; flex-wrap: wrap; }
+.assignment-summary { padding: var(--space-1) var(--page-gutter); min-height: 32px; flex-wrap: wrap; }
 .assignment-summary > span { display: inline-flex; align-items: center; min-height: 18px; }
-.assignment-summary-actions, .assignment-review-links { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 16px; }
-.assignment-summary-actions { gap: 6px 24px; }
-.assignment-review-links a { padding-block: 4px; }
 .team-report-grid .sheet th, .team-report-grid .sheet td { padding: 12px; font-size: var(--text-body); line-height: 1.55; }
 /* Batch evidence can scroll as a table, but contact names and phone numbers
    must remain legible instead of collapsing into a few characters per line. */
@@ -161,9 +158,6 @@ table.assignment-sheet td.assignment-person { padding-block: 7px; }
   .assignment-stat-scope { margin-left: 6px; }
   .assignment-scope-default { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .assignment-summary { padding-inline: 16px; gap: 4px; }
-  .assignment-summary > span { margin-right: auto; }
-  .assignment-summary-actions { display: contents; }
-  .assignment-review-links { order: 1; flex-basis: 100%; }
   .dashboard-content[data-page="/dashboard/my"] { overflow-y: auto; }
   .dashboard-content[data-page="/dashboard/my"] .work-content { flex: none; overflow: visible; }
   /* Reserve the same two lines before and after the result count arrives. */
@@ -205,3 +199,12 @@ table.assignment-sheet td.assignment-person { padding-block: 7px; }
   .work-content .work-ai-cell { padding-block: 12px; border-block: 1px solid var(--border); }
   .work-content .work-ai { flex-direction: row; flex-wrap: wrap; align-items: center; margin-top: 0; }
 }
+
+/* Selection tools appear only while reviewing selected assignments. */
+.assignment-bulk-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; padding: 8px var(--page-gutter); border-bottom: 1px solid var(--border); background: var(--accent-bg); }
+.assignment-bulk-bar .selection-summary { padding: 0; border: 0; background: transparent; flex: 1 1 260px; }
+.assignment-bulk-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.mismatch-context { margin: 0; padding: 8px var(--page-gutter); color: var(--muted); font-size: var(--text-support); border-bottom: 1px solid var(--border); }
+.assignment-sheet .review-tag { display: inline-block; white-space: nowrap; }
+.bulk-skipped { padding-left: 20px; color: var(--muted); }
+.bulk-skipped li + li { margin-top: 6px; }

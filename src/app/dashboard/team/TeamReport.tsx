@@ -13,7 +13,7 @@ import { ResultText } from "../ResultBadge";
 export async function TeamReport({ viewer, filters, showEvidence = false }: { viewer: Viewer; filters: TeamFilters; showEvidence?: boolean }) {
   const now = new Date();
   const [people, data, allPeople] = await Promise.all([teamSummary(viewer, filters, now), showEvidence ? teamDetails(viewer, filters, now) : Promise.resolve(null), listUsers()]);
-  const base = { date_from: filters.date_from, date_to: filters.date_to, person: filters.person, access: filters.access };
+  const base = { range: filters.range, date_from: filters.date_from, date_to: filters.date_to, person: filters.person, access: filters.access };
   const href = (caller: string | undefined, metric: TeamMetric) => "/dashboard/team?" + searchQuery({ ...base, metric, ...(caller ? { caller } : {}) }) + "#team-evidence";
   const cell = (email: string, metric: TeamMetric, n = 0) => <Link href={href(email, metric)} aria-label={`${TEAM_METRICS[metric]} for ${email}: ${n}`}>{n.toLocaleString()}</Link>;
   const total = (metric: TeamMetric) => people.reduce((sum, person) => sum + (person.counts[metric] || 0), 0);
@@ -25,7 +25,7 @@ export async function TeamReport({ viewer, filters, showEvidence = false }: { vi
     { metric: "onboarded", label: "Onboarded references", value: total("onboarded").toLocaleString(), detail: "Unique warehouse references" },
   ];
   return <section className="team-report" aria-label="Team performance">
-    <TeamDateRange filters={filters} dates={teamDates(now)} people={allPeople}/>
+    <TeamDateRange key={JSON.stringify(base)} filters={filters} dates={teamDates(now)} people={allPeople}/>
     <div className="team-overview" aria-label="Performance summary">{summaries.map(summary => <Link className="team-metric" href={href(undefined, summary.metric)} key={summary.metric}>
       <span>{summary.label}</span><strong>{summary.value}</strong><small>{summary.detail}</small>
     </Link>)}</div>
@@ -48,9 +48,9 @@ export async function TeamReport({ viewer, filters, showEvidence = false }: { vi
     <details className="team-definitions"><summary>Metric definitions and historical coverage</summary>
       <p>Dates include full calendar days in India (IST). Call counts and connect rates cover logged manual calls only. Legacy references remain included when dated evidence exists.</p>
       <p>Available discoveries count each listing or execution once per caller, using its first evidence. Reopening and saving again cannot move that credit to a later period. Available found includes work awaiting a warehouse reference; new Available completions require an integer reference. Historical onboarding retains recorded legacy formats and flags them for review. Backdated attempts use their recorded attempt time.</p>
-      <p>Attempts use recorded events after corrections. Connected means Connected, Call back later, or Will check and get back. Rates use only these captured events; older notes, autosaves and legacy attempt counters cannot establish call counts. Zero recorded attempts does not prove that no calls happened.</p>
+      <p>Attempts use recorded events after corrections. Connected includes Connected, Call back later, Will check and get back, Leased out, and No property for rent. Rates use only these captured events; older notes, autosaves and legacy attempt counters cannot establish call counts. Zero recorded attempts does not prove that no calls happened.</p>
       <p>Average call duration uses self-reported seconds on connected attempts with a known duration; the timed / connected fraction shows coverage. Missing durations are excluded, and a reported zero remains zero. Warehouse references are deduplicated across callers, credited to the first recorded owner, and reflect staff-recorded onboarding. Reused references need review.</p>
-      <p>Undated legacy verification is excluded from date-based discoveries and onboarding. Completion quality and follow-ups remain available on Assignments.</p>
+      <p>Undated legacy verification is included in All time and labeled with an unknown date in the evidence. Date ranges exclude it. Completion quality and follow-ups remain available on Assignments.</p>
     </details>
     {data && <section id="team-evidence" className="team-evidence" aria-label="Metric evidence">
       <div className="team-section-heading"><div><h2>{TEAM_METRICS[filters.metric]}</h2><p>{filters.caller || "All callers"} · {data.total.toLocaleString()} evidence rows</p></div><div className="team-evidence-actions">

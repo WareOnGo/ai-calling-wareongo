@@ -26,7 +26,8 @@ export const toRawFilters=(value:unknown)=>rawFiltersSchema.parse(value);
 export const toCallFilters=(value:unknown)=>callFiltersSchema.parse(value);
 
 export const assignmentFiltersSchema = z.object({
-  ...reporting, q: text, assignee: multiple, assigned_by: multiple, city: text,has_ai_calls:yesNo,
+  ...reporting, q: text, assignee: multiple, assigned_by: multiple, city: text, region: text, has_ai_calls:yesNo,
+  comparison: optional(z.enum(["mismatch"])),
   state: choices(["open", "done", "dropped"]), type: choices(["record", "call"]),
   outcome: choices(["none", "Available", "Unavailable", "Unclear"]), ai_result: multiple,
   follow_up: optional(z.enum(["pending", "due"])), quality_review: flag,

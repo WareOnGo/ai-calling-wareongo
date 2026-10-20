@@ -10,7 +10,7 @@ import { OUTCOMES } from "@/lib/scope";
 import { WORK_FILTER_LABELS, WORK_SORT_LABELS, workFilterValue, type WorkFilters as Filters } from "@/lib/work-filters";
 
 export function WorkFilters({ filters, assigners = [], loading = false }: { filters: Filters; assigners?: { email: string; name: string | null }[]; loading?: boolean }) {
-  const count = ["type", "outcome", "follow_up", "city", "assigned_by", "added_to_db", "sort", "ai_result", "wh_id", "has_notes", "has_manual_calls", "date_from", "date_to", "completed_from", "completed_to", "has_ai_calls", "manual_disposition"].filter(key => filters[key as keyof Filters]).length;
+  const count = ["type", "outcome", "follow_up", "city", "region", "assigned_by", "added_to_db", "sort", "ai_result", "wh_id", "has_notes", "has_manual_calls", "date_from", "date_to", "completed_from", "completed_to", "has_ai_calls", "manual_disposition"].filter(key => filters[key as keyof Filters]).length;
   const people = filters.assigned_by && !assigners.some(person => person.email === filters.assigned_by) ? [...assigners, { email: filters.assigned_by, name: null }] : assigners;
   const controls = <>
     {filters.view && <input type="hidden" name="view" value={filters.view} />}
@@ -20,10 +20,11 @@ export function WorkFilters({ filters, assigners = [], loading = false }: { filt
     <FiltersToggle count={count} disabled={loading} />
     {loading ? <button type="button" className="btn apply-button" disabled>Apply</button> : <ApplyButton />}
     {!loading && <FilterPanel groups={[
-      { label: "Assignment", count: ["type", "follow_up", "city", "assigned_by"].filter(key => filters[key as keyof Filters]).length, content: <>
+      { label: "Assignment", count: ["type", "follow_up", "city", "region", "assigned_by"].filter(key => filters[key as keyof Filters]).length, content: <>
         <SelectFilter name="type" label="Work type" applied={filters} any="All work" options={[{ value: "record", label: "Listings" }, { value: "call", label: "AI follow-ups" }]} />
         <SelectFilter name="follow_up" label="Follow-up" applied={filters} any="All tasks" options={[{ value: "pending", label: "Needs another call" }, { value: "due", label: "Due now / needs scheduling" }]} />
         <label><span>City</span><input name="city" aria-label="Filter by city" defaultValue={filters.city || ""} placeholder="Any city" /></label>
+        <label><span>State</span><input name="region" aria-label="Filter by state" defaultValue={filters.region || ""} placeholder="Any state" /></label>
         <SelectFilter name="assigned_by" label="Assigned by" applied={filters} any="Anyone" options={people.map(person => ({value:person.email,label:person.name||person.email}))} />
       </> },
       { label: "Results", count: ["outcome", "ai_result", "added_to_db", "wh_id", "has_notes", "has_manual_calls", "has_ai_calls", "manual_disposition"].filter(key => filters[key as keyof Filters]).length, content: <>

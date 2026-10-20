@@ -1,11 +1,11 @@
 {
-  "name": "bolna-processing",
+  "name": "callongo",
   "version": "0.1.0",
   "private": true,
   "engines": {
     "node": "22.x"
   },
-  "description": "Bolna Processing — receives Bolna post-call webhooks, enriches them with OpenAI, and stores results in Supabase Postgres.",
+  "description": "CallOnGo — WareOnGo's workspace for AI calls, manual follow-ups and warehouse verification.",
   "scripts": {
     "dev": "next dev --webpack",
     "build": "next build --webpack",

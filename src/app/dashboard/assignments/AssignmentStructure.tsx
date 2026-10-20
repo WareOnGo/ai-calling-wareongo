@@ -1,16 +1,15 @@
 import { filterValues, searchQuery, type FilterValue, type SearchValues } from "@/lib/filter-values";
 import Link from "next/link";
 import { ASSIGNMENT_COLUMNS, ASSIGNMENT_WIDTHS } from "../sheet-columns";
-import { AssignmentNotices } from "../GridNotices";
 
-const WIDTHS = [32, ...ASSIGNMENT_COLUMNS.map(name => ASSIGNMENT_WIDTHS[name])];
+const WIDTHS = [44, ...ASSIGNMENT_COLUMNS.map(name => ASSIGNMENT_WIDTHS[name])];
 
 export function AssignmentColumns({widths=WIDTHS,hidden=[]}:{widths?:number[];hidden?:string[]}={}) {
-  return <colgroup>{widths.map((width,index)=><col key={index} className={index === 0 ? "rowgutter" : hidden.includes(ASSIGNMENT_COLUMNS[index-1]) ? "column-hidden" : undefined} style={{width}}/>)}</colgroup>;
+  return <colgroup>{widths.map((width,index)=><col key={index} className={hidden.includes(ASSIGNMENT_COLUMNS[index-1]) ? "column-hidden" : undefined} style={{width}}/>)}</colgroup>;
 }
 
 export function AssignmentHeaders({hidden=[]}:{hidden?:string[]}={}) {
-  return <thead><tr className="colheads"><th className="rowgutter" aria-label="Row" />{ASSIGNMENT_COLUMNS.map(label => <th key={label} data-column={label}
+  return <thead><tr className="colheads"><th className="selcol" data-column="Select"><input type="checkbox" className="selall" aria-label="Select all assignments on this page"/></th>{ASSIGNMENT_COLUMNS.map(label => <th key={label} data-column={label}
     className={`${hidden.includes(label)?"column-hidden ":""}${label === "Assignee" ? "assignment-person" : label === "Actions" ? "acts" : ""}`}
     title={label === "Notes" ? "Follow-up notes written by the assignee" : label === "Brief" ? "Instructions given when the work was assigned" : undefined}>{label}</th>)}</tr></thead>;
 }
@@ -39,6 +38,6 @@ export function AssignmentStats({ totals, assignee, person, state, applied = {},
   </div>;
 }
 
-export function AssignmentSummary({ children, sort }: { children: React.ReactNode; sort?: string }) {
-  return <div className="assignment-summary"><span>{children}</span><div className="assignment-summary-actions"><AssignmentNotices/><span>{sort === "oldest" ? "Oldest first" : sort === "name" ? "Name A–Z" : "Newest first"}</span></div></div>;
+export function AssignmentSummary({ children }: { children: React.ReactNode }) {
+  return <div className="assignment-summary"><span>{children}</span></div>;
 }

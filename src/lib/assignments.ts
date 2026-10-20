@@ -4,7 +4,8 @@ import { categoryWhere, filterValues, type FilterValue } from "./filter-values";
 import { ApiError } from "./api";
 import { query, transaction } from "@/lib/db";
 import type { CurrentUser } from "@/lib/auth";
-import { type EntityType, type Outcome, type AssignmentState } from "@/lib/scope";
+import { contactTargets, type EntityType, type Outcome, type AssignmentState } from "@/lib/scope";
+import { ASSIGNMENT_SOURCE_JOIN as HISTORY_SOURCE, ASSIGNMENT_CITY as HISTORY_CITY, ASSIGNMENT_REGION as HISTORY_REGION, ASSIGNMENT_SUBJECT as HISTORY_SUBJECT } from './assignment-context';
 
 // Write layer for assignments. Reads go through the two grid filter builders
 // (lib/calls.ts, lib/raw.ts) so the employee scope is applied in exactly one place.
@@ -72,9 +73,17 @@ export async function updateAssignment(
   return transaction(async client => {
   if (patch.state === 'open') await client.query("select pg_advisory_xact_lock(81620404)");
   await client.query("select set_config('bolna.actor',$1,true)",[user.email.toLowerCase()]);
-  const current=(await client.query<AssignmentRow>(`select * from bolna_assignments where id=$1 and state<>'dropped'
+  const current=(await client.query<AssignmentRow & {entity_type:EntityType;entity_id:string}>(`select * from bolna_assignments where id=$1 and state<>'dropped'
     and ($2::boolean or assignee=$3) and revision=$4 for update`,[id,user.isAdmin,user.email.toLowerCase(),patch.revision])).rows[0];
   if(!current)throw new ApiError(409,"Assignment changed or is no longer editable. Refresh to review the latest version.");
+  // The shared legacy deployment can leave the ownership trigger disabled.
+  // Enforce reopening here, under the same lock used by assignment allocation.
+  if(patch.state==='open' && current.state!=='open') {
+    const owner=await client.query(`select 1 from (${contactTargets('$1::text','$2::uuid')}) contacts
+      join bolna_assignments a using(entity_type,entity_id)
+      where a.state='open' and a.id<>$3::bigint limit 1`,[current.entity_type,current.entity_id,id]);
+    if(owner.rowCount)throw new ApiError(409,'This phone number already has open work. Ask an admin to reassign it before reopening.');
+  }
   const proposed={...current,...("state" in patch?{state:patch.state}:{}),
     ...("outcome" in patch?{outcome:patch.outcome??null}:{}),...("remarks" in patch?{remarks:patch.remarks??null}:{}),
     ...("whId" in patch?{wh_id:patch.whId?.trim()||null}:{}),...("addedToDb" in patch?{added_to_db:patch.addedToDb}:{}),
@@ -143,6 +152,7 @@ export type AssignmentHistoryRow = {
   last_attempt_at: string | null;
   completed_at: string | null;
   ai_availability: string | null; // what the AI channel found, for comparison
+  ai_comparable: boolean;
 };
 
 export type HistoryFilters = {
@@ -158,6 +168,8 @@ export type HistoryFilters = {
   entity_type?: FilterValue;   // record | call
   outcome?: FilterValue;
   city?: string;
+  region?: string;
+  comparison?: "mismatch";
   assigned_by?: FilterValue;
   ai_result?: FilterValue; has_ai_calls?: "yes" | "no"; manual_disposition?: FilterValue;
   completed_from?: string; completed_to?: string;
@@ -175,6 +187,7 @@ export const HISTORY_PAGE_SIZE = 50;
 // `and a.entity_type = '...'` in the join condition (not the WHERE) is what keeps
 // a record row from matching a call id and vice versa.
 const HISTORY_AI_RESULT = "case when cl.id is not null then bolna_availability(cl.status, cl.llm_availability) else rai.llm_availability end";
+const HISTORY_COMPARABLE_AI = "a.entity_type='call' and cl.status in ('completed','call-disconnected') and trim(cl.llm_availability) in ('Available','Unavailable','Unclear')";
 const HISTORY_ENTITIES = `
   left join raw_records r
          on a.entity_type = 'record' and r.id = a.entity_id
@@ -197,15 +210,18 @@ const HISTORY_AI = `left join lateral (
 const HISTORY_FROM = `from bolna_assignments a
   left join bolna_app_users u on u.email = a.assignee
   left join bolna_app_users assigner on assigner.email = a.assigned_by
-  ${HISTORY_ENTITIES} ${HISTORY_PHONE} ${HISTORY_AI}`;
+  ${HISTORY_ENTITIES} ${HISTORY_SOURCE} ${HISTORY_PHONE} ${HISTORY_AI}`;
 
 // Counts and page selection only need joins referenced by their predicates.
 // Display-only phone/result lookups otherwise run once for every assignment.
 function historyFilterFrom(f: HistoryFilters, ordering = false) {
   const search = !!f.q?.trim(), ai = filterValues(f.ai_result).length > 0;
+  const location = !!f.city?.trim() || !!f.region?.trim();
+  const source = location || search || ordering && f.sort === 'name';
   return `from bolna_assignments a
     ${search ? 'left join bolna_app_users u on u.email=a.assignee' : ''}
-    ${search || ai || f.city?.trim() || ordering && f.sort === 'name' ? HISTORY_ENTITIES : ''}
+    ${search || ai || location || f.comparison || ordering && f.sort === 'name' ? HISTORY_ENTITIES : ''}
+    ${source ? HISTORY_SOURCE : ''}
     ${search ? HISTORY_PHONE : ''} ${ai ? HISTORY_AI : ''}`;
 }
 
@@ -221,6 +237,11 @@ function historyWhere(viewer: import("./scope").Viewer, f: HistoryFilters): { sq
   if (f.entity_id) { params.push(f.entity_id); where.push(`a.entity_id = $${params.length}`); }
   if (f.follow_up) where.push(`a.state='open' and a.disposition=any(bolna_retry_dispositions())${f.follow_up==='due'?" and (a.next_due_at is null or a.next_due_at<=now())":""}`);
   if (f.quality_review) where.push("a.id in (select id from bolna_assignment_quality_review)");
+  // Only the exact assigned AI execution is comparable. A shared phone can
+  // describe another property; missing or operational results are not mismatches.
+  if (f.comparison === 'mismatch') where.push(`(${HISTORY_COMPARABLE_AI})
+    and a.outcome in ('Available','Unavailable','Unclear')
+    and a.outcome <> trim(cl.llm_availability)`);
   if (f.activeOnly) where.push(`a.state <> 'dropped'`);
   for (const [column, value] of [["a.assignee",filterValues(f.assignee).map(v=>v.toLowerCase())],["a.state",f.state],["a.entity_type",f.entity_type],["a.outcome",f.outcome]] as const) {
     const predicate=categoryWhere(column,value,params,column==="a.outcome"?"none":undefined);
@@ -240,14 +261,14 @@ function historyWhere(viewer: import("./scope").Viewer, f: HistoryFilters): { sq
   if (f.has_notes) where.push(`${f.has_notes === 'no' ? 'not ' : ''}(${hasText('a.remarks')})`);
   if (f.has_manual_calls) where.push(`${f.has_manual_calls === 'no' ? 'not ' : ''}exists(select 1 from bolna_effective_manual_attempts e where e.assignment_id=a.id)`);
   where.push(...dateRangeWhere('a.assigned_at', f.date_from, f.date_to, params));
-  if (f.city?.trim()) { params.push(f.city.trim()); where.push(`coalesce(r.city, cl.context_details -> 'recipient_data' ->> 'area', '') ilike '%' || $${params.length} || '%'`); }
+  if (f.city?.trim()) { params.push(f.city.trim().replace(/[\\%_]/g, '\\$&')); where.push(`${HISTORY_CITY} ilike '%' || $${params.length} || '%'`); }
+  if (f.region?.trim()) { params.push(f.region.trim().replace(/[\\%_]/g, '\\$&')); where.push(`${HISTORY_REGION} ilike '%' || $${params.length} || '%'`); }
   if (f.added_to_db) { params.push(f.added_to_db === "yes"); where.push(`a.added_to_db = $${params.length}`); }
   if (f.q?.trim()) {
     params.push(f.q.trim());
     const p = `$${params.length}`;
-    where.push(`(coalesce(r.owner_name,'') ilike '%'||${p}||'%'
-              or coalesce(cl.context_details -> 'recipient_data' ->> 'name','') ilike '%'||${p}||'%'
-              or coalesce(r.city,'') ilike '%'||${p}||'%'
+    where.push(`(coalesce(${HISTORY_SUBJECT},'') ilike '%'||${p}||'%'
+              or coalesce(${HISTORY_CITY},'') ilike '%'||${p}||'%'
               or coalesce(a.assignee,'') ilike '%'||${p}||'%'
               or coalesce(u.name,'') ilike '%'||${p}||'%'
               or coalesce(a.remarks,'') ilike '%'||${p}||'%'
@@ -256,6 +277,14 @@ function historyWhere(viewer: import("./scope").Viewer, f: HistoryFilters): { sq
               or coalesce(rphone.phone,'') ilike '%'||${p}||'%')`);
   }
   return { sql: where.length ? `where ${where.join(" and ")}` : "", params };
+}
+
+/** The same criteria power table rows and the all-matching bulk selection. */
+export function assignmentSelectionQuery(viewer: import("./scope").Viewer, filters: HistoryFilters, ids?: string[]) {
+  const {sql,params}=historyWhere(viewer,filters);
+  if(ids)params.push(ids);
+  return {sql:`select a.id::text, a.entity_type, a.entity_id, a.assignee, a.state, a.revision
+    ${historyFilterFrom(filters)} ${sql}${ids?`${sql?' and':'where'} a.id=any($${params.length}::bigint[])`:''}`,params};
 }
 
 export async function listAssignments(viewer: import("./scope").Viewer, f: HistoryFilters, { workContext = false }: { workContext?: boolean } = {}) {
@@ -268,36 +297,32 @@ export async function listAssignments(viewer: import("./scope").Viewer, f: Histo
   const total = Number(countRes.rows[0].n);
   const page = Math.min(requestedPage, Math.max(1, Math.ceil(total / pageSize)));
 
-  const order = `${f.activeOnly ? "(a.state = 'open') desc," : ""} ${f.sort === "name" ? "lower(coalesce(r.owner_name, cl.context_details -> 'recipient_data' ->> 'name', '')) asc," : ""} a.assigned_at ${f.sort === "oldest" ? "asc" : "desc"}, a.id ${f.sort === "oldest" ? "asc" : "desc"}`;
+  const order = `${f.activeOnly ? "(a.state = 'open') desc," : ""} ${f.sort === "name" ? `lower(coalesce(${HISTORY_SUBJECT}, '')) asc,` : ""} a.assigned_at ${f.sort === "oldest" ? "asc" : "desc"}, a.id ${f.sort === "oldest" ? "asc" : "desc"}`;
   const rowsRes = await query<AssignmentHistoryRow>(
     `with page_assignments as materialized (
        select a.* ${historyFilterFrom(f, true)} ${whereSql}
        order by ${order} limit ${pageSize} offset ${(page - 1) * pageSize}
      )
      select a.revision, a.id::text as id, a.batch_id::text, a.entity_type, a.entity_id::text as entity_id,
-            coalesce(r.owner_name, cl.context_details -> 'recipient_data' ->> 'name') as subject,
+            ${HISTORY_SUBJECT} as subject,
             coalesce(rphone.phone, case when cl.call_type = 'inbound' then cl.from_number else cl.to_number end) as phone,
-            coalesce(r.city, initcap(cl.context_details -> 'recipient_data' ->> 'area')) as city,
+            ${HISTORY_CITY} as city,
             a.assignee, u.name as assignee_name, a.assigned_by, assigner.name as assigned_by_name,
             a.assigned_at::text as assigned_at, a.note, a.state, a.outcome, a.remarks,
             a.added_to_db, a.wh_id, a.closure_reason, a.disposition, a.next_due_at::text, a.last_attempt_at::text,
             a.completed_at::text as completed_at,
             ${HISTORY_AI_RESULT} as ai_availability,
+            coalesce((${HISTORY_COMPARABLE_AI}),false) as ai_comparable,
             case when a.entity_type='record' then
               (select row_to_json(ai) from (${aiAttemptSummarySql("record", "a.entity_id")}) ai)
             else (select row_to_json(ai) from (${aiAttemptSummarySql("call", "a.entity_id")}) ai) end as ai_summary
             ${workContext ? `, json_build_object(
               'owner_name', work_source.owner_name,
-              'city', coalesce(r.city, nullif(initcap(cl.context_details->'recipient_data'->>'area'),''), work_source.city),
+              'city', ${HISTORY_CITY},
               'area_sqft', coalesce(r.area_sqft::text,work_source.area_sqft::text),
               'built_up_area_sqft',cl.built_up_area_sqft,'carpet_area_sqft',cl.carpet_area_sqft,
               'rent',case when a.entity_type='record' then r.metadata->>'rent' else cl.expected_rent end) as work_context` : ''}
        ${HISTORY_FROM.replace('from bolna_assignments a', 'from page_assignments a')}
-       ${workContext ? `left join lateral (
-         select source.owner_name,source.city,source.area_sqft from raw_phones rp
-         join raw_records source on source.id=rp.master_id where rp.phone_id=cl.phone_id
-         order by (source.contact_type is null) desc,rp.is_primary desc,source.ingested_at desc limit 1
-       ) work_source on true` : ''}
        order by ${order}`,
     params);
 

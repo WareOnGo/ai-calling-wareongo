@@ -8,8 +8,8 @@ import { ApplyButton } from "../ApplyButton";
 import { OUTCOMES } from "@/lib/scope";
 import { AiActivityFilter, DateFilters, ReportingFilters, REPORTING_FILTER_KEYS, SelectFilter } from "../FilterFields";
 
-const RESULT_KEYS = ["outcome", "ai_result", "has_ai_calls", ...REPORTING_FILTER_KEYS];
-const WORK_KEYS = ["assignee", "state", "type", "city", "assigned_by", "follow_up", "quality_review", "batch_id"];
+const RESULT_KEYS = ["comparison", "outcome", "ai_result", "has_ai_calls", ...REPORTING_FILTER_KEYS];
+const WORK_KEYS = ["assignee", "state", "type", "city", "region", "assigned_by", "follow_up", "quality_review", "batch_id"];
 const DATE_KEYS = ["date_from", "date_to", "completed_from", "completed_to", "sort"];
 export const ASSIGNMENT_FILTER_KEYS = ["q", ...RESULT_KEYS, ...WORK_KEYS, ...DATE_KEYS];
 
@@ -32,10 +32,12 @@ export function AssignmentFilters({ applied, assignees = [], loading = false }: 
         <MultiSelect name="assigned_by" label="Assigned by" value={applied.assigned_by} options={people} />
         <label><span>Assignment batch ID</span><input pattern="[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}" title="Enter a complete batch UUID" name="batch_id" defaultValue={firstValue(applied.batch_id)||""} placeholder="Exact assignment batch ID"/></label>
         <label><span>City</span><input name="city" defaultValue={firstValue(applied.city) || ""} placeholder="Any city" /></label>
+        <label><span>State</span><input name="region" aria-label="Filter by state" defaultValue={firstValue(applied.region) || ""} placeholder="Any state" /></label>
         <SelectFilter name="follow_up" label="Follow-up" applied={applied} options={[{ value: "pending", label: "Needs another call" }, { value: "due", label: "Due now / needs scheduling" }]} />
         <SelectFilter name="quality_review" label="Completion review" applied={applied} options={[{ value: "1", label: "Needs review" }]} />
       </> },
       { label: "Results", count: countFilters(applied, RESULT_KEYS), content: <>
+        <SelectFilter name="comparison" label="AI–human comparison" applied={applied} any="All assignments" options={[{value:"mismatch",label:"Results disagree"}]} />
         <MultiSelect name="ai_result" label="AI result" value={applied.ai_result} options={[...OUTCOMES, { value: "dead number - do not call", label: "Dead number — do not call" }, { value: "none", label: "No AI result" }]} />
         <MultiSelect name="outcome" label="Manual result" value={applied.outcome} options={[...OUTCOMES, { value: "none", label: "No manual result" }]} />
         <AiActivityFilter applied={applied}/>

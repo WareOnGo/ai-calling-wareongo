@@ -6,18 +6,18 @@ export type WorkFilters = {
   ai_result?: "none" | "Available" | "Unavailable" | "Unclear" | "dead number - do not call";
   wh_id?: string; has_notes?: "yes" | "no"; has_manual_calls?: "yes" | "no"; date_from?: string; date_to?: string;
   follow_up?: "pending" | "due"; has_ai_calls?: "yes" | "no"; manual_disposition?: FilterValue; completed_from?:string; completed_to?:string;
-  city?: string; assigned_by?: string; added_to_db?: "yes" | "no"; sort?: "oldest" | "name";
+  city?: string; region?: string; assigned_by?: string; added_to_db?: "yes" | "no"; sort?: "oldest" | "name";
 };
 
 export const WORK_FILTER_LABELS: Record<string, string> = {
-  has_ai_calls:"AI attempts",manual_disposition:"Manual call status",completed_from:"Completed from",completed_to:"Completed to",ai_result:"AI result",wh_id:"WH ID",has_notes:"Manual notes",has_manual_calls:"Manual calls logged",date_from:"Assigned from",date_to:"Assigned to date",follow_up:"Follow-up",q: "Search", type: "Work type", outcome: "Manual result", city: "City", assigned_by: "Assigned by", added_to_db: "In DB", sort: "Sort",
+  has_ai_calls:"AI attempts",manual_disposition:"Manual call status",completed_from:"Completed from",completed_to:"Completed to",ai_result:"AI result",wh_id:"WH ID",has_notes:"Manual notes",has_manual_calls:"Manual calls logged",date_from:"Assigned from",date_to:"Assigned to date",follow_up:"Follow-up",q: "Search", type: "Work type", outcome: "Manual result", city: "City", region: "State", assigned_by: "Assigned by", added_to_db: "In DB", sort: "Sort",
 };
 export const WORK_SORT_LABELS = { newest: "Newest assigned", oldest: "Oldest assigned", name: "Name A–Z" };
 
 export function parseWorkFilters(params: Record<string, string | string[] | undefined>): WorkFilters {
   const value = (key: string) => { const raw = params[key]; return (Array.isArray(raw) ? raw[0] : raw)?.trim() || undefined; };
   const filters: WorkFilters = {};
-  for (const key of ["q", "city", "assigned_by", "wh_id", "date_from", "date_to", "completed_from", "completed_to"] as const) if (value(key)) filters[key] = value(key);
+  for (const key of ["q", "city", "region", "assigned_by", "wh_id", "date_from", "date_to", "completed_from", "completed_to"] as const) if (value(key)) filters[key] = value(key);
   const options = { has_ai_calls:["yes","no"],ai_result:["none","Available","Unavailable","Unclear","dead number - do not call"],has_notes:["yes","no"],has_manual_calls:["yes","no"],follow_up:["pending","due"],view: ["open", "done"], type: ["record", "call"], outcome: ["none", "Available", "Unavailable", "Unclear"], added_to_db: ["yes", "no"], sort: ["oldest", "name"] };
   for (const [key, allowed] of Object.entries(options)) {
     const selected = value(key);

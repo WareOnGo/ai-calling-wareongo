@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
   try {
     const { ids, filters } = await exportInput(req);
     const spec = callsExportQuery(user, ids ? { ids,include_blocked:true } : toCallFilters(filters));
-    return await csvResponse(spec, COLUMNS, `bolna-calls-${new Date().toISOString().slice(0, 10)}.csv`);
+    return await csvResponse(spec, COLUMNS, `callongo-calls-${new Date().toISOString().slice(0, 10)}.csv`);
   } catch (error) { return apiError(error); }
 }
 export const POST = GET;

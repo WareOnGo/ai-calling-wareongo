@@ -119,7 +119,7 @@ export function QueueForCalling({ availableLanguages }: { availableLanguages: Ca
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "bolna-queue.csv";
+    a.download = "callongo-queue.csv";
     a.click();
     URL.revokeObjectURL(url);
     }catch{setError('Could not verify the current calling selection. Try loading the preview again.');}

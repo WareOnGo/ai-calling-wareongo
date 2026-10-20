@@ -26,7 +26,7 @@ export function ExportButton({ entity }: { entity: "calls" | "raw" }) {
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a"); a.href = url;
-      a.download = res.headers.get("content-disposition")?.match(/filename="([^"]+)"/)?.[1] ?? `bolna-${entity}.csv`;
+      a.download = res.headers.get("content-disposition")?.match(/filename="([^"]+)"/)?.[1] ?? `callongo-${entity}.csv`;
       document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 10000);
       setOpen(false); notify("CSV prepared. Your download has started.");
     } catch (e) { setError(e instanceof Error ? e.message : "Couldn't prepare the CSV."); }

@@ -1,14 +1,17 @@
 import {z} from 'zod';
+import {CONNECTED_DISPOSITIONS} from './manual-dispositions';
 import {query} from './db';
 import {ApiError} from './api';
 import type {Viewer} from './scope';
 import type {ExportQuery} from './export';
 
+const connectedSql = CONNECTED_DISPOSITIONS.map(value => `'${value}'`).join(',');
 export const TEAM_METRICS={attempts:'Recorded attempts',connected:'Connected attempts',duration:'Timed connected attempts',available:'First Available targets',onboarded:'Warehouse references onboarded'} as const;
 export type TeamMetric=keyof typeof TEAM_METRICS;
 const metricKeys=Object.keys(TEAM_METRICS) as [TeamMetric,...TeamMetric[]];
-export const teamReportSchema=z.object({entity_type:z.enum(["record","call"]).optional(),has_duration:z.enum(["yes","no"]).optional(),person:z.string().email().max(320).optional(),access:z.enum(['active','removed']).optional(),q:z.string().trim().max(1000).optional(),state:z.enum(['open','done','dropped']).optional(),date_from:z.string().date(),date_to:z.string().date(),caller:z.string().email().max(320).optional(),metric:z.enum(metricKeys).default('attempts'),page:z.coerce.number().int().min(1).max(1000000).default(1)})
- .refine(f=>f.date_from<=f.date_to,'Start date cannot follow end date');
+export const teamReportSchema=z.object({entity_type:z.enum(["record","call"]).optional(),has_duration:z.enum(["yes","no"]).optional(),person:z.string().email().max(320).optional(),access:z.enum(['active','removed']).optional(),q:z.string().trim().max(1000).optional(),state:z.enum(['open','done','dropped']).optional(),range:z.enum(['all']).optional(),date_from:z.string().date().optional(),date_to:z.string().date().optional(),caller:z.string().email().max(320).optional(),metric:z.enum(metricKeys).default('attempts'),page:z.coerce.number().int().min(1).max(1000000).default(1)})
+ .refine(f=>f.range==='all'||!!f.date_from&&!!f.date_to,'Choose a date range or All time')
+ .refine(f=>f.range==='all'||!f.date_from||!f.date_to||f.date_from<=f.date_to,'Start date cannot follow end date');
 export type TeamFilters=z.infer<typeof teamReportSchema>;
 export function teamDates(now=new Date()){
  const today=new Date(now.getTime()+330*60000).toISOString().slice(0,10);
@@ -16,7 +19,9 @@ export function teamDates(now=new Date()){
  return {today,yesterday:before(1),week:before(6),month:today.slice(0,8)+'01'};
 }
 export function parseTeamFilters(input:Record<string,unknown>,now=new Date()):TeamFilters {
- const dates=teamDates(now);return teamReportSchema.parse({date_from:dates.week,date_to:dates.today,...Object.fromEntries(Object.entries(input).filter(([,v])=>v!==''&&v!==undefined))});
+ const dates=teamDates(now), values=Object.fromEntries(Object.entries(input).filter(([,v])=>v!==''&&v!==undefined));
+ if(values.range==='all') {delete values.date_from; delete values.date_to; return teamReportSchema.parse(values);}
+ return teamReportSchema.parse({date_from:dates.week,date_to:dates.today,...values});
 }
 function adminOnly(viewer:Viewer){if(!viewer.isAdmin)throw new ApiError(403,'forbidden');}
 
@@ -26,8 +31,8 @@ function adminOnly(viewer:Viewer){if(!viewer.isAdmin)throw new ApiError(403,'for
 // Assemble only the CTEs required by the requested measures. The default page
 // requests five metrics; a drill-down builds only its own dependency chain.
 const REPORT_CTES={
- "bounds":`bounds as (select ($1::date::timestamp at time zone 'Asia/Kolkata') lo,
- (($2::date+interval '1 day') at time zone 'Asia/Kolkata') hi,$3::timestamptz as_of)`,
+ "bounds":`bounds as (select coalesce(($1::date::timestamp at time zone 'Asia/Kolkata'),'-infinity'::timestamptz) lo,
+ coalesce((($2::date+interval '1 day') at time zone 'Asia/Kolkata'),'infinity'::timestamptz) hi, $1::date is null as all_time, $3::timestamptz as_of)`,
  "first_change":`first_change as materialized (select distinct on(assignment_id) assignment_id,before_values from bolna_assignment_changes order by assignment_id,id)`,
  "snapshots":`snapshots as materialized (
   select a.id assignment_id,coalesce(c.before_values,to_jsonb(a)) v,null::timestamptz at,'Retained legacy state'::text provenance
@@ -55,11 +60,11 @@ const REPORT_CTES={
  "period_attempts":`period_attempts as (select e.* from attempts e,bounds b where e.occurred_at>=b.lo and e.occurred_at<b.hi)`,
 };
 const REPORT_EVENTS:Record<TeamMetric,string>={
- "available":`select 'available',assignee,assignment_id,assignment_id::text,at,provenance||' · Available found (onboarding counted separately)',null from first_available,bounds where at>=lo and at<hi`,
- "onboarded":`select 'onboarded',assignee,assignment_id,assignment_id::text,at,'Staff-recorded · '||wh_id,null from first_onboarded,bounds where at>=lo and at<hi`,
+ "available":`select 'available',assignee,assignment_id,assignment_id::text,at,provenance||' · Available found (onboarding counted separately)',null from first_available,bounds where (at>=lo and at<hi) or (all_time and at is null)`,
+ "onboarded":`select 'onboarded',assignee,assignment_id,assignment_id::text,at,'Staff-recorded · '||wh_id,null from first_onboarded,bounds where (at>=lo and at<hi) or (all_time and at is null)`,
  "attempts":`select 'attempts',assignee,assignment_id,id::text,occurred_at,disposition||' · '||coalesce(outcome,'No new result')||' · Recorded by '||actor,duration_seconds from period_attempts`,
- "connected":`select 'connected',assignee,assignment_id,id::text,occurred_at,disposition,duration_seconds from period_attempts where disposition in ('connected','callback','awaiting_confirmation')`,
- "duration":`select 'duration',assignee,assignment_id,id::text,occurred_at,'Self-reported seconds',duration_seconds from period_attempts where disposition in ('connected','callback','awaiting_confirmation') and duration_seconds is not null`,
+ "connected":`select 'connected',assignee,assignment_id,id::text,occurred_at,disposition,duration_seconds from period_attempts where disposition in (${connectedSql})`,
+ "duration":`select 'duration',assignee,assignment_id,id::text,occurred_at,'Self-reported seconds',duration_seconds from period_attempts where disposition in (${connectedSql}) and duration_seconds is not null`,
 };
 export const PRIMARY_TEAM_METRICS:TeamMetric[]=['attempts','connected','available','onboarded','duration'];
 const attemptCtes=['attempts','period_attempts'] as const;
@@ -83,7 +88,7 @@ function rosterWhere(f:TeamFilters,params:unknown[],userAlias='u') {
  return where;
 }
 export async function teamSummary(viewer:Viewer,f:TeamFilters,now=new Date()):Promise<TeamSummary[]>{
- adminOnly(viewer);const params:unknown[]=[f.date_from,f.date_to,now.toISOString()];const evidence=teamEvidenceSql(PRIMARY_TEAM_METRICS);const where=rosterWhere(f,params);
+ adminOnly(viewer);const params:unknown[]=[f.range==='all'?null:f.date_from,f.range==='all'?null:f.date_to,now.toISOString()];const evidence=teamEvidenceSql(PRIMARY_TEAM_METRICS);const where=rosterWhere(f,params);
  return (await query<TeamSummary>(`${evidence},totals as(select assignee,metric,count(*)::int n,avg(duration_seconds) average_seconds from events  group by assignee,metric),
  grouped as(select assignee,jsonb_object_agg(metric,n) counts,max(average_seconds) filter(where metric='duration')::float8 average_seconds,max(n) filter(where metric='duration') duration_coverage from totals group by assignee)
  select u.email,u.name,u.active,coalesce(g.counts,'{}'::jsonb) counts,g.average_seconds,coalesce(g.duration_coverage,0)::int duration_coverage
@@ -91,7 +96,7 @@ export async function teamSummary(viewer:Viewer,f:TeamFilters,now=new Date()):Pr
 }
 export type TeamDetail={metric:TeamMetric;assignee:string;assignment_id:string;event_id:string;occurred_at:string|null;detail:string;duration_seconds:number|null;entity_type:'record'|'call';entity_id:string;subject:string|null;phone:string|null;current_state:string};
 export function teamDetailExport(viewer:Viewer,f:TeamFilters,now=new Date()):ExportQuery{
- adminOnly(viewer);const evidence=teamEvidenceSql([f.metric]);const params:unknown[]=[f.date_from,f.date_to,now.toISOString(),f.metric],where=['e.metric=$4'];
+ adminOnly(viewer);const evidence=teamEvidenceSql([f.metric]);const params:unknown[]=[f.range==='all'?null:f.date_from,f.range==='all'?null:f.date_to,now.toISOString(),f.metric],where=['e.metric=$4'];
  if(f.caller){params.push(f.caller.toLowerCase());where.push(`e.assignee=$${params.length}`);}
  where.push(...rosterWhere(f,params));
  if(f.state){params.push(f.state);where.push(`a.state=$${params.length}`);}

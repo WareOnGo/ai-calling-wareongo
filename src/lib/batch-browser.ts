@@ -5,6 +5,8 @@ import {ApiError,uuid} from './api';
 import {TERMINAL_STATUSES} from './bolna';
 import type {Viewer} from './scope';
 import {contactTargets} from './scope';
+import {CONNECTED_DISPOSITIONS} from './manual-dispositions';
+import {ASSIGNMENT_SOURCE_JOIN,ASSIGNMENT_SUBJECT,ASSIGNMENT_CITY} from './assignment-context';
 import type {ExportQuery} from './export';
 export const batchListSchema=z.object({kind:z.enum(['ai','manual']).default('ai'),created_by:z.string().trim().max(1000).optional(),q:z.string().trim().max(1000).optional(),language:z.enum(['english','hindi']).optional(),date_from:z.string().date().optional(),date_to:z.string().date().optional(),caller:z.string().max(1000).optional(),agent:z.string().max(1000).optional(),origin:z.enum(['record','call']).optional(),state:z.union([z.string().max(100),z.array(z.string().max(100)).max(30)]).optional(),dispatch:z.string().uuid().optional()}).refine(f=>!f.date_from||!f.date_to||f.date_from<=f.date_to,'Start date cannot follow end date');
 export type BatchListFilters=z.infer<typeof batchListSchema>;
@@ -50,8 +52,8 @@ function listQuery(f:BatchListFilters){
 }
 export async function listBatches(viewer:Viewer,filters:BatchListFilters,requested=1){
  adminOnly(viewer);const {base,params,where}=listQuery(filters);
- const counts=(await query(`select count(*)::int n,
-  (select count(*)::int from bolna_assignments where batch_id is null) legacy from (${base}) batches ${where}`,params)).rows[0];
+ const legacyCount=filters.kind==='manual'?'(select count(*)::int from bolna_assignments where batch_id is null)':'0';
+ const counts=(await query(`select count(*)::int n,${legacyCount} legacy from (${base}) batches ${where}`,params)).rows[0];
  const total=Number(counts.n);
  const pages=Math.max(1,Math.ceil(total/25)),page=Math.min(pages,Math.max(1,Math.floor(Number.isFinite(requested)?requested:1)));
  const rows=(await query<BatchRow>(`select * from (${base}) batches ${where} order by created_at desc,id limit 25 offset ${(page-1)*25}`,params)).rows;
@@ -66,8 +68,28 @@ export async function getBatch(viewer:Viewer,kind:'ai'|'manual',id:string):Promi
  if(id==='legacy'&&kind==='manual')return {id,kind,created_at:'',created_by:null,scheduled_at:null,state:'legacy',entity_type:null,agent_id:null,agent_language:null,dispatch_request_id:null,bolna_batch_id:null,assignees:null,selection:null,last_error:null,resolution_note:null};
  uuid.parse(id);const {base}=listQuery({kind});const row=(await query<BatchRow>(`select * from (${base}) batches where id=$1::uuid`,[id])).rows[0];if(!row)throw new ApiError(404,'Batch not found');return row;
 }
-export type BatchMember={member_id:string;entity_type:'record'|'call'|null;entity_id:string|null;assignment_id:string|null;name:string|null;phone:string|null;city:string|null;assignee:string|null;current_owner:string|null;state:string;disposition:string|null;outcome:string|null;wh_id:string|null;onboarded:boolean;quality_issue:string|null;retry_due:boolean;connected:boolean;attempts:number;execution_id:string|null;status:string|null;available:boolean;assigned:boolean;attempted:boolean;pending:boolean;failure:boolean;blocked:boolean;dropped:boolean;done:boolean;open:boolean;unclear:boolean;unavailable:boolean};
-export const MANUAL_CARDS=[['all','Targeted records'],['assigned','Assignments created'],['open','Open'],['done','Valid done'],['dropped','Dropped / reassigned'],['retry_due','Follow-ups due'],['connected','Tasks with a connection'],['available','Available with WH ID'],['onboarded','Staff onboarded'],['quality','Completion issues']] as const;
+export type BatchMember={member_id:string;entity_type:'record'|'call'|null;entity_id:string|null;assignment_id:string|null;name:string|null;phone:string|null;city:string|null;assignee:string|null;current_owner:string|null;state:string;disposition:string|null;outcome:string|null;wh_id:string|null;onboarded:boolean;quality_issue:string|null;retry_due:boolean;connected:boolean;attempts:number;execution_id:string|null;status:string|null;available:boolean;assigned:boolean;attempted:boolean;pending:boolean;failure:boolean;blocked:boolean;dropped:boolean;done:boolean;open:boolean;unclear:boolean;unavailable:boolean;
+ assignee_name:string|null;current_owner_name:string|null;assigned_by:string|null;assigned_by_name:string|null;assigned_at:string|null;completed_at:string|null;
+ remarks:string|null;note:string|null;manual_disposition:string|null;closure_reason:string|null;next_due_at:string|null;last_attempt_at:string|null;added_to_db:boolean|null;
+};
+export const MANUAL_CARDS=[
+ ['all','Records in batch'],['assigned','Assignments recorded'],['open','Still open'],
+ ['done','Done · checks passed'],['quality','Marked done · needs correction'],
+ ['available','Available · WH ID recorded'],['onboarded','Added to DB · WH ID recorded'],
+ ['connected','With a logged connected call'],['retry_due','Follow-up due or unscheduled'],['dropped','Unassigned / reassigned'],
+] as const;
+export const MANUAL_METRIC_DESCRIPTIONS:Record<string,string>={
+ all:'Every record in the original batch selection, including records skipped during assignment.',
+ assigned:'Batch records linked to an assignment, including assignments later completed, unassigned or reassigned.',
+ open:'Assignments that are still open with their original caller.',
+ done:'Marked done and passes the saved result, warehouse ID and closure checks. Historical assignments can pass without a logged call.',
+ quality:'Marked done, but a saved result, warehouse ID, closure explanation or follow-up status needs correction. Each row shows the first rule that failed.',
+ available:'The saved manual result is Available and a warehouse reference is recorded. The assignment may still be open.',
+ onboarded:'Staff marked Added to DB and recorded a warehouse reference. This does not confirm that the record exists in the external warehouse database.',
+ connected:'Assignments with at least one logged Connected, Call back later, Will check and get back, Leased out or No property for rent attempt. Unlogged calls are not counted.',
+ retry_due:'Open assignments that need another call and have a follow-up time that is due or has not been set.',
+ dropped:'The original assignment was unassigned or replaced during reassignment. The current owner is shown in the table.',
+};
 export const AI_CARDS=[['all','Targeted contacts'],['attempted','Contacts attempted'],['connected','Contacts with a conversation'],['available','Latest Available'],['unavailable','Latest Unavailable'],['unclear','Latest Unclear'],['pending','No final result'],['failure','Operational failures'],['blocked','Balance blocked']] as const;
 const validWH="bolna_recorded_warehouse(a.wh_id)";
 function membersBase(batch:BatchRow):{sql:string;params:unknown[]}{
@@ -75,13 +97,15 @@ function membersBase(batch:BatchRow):{sql:string;params:unknown[]}{
   const legacy=batch.id==='legacy';
   const source=legacy?`select a.id::text member_id,a.entity_type,a.entity_id,a.id assignment_id,a.assignee,'legacy'::text disposition from bolna_assignments a where a.batch_id is null`:
     `select i.entity_id::text member_id,b.entity_type,i.entity_id,i.assignment_id,i.assignee,i.disposition from bolna_assignment_batch_items i join bolna_assignment_batches b on b.id=i.batch_id where b.id=$1::uuid`;
-  return {params:legacy?[]:[batch.id],sql:`select m.member_id,m.entity_type,m.entity_id::text,m.assignment_id::text,
-   coalesce(r.owner_name,cl.context_details#>>'{recipient_data,name}') name,
+  const params:unknown[]=legacy?[]:[batch.id];
+  params.push(CONNECTED_DISPOSITIONS);
+  return {params,sql:`select m.member_id,m.entity_type,m.entity_id::text,m.assignment_id::text,
+   ${ASSIGNMENT_SUBJECT} name,
    coalesce(case when cl.call_type='inbound' then cl.from_number else cl.to_number end,rphone.phone) phone,
-   coalesce(r.city,cl.context_details#>>'{recipient_data,area}') city,m.assignee,
-   (select owner.assignee from (${contactTargets('m.entity_type','m.entity_id')}) contacts
-     join bolna_assignments owner using(entity_type,entity_id) where owner.state='open'
-     order by (owner.entity_type=m.entity_type and owner.entity_id=m.entity_id) desc,owner.assigned_at desc,owner.id desc limit 1) current_owner,
+   ${ASSIGNMENT_CITY} city,m.assignee,caller.name assignee_name,
+   current_assignment.assignee current_owner,current_assignment.name current_owner_name,
+   a.assigned_by,assigner.name assigned_by_name,a.assigned_at::text,a.completed_at::text,
+   a.remarks,a.note,a.disposition manual_disposition,a.closure_reason,a.next_due_at::text,a.last_attempt_at::text,a.added_to_db,
    coalesce(a.state,'unallocated') state,m.disposition,a.outcome,a.wh_id,
    coalesce(a.added_to_db and ${validWH},false) onboarded,
    case when a.state='done' then bolna_assignment_quality(a.state,a.outcome,a.wh_id,a.remarks,a.disposition,a.closure_reason) end quality_issue,
@@ -92,13 +116,23 @@ function membersBase(batch:BatchRow):{sql:string;params:unknown[]}{
    coalesce(a.state='dropped',false) dropped,coalesce(a.state='done' and bolna_assignment_quality(a.state,a.outcome,a.wh_id,a.remarks,a.disposition,a.closure_reason) is null,false) done,
    coalesce(a.state='open',false) open,coalesce(a.outcome='Unclear',false) unclear,coalesce(a.outcome='Unavailable',false) unavailable
    from (${source}) m left join bolna_assignments a on a.id=m.assignment_id
+   left join bolna_app_users caller on caller.email=m.assignee
+   left join bolna_app_users assigner on assigner.email=a.assigned_by
+   left join lateral(select owner.assignee,owner_user.name from (${contactTargets('m.entity_type','m.entity_id')}) contacts
+     join bolna_assignments owner using(entity_type,entity_id)
+     left join bolna_app_users owner_user on owner_user.email=owner.assignee where owner.state='open'
+     order by (owner.entity_type=m.entity_type and owner.entity_id=m.entity_id) desc,owner.assigned_at desc,owner.id desc limit 1) current_assignment on true
    left join raw_records r on m.entity_type='record' and r.id=m.entity_id
    left join bolna_call_logs cl on m.entity_type='call' and cl.id=m.entity_id
+   ${ASSIGNMENT_SOURCE_JOIN}
    left join lateral(select p.phone from raw_phones rp join raw_phone_numbers p using(phone_id) where rp.master_id=r.id order by rp.is_primary desc,rp.id limit 1) rphone on true
-   left join lateral(select count(*) attempts,bool_or(e.disposition in ('connected','callback','awaiting_confirmation')) connected from bolna_effective_manual_attempts e where e.assignment_id=a.id) activity on true`};
+   left join lateral(select count(*) attempts,bool_or(e.disposition=any($${params.length}::text[])) connected from bolna_effective_manual_attempts e where e.assignment_id=a.id) activity on true`};
  }
  return {params:[batch.id,batch.bolna_batch_id,[...TERMINAL_STATUSES]],sql:`select i.phone member_id,'record'::text entity_type,i.record_id entity_id,null::text assignment_id,i.name,i.phone,i.city,
-  null::text assignee,null::text current_owner,coalesce(cl.status,'No result') state,null::text disposition,
+  null::text assignee,null::text assignee_name,null::text current_owner,null::text current_owner_name,
+  null::text assigned_by,null::text assigned_by_name,null::text assigned_at,null::text completed_at,
+  null::text remarks,null::text note,null::text manual_disposition,null::text closure_reason,null::text next_due_at,null::text last_attempt_at,null::boolean added_to_db,
+  coalesce(cl.status,'No result') state,null::text disposition,
   case when cl.id is not null and cl.status is distinct from 'balance-low' then bolna_availability(cl.status,cl.llm_availability) end outcome,
   null::text wh_id,false onboarded,null::text quality_issue,false retry_due,coalesce(activity.connected,false) connected,coalesce(activity.attempts,0)::int attempts,
   cl.id::text execution_id,cl.status,coalesce(cl.status is distinct from 'balance-low' and bolna_availability(cl.status,cl.llm_availability)='Available',false) available,

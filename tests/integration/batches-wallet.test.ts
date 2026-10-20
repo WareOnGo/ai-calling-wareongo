@@ -24,6 +24,32 @@ beforeEach(async()=>{
 });
 afterEach(()=>{vi.unstubAllGlobals();vi.unstubAllEnvs();vi.useRealTimers();vi.restoreAllMocks();});afterAll(async()=>{await getPool().end();});
 const manual=async(entity:'record'|'call'='record')=>{const r=await assignEntities({entity,ids:records,assignee:employee.email,assignedBy:admin.email});return getBatch(admin,'manual',r.batchId);};
+it.each(['record','call'] as const)('manual %s batches preserve the original caller details after reassignment',async(entity)=>{
+ await query("update bolna_app_users set name=case when email=$1 then 'Batch Admin' else 'Original Caller' end",[admin.email]);
+ const batch=await manual(entity);
+ const id=(await query('select id::text from bolna_assignments where batch_id=$1 and entity_id=$2',[batch.id,records[0]])).rows[0].id;
+ const remarks='Asked for rent, then location.\nCall after the site visit.',note='Verify area and rent before closing.';
+ await query(`update bolna_assignments set remarks=$2,note=$3,disposition='callback',added_to_db=true,
+   assigned_at='2026-10-15T04:00:00Z',last_attempt_at='2026-10-16T04:00:00Z',next_due_at='2026-10-17T04:00:00Z' where id=$1`,[id,remarks,note]);
+ await assignEntities({entity,ids:[records[0]],assignee:admin.email,assignedBy:admin.email,reassign:true,note:'New owner instructions'});
+ await query("update bolna_assignments set remarks='New owner notes' where entity_id=$1 and state='open'",[records[0]]);
+ const row=(await batchMembers(admin,batch)).rows.find(r=>r.assignment_id===id)!;
+ expect(row).toMatchObject({assignee:employee.email,assignee_name:'Original Caller',assigned_by:admin.email,assigned_by_name:'Batch Admin',
+   current_owner:admin.email,current_owner_name:'Batch Admin',state:'dropped',disposition:'assign',remarks,note,manual_disposition:'callback',
+   added_to_db:true,onboarded:false,wh_id:null,attempts:0});
+ expect(new Date(row.assigned_at!).toISOString()).toBe('2026-10-15T04:00:00.000Z');
+ expect(new Date(row.last_attempt_at!).toISOString()).toBe('2026-10-16T04:00:00.000Z');
+ expect(new Date(row.next_due_at!).toISOString()).toBe('2026-10-17T04:00:00.000Z');
+ expect(row.completed_at).not.toBeNull();
+});
+it('skipped batch members do not inherit notes or call details from an existing assignment',async()=>{
+ await manual();
+ await query("update bolna_assignments set remarks='Existing owner notes',disposition='busy' where entity_id=$1",[records[0]]);
+ const result=await assignEntities({entity:'record',ids:[records[0]],assignee:admin.email,assignedBy:admin.email});
+ const row=(await batchMembers(admin,await getBatch(admin,'manual',result.batchId))).rows[0];
+ expect(row).toMatchObject({assignment_id:null,state:'unallocated',disposition:'owned',current_owner:employee.email,
+   remarks:null,note:null,manual_disposition:null,added_to_db:null,assigned_by:null,assigned_at:null,last_attempt_at:null,attempts:0});
+});
 it('assignment previews follow recorded batch membership after reassignment',async()=>{
  const batch=await manual();
  const id=(await query('select id::text from bolna_assignments where batch_id=$1 and entity_id=$2',[batch.id,records[0]])).rows[0].id;
@@ -41,6 +67,31 @@ it('legacy previews return one assignment without fabricating a batch',async()=>
  expect(preview.assignment.entity_id).toBe(records[0]);expect(preview.batch).toBeNull();expect(preview.members).toBeNull();
  await expect(assignmentBatchPreview(admin,'99999999')).rejects.toMatchObject({status:404});
  await expect(assignmentBatchPreview(admin,'not-an-id')).rejects.toThrow();
+});
+it('focused previews retain source names, inbound numbers and assignment details',async()=>{
+ await seedLegacyAssignments(`insert into bolna_assignments(entity_type,entity_id,assignee,assigned_by,state,outcome,note,remarks,completed_at)
+   values('record',$1,$3,$4,'done','Unavailable','Assignment brief','Retained notes','2026-10-15T10:00:00Z'),
+         ('call',$2,$3,$4,'open',null,null,null,null)`,[records[0],records[1],employee.email,admin.email]);
+ await query("update bolna_call_logs set context_details='{}'::jsonb,call_type='inbound',from_number='+919876543211',to_number='+911234567890' where id=$1",[records[1]]);
+ const assignments=(await query<{id:string;entity_type:string}>('select id::text,entity_type from bolna_assignments order by id')).rows;
+ const record=await assignmentBatchPreview(admin,assignments[0].id);
+ expect(record.assignment).toMatchObject({subject:'Person 0',phone:'+919876543210',note:'Assignment brief',remarks:'Retained notes',outcome:'Unavailable',state:'done'});
+ expect(new Date(record.assignment.completed_at!).toISOString()).toBe('2026-10-15T10:00:00.000Z');
+ const legacyRow=(await batchMembers(admin,await getBatch(admin,'manual','legacy'))).rows.find(row=>row.assignment_id===assignments[0].id)!;
+ expect(legacyRow).toMatchObject({remarks:'Retained notes',note:'Assignment brief',assigned_by:admin.email,state:'done',attempts:0});
+ expect(new Date(legacyRow.completed_at!).toISOString()).toBe('2026-10-15T10:00:00.000Z');
+ const call=await assignmentBatchPreview(admin,assignments[1].id);
+ expect(call.assignment).toMatchObject({subject:'Person 1',phone:'+919876543211',state:'open',assignee:employee.email});
+ expect(call.batch).toBeNull();expect(call.members).toBeNull();
+ expect(call.assignment).not.toHaveProperty('ai_summary');
+ await query(`update bolna_call_logs set context_details='{"recipient_data":{"name":"Call recipient"}}'::jsonb where id=$1`,[records[1]]);
+ expect((await assignmentBatchPreview(admin,assignments[1].id)).assignment.subject).toBe('Call recipient');
+});
+it('reports legacy assignments only in the manual batch list',async()=>{
+ await manual();
+ await seedLegacyAssignments("insert into bolna_assignments(entity_type,entity_id,assignee,assigned_by,state,outcome) values('record',$1,$2,$3,'done','Unavailable')",[records[0],employee.email,admin.email]);
+ expect(await listBatches(admin,{kind:'manual'})).toMatchObject({total:1,legacy:1});
+ expect(await listBatches(admin,{kind:'ai'})).toMatchObject({total:0,legacy:0});
 });
 async function ai(){
  const id=randomUUID();await query("insert into call_batches(id,created_by,agent_id,agent_language,state,bolna_batch_id,callable) values ($1,$2,'agent-a','hindi','scheduled','provider-batch',4)",[id,admin.email]);

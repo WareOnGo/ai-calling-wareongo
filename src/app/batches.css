@@ -22,6 +22,7 @@
 .batch-results-heading small { margin-left: 12px; color: var(--muted); font-size: var(--text-caption); }
 .batch-results-heading h2 { margin: 0; font-size: var(--text-section); font-weight: 500; color: var(--heading); }
 .batch-results-heading h2 span { margin-left: 12px; font-size: var(--text-support); font-weight: 400; color: var(--muted); }
+.batch-metric-description { margin: 6px 0 0; max-width: 80ch; color: var(--muted); font-size: var(--text-support); line-height: 1.5; }
 .batch-legacy { margin: 0; padding: 0 var(--page-gutter) var(--space-2); font-size: var(--text-support); }
 .batch-catalog { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; padding: 0 var(--page-gutter) var(--space-6); gap: 16px; }
 .batch-catalog .batch-card { padding: var(--space-4); box-shadow: none; }
@@ -81,6 +82,15 @@
 .batch-grid .batch-contact-name { display: block; font-weight: 500; color: var(--heading); }
 .batch-contact-city { display: block; color: var(--muted); font-size: var(--text-caption); margin-top: 4px; }
 .batch-call-state { font-size: var(--text-support); }
+.batch-completion-issue { display: block; margin-top: 4px; max-width: 38ch; color: var(--danger); font-size: var(--text-caption); line-height: 1.5; white-space: normal; overflow-wrap: anywhere; }
+.batch-manual-grid .batch-caller { min-width: 180px; }
+.batch-manual-grid .batch-assignment-status { min-width: 200px; }
+.batch-manual-grid .batch-caller-notes { min-width: 260px; width: 26%; max-width: 440px; }
+.batch-manual-grid .batch-call-activity { min-width: 190px; }
+.batch-assignment-brief { margin-top: 6px; font-size: var(--text-caption); }
+.batch-assignment-brief summary { color: var(--accent); cursor: pointer; }
+.batch-assignment-brief p { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.batch-call-activity .details-trigger { margin-top: 6px; }
 .batch-grid td > strong { font-weight: 500; }
 .batch-grid + .records-pagination { border: 0; margin-top: 4px; }
 .batch-empty { text-align: center; padding: 32px 16px; color: var(--muted); }

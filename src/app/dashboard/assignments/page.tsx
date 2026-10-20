@@ -13,6 +13,7 @@ import { requireAdmin } from "@/lib/auth";
 import { listAssignments, assignmentTotals, HISTORY_PAGE_SIZE, type AssignmentHistoryRow } from "@/lib/assignments";
 import { listUsers } from "@/lib/users";
 import { AssignmentColumns, AssignmentHeaders, AssignmentStats, AssignmentSummary } from "./AssignmentStructure";
+import { BulkAssignmentActions } from "./BulkAssignmentActions";
 import { AssignmentFilters, ASSIGNMENT_FILTER_KEYS } from "./AssignmentFilters";
 import { AssignmentNotes } from "./AssignmentNotes";
 import { AssigneeCard } from "./AssigneeCard";
@@ -45,7 +46,7 @@ function ago(iso: string): string {
 function resultCell(r: AssignmentHistoryRow) {
   if (!r.outcome) return <span className="muted">—</span>;
   const ai = (r.ai_availability ?? "").trim();
-  const disagrees = ai && ai.toLowerCase() !== r.outcome.toLowerCase();
+  const disagrees = r.ai_comparable && ai.toLowerCase() !== r.outcome.toLowerCase();
   return (
     <>
       <ResultBadge value={r.outcome}/>
@@ -71,16 +72,17 @@ export default async function Assignments({
     listUsers(),
   ]);
 
-  const startRow = (page - 1) * HISTORY_PAGE_SIZE;
   const activeFilters = countFilters(sp, ASSIGNMENT_FILTER_KEYS);
 
   return (
-    <SelectionProvider total={total}>
+    <SelectionProvider key={JSON.stringify(sp)} total={total}>
       <RecordsHeader title="Assignments" icon={<IconClipboard size={18}/>} actions={<Freshness updatedAt={new Date().toISOString()}/>}/>
 
       <AssignmentStats applied={sp} totals={totals} assignee={sp.assignee} person={filterValues(sp.assignee).map(email=>assignees.find(p=>p.email===email)?.name||email).join(", ") || undefined} state={sp.state} />
       <AssignmentFilters applied={sp} assignees={assignees} />
-      <AssignmentSummary sort={filters.sort}>{total.toLocaleString()} {total === 1 ? "assignment" : "assignments"}{activeFilters || sp.q ? " matching filters" : ""}</AssignmentSummary>
+      {filters.comparison==='mismatch'&&<p className="mismatch-context">Manual and AI results disagree for the same assigned AI call. Shared-phone listing context and missing results are excluded.</p>}
+      <BulkAssignmentActions filters={sp}/>
+      <AssignmentSummary>{total.toLocaleString()} {total === 1 ? "assignment" : "assignments"}{activeFilters || sp.q ? " matching filters" : ""}</AssignmentSummary>
 
       <div className="gridwrap">
         <table className="sheet log-sheet assignment-sheet">
@@ -88,7 +90,7 @@ export default async function Assignments({
           <tbody>
             {rows.length === 0 && (
               <tr>
-                <td className="rownum"></td>
+                <td className="selcol"></td>
                 <td colSpan={COLUMNS.length} className="muted" style={{ textAlign: "center", padding: 28 }}>
                   {total === 0 && activeFilters === 0 && !sp.q
                     ? "Nothing assigned yet. Use Assign on Raw Dataset or AI Calls."
@@ -97,9 +99,9 @@ export default async function Assignments({
                 </td>
               </tr>
             )}
-            {rows.map((r, i) => (
+            {rows.map(r => (
               <tr key={r.id} className={r.state === "dropped" ? "row-muted" : undefined}>
-                <td className="rownum">{startRow + i + 1}</td>
+                <td className="selcol"><input type="checkbox" className="rowsel" data-id={r.id} aria-label={`Select assignment for ${r.subject || r.phone || r.id}`}/></td>
                 <td className="assignment-subject identity-owner"><ContactCard name={r.subject} phone={r.phone} details={{id: r.entity_id, entity: r.entity_type}} /></td>
                 <td>{r.city ?? <span className="muted">—</span>}</td>
                 <td><span className={`pill pill-${r.entity_type}`}>{r.entity_type === "record" ? "manual" : "AI call"}</span></td>

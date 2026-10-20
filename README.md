@@ -1,4 +1,4 @@
-# Bolna Processing
+# CallOnGo
 
 Internal warehouse sourcing and verification application. It brings together a
 master listing dataset, AI phone calls through Bolna, transcript analysis through

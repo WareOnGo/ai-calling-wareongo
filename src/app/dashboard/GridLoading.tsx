@@ -1,5 +1,5 @@
 "use client";
-import { searchValues, filterValues, firstValue } from "@/lib/filter-values";
+import { searchValues, filterValues } from "@/lib/filter-values";
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -142,16 +142,16 @@ function LoadingAssignments() {
   const params = useSearchParams();
   const applied = searchValues(new URLSearchParams(params));
   const [columns,setColumns]=useState<ReturnType<typeof readColumnPreferences>|null>(null);
-  useEffect(()=>setColumns(readColumnPreferences("/dashboard/assignments",["Row",...ASSIGNMENT_COLUMNS])),[]);
+  useEffect(()=>setColumns(readColumnPreferences("/dashboard/assignments",["Select",...ASSIGNMENT_COLUMNS])),[]);
   return <>
     <AssignmentStats applied={applied} assignee={applied.assignee} state={applied.state} loading />
     <AssignmentFilters applied={applied} loading />
     {Object.entries(applied).some(([key, value]) => value && FILTER_LABELS[key]) && <div className="applied-filters">{Object.entries(applied).flatMap(([key,values]) => FILTER_LABELS[key]?filterValues(values).map(value=>[key,value]):[]).map(([key, value]) => <button type="button" className="filter-tag" key={`${key}:${value}`} disabled>{filterLabel(key, "/dashboard/assignments")}: {filterValue(key, value)}<span>×</span></button>)}<button type="button" className="btn-text" disabled>Clear filters</button></div>}
-    <AssignmentSummary sort={firstValue(applied.sort)}><Placeholder width={135} /></AssignmentSummary>
+    <AssignmentSummary><Placeholder width={135} /></AssignmentSummary>
     <div className="gridwrap"><table className="sheet log-sheet assignment-sheet loading-log">
       <AssignmentColumns widths={columns?.widths} hidden={columns?.hiddenColumns}/><AssignmentHeaders hidden={columns?.hiddenColumns}/>
       <tbody>{Array.from({ length: 10 }, (_, row) => <tr className="skeleton-row" key={row}>
-        <td className="rownum"><Placeholder width={10} /></td>{ASSIGNMENT_COLUMNS.map(label => <td key={label} className={`${columns?.hiddenColumns.includes(label)?"column-hidden ":""}${label === "Assignee" ? "assignment-person" : label === "Actions" ? "actions" : ""}`}>{label === "Assignee" ? <AssigneeCardSkeleton /> : label === "Contact" ? <ContactCardSkeleton /> : <Placeholder width={label === "Notes" || label === "Brief" ? "80%" : 45} />}</td>)}
+        <td className="selcol"><input type="checkbox" disabled/></td>{ASSIGNMENT_COLUMNS.map(label => <td key={label} className={`${columns?.hiddenColumns.includes(label)?"column-hidden ":""}${label === "Assignee" ? "assignment-person" : label === "Actions" ? "actions" : ""}`}>{label === "Assignee" ? <AssigneeCardSkeleton /> : label === "Contact" ? <ContactCardSkeleton /> : <Placeholder width={label === "Notes" || label === "Brief" ? "80%" : 45} />}</td>)}
       </tr>)}</tbody>
     </table></div>
     <LoadingPager />

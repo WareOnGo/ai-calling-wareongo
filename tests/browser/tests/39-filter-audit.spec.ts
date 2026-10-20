@@ -79,10 +79,10 @@ test('raw and call reporting filters apply through the panel and chips clear ind
  const csv=await page.request.get('/api/calls/export?has_recording=yes&has_transcript=yes');expect(csv.status()).toBe(200);expect(Number(csv.headers()['x-export-row-count'])).toBe(await page.locator('table.sheet tbody tr:has(input.rowsel)').count());
 });
 
-test('batch search and member filters preserve export and metric navigation context',async({adminPage:page})=>{
+test('batch search and member filters preserve metric navigation context',async({adminPage:page})=>{
  seed();await page.goto('/dashboard/batches');await page.getByLabel('Search batches').fill(batch.slice(0,8));await page.getByRole('button',{name:'Apply',exact:true}).click();await settled(page);await expect(page.locator('.batch-card')).toHaveCount(1);
  await page.getByRole('link',{name:'View contacts →',exact:true}).click();await settled(page);await panel(page);await choose(page,'AI result',['Available']);await page.getByRole('button',{name:'Apply',exact:true}).click();await settled(page);
- await expect(page.locator('.batch-grid tbody tr')).toHaveCount(1);await expect(page.getByRole('link',{name:'Export matching members'})).toHaveAttribute('href',/outcome=Available/);
+ await expect(page.locator('.batch-grid tbody tr')).toHaveCount(1);expect(new URL(page.url()).searchParams.get('outcome')).toBe('Available');
  await expect(page.locator('.batch-metrics')).toContainText('2');
  await page.getByRole('link',{name:/Latest Unavailable/}).click();await settled(page);expect(new URL(page.url()).searchParams.get('outcome')).toBe('Available');await expect(page.locator('.batch-empty')).toContainText('No batch members match');
 });
@@ -137,10 +137,10 @@ test('call warehouse type, review state and provider batch filters survive searc
  await page.getByRole('button',{name:'Remove Provider batch filter: filter-fixture',exact:true}).click();await settled(page);expect(new URL(page.url()).searchParams.has('batch_id')).toBe(false);await expect(page.locator('table.sheet tbody tr')).toHaveCount(2);
 });
 
-test('assignment completion and batch allocation filters remain visible and preserve export criteria',async({adminPage:page})=>{
+test('assignment completion and batch allocation filters remain visible and preserve criteria',async({adminPage:page})=>{
  sql("update bolna_assignments set completed_at='2026-08-02T01:00:00Z' where state='done'");
  await page.goto('/dashboard/assignments');let dialog=await panel(page);await dialog.getByRole('tab',{name:'Dates & order',exact:true}).click();await dialog.getByLabel('Completed date from').fill('2026-08-02');await dialog.getByLabel('Completed date to').fill('2026-08-02');await dialog.getByRole('button',{name:'Apply',exact:true}).click();await settled(page);await expect(page.locator('.assignment-sheet tbody tr')).toHaveCount(1);await expect(page.locator('.assignment-sheet tbody')).toContainText('Meera Nair');
- await page.goto('/dashboard/batches/manual/legacy');dialog=await panel(page);await dialog.getByRole('tab',{name:'Contact & ownership',exact:true}).click();await choose(page,'Allocation',['Legacy assignment']);await dialog.getByRole('button',{name:'Apply',exact:true}).click();await settled(page);await expect(page.getByRole('link',{name:'Export matching members'})).toHaveAttribute('href',/allocation=legacy/);
+ await page.goto('/dashboard/batches/manual/legacy');dialog=await panel(page);await dialog.getByRole('tab',{name:'Contact & ownership',exact:true}).click();await choose(page,'Allocation',['Legacy assignment']);await dialog.getByRole('button',{name:'Apply',exact:true}).click();await settled(page);expect(new URL(page.url()).searchParams.get('allocation')).toBe('legacy');
  await page.goto('/dashboard/batches?kind=manual');dialog=await panel(page);await dialog.getByLabel('Created by',{exact:true}).selectOption('admin@eval.test');await dialog.getByRole('button',{name:'Apply',exact:true}).click();await settled(page);expect(new URL(page.url()).searchParams.get('created_by')).toBe('admin@eval.test');
 });
 

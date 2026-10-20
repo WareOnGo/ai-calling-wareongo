@@ -14,7 +14,7 @@ export type WorkItem = {
 export type WorkPage = { rows: WorkItem[]; total: number; page: number; pages: number };
 export type WorkTotals = { record: { open: number; done: number }; call: { open: number; done: number } };
 function criteria(filters: WorkFilters) {
-  return { has_ai_calls:filters.has_ai_calls,manual_disposition:filters.manual_disposition,completed_from:filters.completed_from,completed_to:filters.completed_to,ai_result:filters.ai_result, wh_id:filters.wh_id, has_notes:filters.has_notes, has_manual_calls:filters.has_manual_calls, date_from:filters.date_from, date_to:filters.date_to, follow_up:filters.follow_up,q: filters.q, city: filters.city, assigned_by: filters.assigned_by, outcome: filters.outcome, added_to_db: filters.added_to_db };
+  return { has_ai_calls:filters.has_ai_calls,manual_disposition:filters.manual_disposition,completed_from:filters.completed_from,completed_to:filters.completed_to,ai_result:filters.ai_result, wh_id:filters.wh_id, has_notes:filters.has_notes, has_manual_calls:filters.has_manual_calls, date_from:filters.date_from, date_to:filters.date_to, follow_up:filters.follow_up,q: filters.q, city: filters.city, region: filters.region, assigned_by: filters.assigned_by, outcome: filters.outcome, added_to_db: filters.added_to_db };
 }
 export async function personalTotals(email: string, filters: WorkFilters = {}): Promise<WorkTotals> {
   const rows = hasWorkCriteria(filters)
