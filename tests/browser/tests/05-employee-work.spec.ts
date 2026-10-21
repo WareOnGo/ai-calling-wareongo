@@ -84,7 +84,7 @@ test.describe("employee recording outcomes @shot", () => {
     await shot(page, "13-my-work-added-to-db");
   });
 
-  test("Done is a labelled toggle, and the row stays visible", async ({ employeePage: page, shot }) => {
+  test("Done retains the row and reopening respects shared-phone ownership", async ({ employeePage: page, adminPage, shot }) => {
     await page.goto("/dashboard/my");
     const btn = row(page, "Raghav Sharma").locator(".btn-done");
     await expect(btn).toContainText("Mark done");
@@ -102,10 +102,23 @@ test.describe("employee recording outcomes @shot", () => {
     await expect(after).toHaveClass(/row-done/);
     await shot(page, "14-my-work-done");
 
-    // and it can be reopened
-    await saved(page, () => after.locator(".btn-done").click());
+    // The legacy fixture also has open AI follow-up work for this phone.
+    // Reopening must preserve Done until that competing assignment is released.
+    const [conflict] = await Promise.all([
+      page.waitForResponse(r => r.url().endsWith('/api/assignments/1') && r.request().method() === 'PATCH'),
+      after.locator(".btn-done").click(),
+    ]);
+    expect(conflict.status()).toBe(409);
+    await expect(after.locator('.save-status')).toContainText('This phone number already has open work');
+    await expect(after.locator('.btn-done')).toHaveAttribute('aria-pressed', 'true');
+    await expect(after).toHaveClass(/row-done/);
+
+    expect((await adminPage.request.delete('/api/assignments/5')).status()).toBe(200);
+    await saved(page, () => after.getByRole('button', {name:'Retry',exact:true}).click());
+    await expect(after.locator('.save-status')).toHaveText('Saved');
     await page.reload();
     await expect(row(page, "Raghav Sharma")).not.toHaveClass(/row-done/);
+    await expect(row(page, "Raghav Sharma").locator('.btn-done')).toHaveAttribute('aria-pressed', 'false');
   });
 
   test("a finished row stays readable, distinct and editable",

@@ -41,7 +41,8 @@ test('preview reconciles missing phones, active owners, AI history and round-rob
   const target=await link.getAttribute('href');expect(target).toMatch(/^\/dashboard\/batches\/manual\/[0-9a-f-]+$/);
   await page.goto(target!);
   await expect(page.locator('table.sheet tbody tr')).toHaveCount(6);
-  await page.getByRole('link',{name:'2 Open',exact:true}).click();
+  await page.locator('.batch-metrics').getByRole('link',{name:'2 Still open',exact:true}).click();
+  await expect(page).toHaveURL(/metric=open/);
   await expect(page.locator('table.sheet tbody tr')).toHaveCount(2);
 });
 
