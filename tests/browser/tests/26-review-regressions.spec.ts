@@ -41,5 +41,5 @@ test('Bolna preview shows alternate-number human ownership before any send',asyn
 });
 test('Bangalore matches Bengaluru and the five-metric Team view discloses unknown history',async({adminPage:page})=>{
  await page.goto('/dashboard/raw?city=Bangalore');await expect(page.locator('.gridwrap table.sheet tbody tr')).toHaveCount(1);await expect(page.locator('.gridwrap table.sheet tbody')).toContainText('Anil Broker');
- await page.goto('/dashboard/team');await expect(page.getByLabel('Team metrics table').locator('thead th')).toHaveCount(6);await expect(page.getByText('Historical call counts are unknown',{exact:false})).toBeVisible();await expect(page.getByLabel('Metric evidence table')).toHaveCount(0);
+ await page.goto('/dashboard/team');await expect(page.getByLabel('Team metrics table').locator('thead th')).toHaveCount(6);await page.locator('.team-manual-logs > summary').click();await expect(page.getByText('Historical call counts are unknown',{exact:false})).toBeVisible();await expect(page.getByLabel('Metric evidence table')).toHaveCount(0);
 });

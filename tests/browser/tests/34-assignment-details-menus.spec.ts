@@ -50,7 +50,9 @@ for (const width of [1366, 390]) for (const theme of ['light', 'dark']) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 768 });
     await page.addInitScript(value => localStorage.setItem('theme', value), theme);
     let aiRequests = 0;
-    page.on('request', request => { if (/\/api\/details\/record\/[^/]+\/ai\?/.test(request.url())) aiRequests++; });
+    // Dev Strict Mode can abort an effect's first request before the real mount.
+    // Count completed reads when checking that tab switches reuse loaded history.
+    page.on('response', response => { if (response.status() === 200 && /\/api\/details\/record\/[^/]+\/ai\?/.test(response.url())) aiRequests++; });
     await page.route('**/api/details/record/*?section=*', async route => {
       const response = await route.fetch();
       const data = await response.json();
@@ -59,7 +61,7 @@ for (const width of [1366, 390]) for (const theme of ['light', 'dark']) {
         data.row.rent = '150000000.0';
         data.row.last_transcript = 'assistant: Is the warehouse available?\nuser: Yes, it is available.';
       }
-      if (data.manual) data.manual = { rows: [{ id: `synthetic-${pageNumber}`, occurred_at: '2026-10-12T10:00:00Z', disposition: 'connected', assignee: 'priya@eval.test', actor: 'priya@eval.test', outcome: 'Available', notes: `Recorded attempt ${pageNumber}`, duration_seconds: 30 }], total: 2, page: pageNumber, pages: 2 };
+      if (data.manual) data.manual = { rows: [{ source: "manual", id: `synthetic-${pageNumber}`, occurred_at: '2026-10-12T10:00:00Z', disposition: 'connected', assignee: 'priya@eval.test', actor: 'priya@eval.test', outcome: 'Available', notes: `Recorded attempt ${pageNumber}`, duration_seconds: 30 }], total: 2, logged: 2, imported: 0, page: pageNumber, pages: 2 };
       await route.fulfill({ response, json: data });
     });
     await page.goto('/dashboard/raw?q=Raghav');

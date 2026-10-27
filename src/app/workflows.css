@@ -149,6 +149,14 @@
 .attempt-unavailable .attempt-dot { border-color: var(--fill-red-tx); }
 .attempt-unclear .attempt-dot { border-color: var(--fill-yel-tx); }
 .attempt-card { min-width: 0; }
+.manual-call-history .detail-count { font-size: var(--text-support); font-weight: 400; }
+.manual-call-history .attempt-list { margin-top: 20px; }
+.manual-history-source { padding: 3px 8px; border-radius: 5px; font-size: var(--text-caption); background: var(--fill-gray-bg); color: var(--muted); }
+.manual-history-source.is-imported { background: var(--accent-bg); color: var(--accent); }
+.manual-history-info { margin-top: 8px; font-size: var(--text-support); color: var(--muted); }
+.manual-history-info summary { cursor: pointer; color: var(--accent); padding: 4px 0; }
+.manual-history-info p { margin: 6px 0; overflow-wrap: anywhere; }
+.manual-history-correction { font-size: var(--text-support); color: var(--muted); }
 .attempt-time { font-size: var(--text-caption); color: var(--muted); }
 .attempt-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; justify-content: space-between; color: var(--heading); }
 .attempt-heading strong { font-size: var(--text-body); font-weight: 600; }

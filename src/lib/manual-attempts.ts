@@ -3,7 +3,8 @@ import { query,transaction } from "./db";
 import { ApiError,uuid,revision } from "./api";
 import { DISPOSITIONS,RETRY_DISPOSITIONS } from "./manual-dispositions";
 import { allocationHash } from "./assignment-allocation";
-import type { Viewer,EntityType } from "./scope";
+import { assignmentScope, type Viewer, type EntityType } from "./scope";
+import { callyzerAccount, normalizeContactNumber } from "./callyzer";
 export const manualAttemptSchema=z.object({
   id:uuid,revision,occurred_at:z.string().datetime({offset:true}),disposition:z.enum(DISPOSITIONS),
   outcome:z.enum(["Available","Unavailable","Unclear"]).nullable().optional(),
@@ -53,12 +54,53 @@ export async function recordManualAttempt(assignmentId:string,user:Viewer,input:
   });
 }
 export type ManualAttempt={id:string;assignment_id:string;actor:string;assignee:string;occurred_at:string;created_at:string;disposition:string;outcome:string|null;notes:string|null;next_due_at:string|null;duration_seconds:number|null;corrects_id:string|null;superseded:boolean};
-/** Evidence stays within the viewer's assignment episodes, even after another owner takes over. */
-export async function manualHistory(viewer:Viewer,entity:EntityType,id:string,page=1){
-  const values=[entity,id,viewer.isAdmin,viewer.email.toLowerCase()];
-  const from=`from bolna_manual_attempts e join bolna_assignments a on a.id=e.assignment_id where a.entity_type=$1 and a.entity_id=$2 and ($3::boolean or a.assignee=$4 and a.state<>'dropped')`;
-  const total=Number((await query(`select count(*) n ${from}`,values)).rows[0].n);
-  const current=Math.min(Math.max(1,Math.floor(page)||1),Math.max(1,Math.ceil(total/50)));
-  const rows=(await query<ManualAttempt>(`select e.*,e.assignment_id::text,exists(select 1 from bolna_manual_attempts c where c.corrects_id=e.id) as superseded ${from} order by e.occurred_at desc,e.created_at desc,e.id desc limit 50 offset ${(current-1)*50}`,values)).rows;
-  return {rows,total,page:current,pages:Math.max(1,Math.ceil(total/50))};
+export type ImportedManualCall = {
+  source: "callyzer"; id: string; occurred_at: string; assignee: string | null; caller_name: string | null;
+  employee_number: string; client_number: string | null; duration_seconds: number | null;
+  call_type: "Incoming" | "Outgoing" | "Missed" | "Rejected"; call_method: string; call_mode: string;
+  provider_synced_at: string | null; superseded: false; corrects_id: null;
+};
+export type ManualHistoryEvent = (ManualAttempt & {source:"manual"}) | ImportedManualCall;
+export type ManualCallHistory = { rows: ManualHistoryEvent[]; total: number; logged: number; imported: number; page: number; pages: number };
+
+/** Staff logs retain their entity scope. Imported calls match full contact numbers;
+ * employees can only see their own calls on entities they are allowed to read. */
+export async function manualHistory(viewer:Viewer,entity:EntityType,id:string,page=1):Promise<ManualCallHistory>{
+  const phoneParams:unknown[]=[id], scope=assignmentScope(viewer,entity,"seed.id",phoneParams);
+  const contactPhones=(await query<{phone:string|null}>(entity === "record" ?
+    `select coalesce(nullif(trim(p.phone),''),p.phone_last10) phone from raw_records seed
+      join raw_phones rp on rp.master_id=seed.id join raw_phone_numbers p using(phone_id)
+      where seed.id=$1::uuid${scope ? ` and ${scope}` : ''}` :
+    `select case when seed.call_type='inbound' then seed.from_number else seed.to_number end phone
+      from bolna_call_logs seed where seed.id=$1::uuid${scope ? ` and ${scope}` : ''}`,phoneParams)).rows;
+  const phones=[...new Set(contactPhones.map(row=>normalizeContactNumber(row.phone)).filter((phone):phone is string=>!!phone))];
+  const values:unknown[]=[entity,id,viewer.isAdmin,viewer.email.toLowerCase(),callyzerAccount(),phones];
+  const events=`with events as (
+    select 'manual' source,e.id::text id,e.occurred_at,e.created_at,
+      jsonb_build_object('source','manual','id',e.id,'assignment_id',e.assignment_id::text,'actor',e.actor,'assignee',e.assignee,
+        'occurred_at',e.occurred_at,'created_at',e.created_at,'disposition',e.disposition,'outcome',e.outcome,'notes',e.notes,
+        'next_due_at',e.next_due_at,'duration_seconds',e.duration_seconds,'corrects_id',e.corrects_id,
+        'superseded',exists(select 1 from bolna_manual_attempts correction where correction.corrects_id=e.id)) payload
+    from bolna_manual_attempts e join bolna_assignments a on a.id=e.assignment_id
+    where a.entity_type=$1 and a.entity_id=$2 and ($3::boolean or a.assignee=$4 and a.state<>'dropped')
+    union all
+    select 'callyzer',c.source_id,c.occurred_at,c.occurred_at,
+      jsonb_build_object('source','callyzer','id',c.source_id,'occurred_at',c.occurred_at,'assignee',c.caller_email,
+        'caller_name',u.name,'employee_number',c.employee_number,'client_number',c.client_number,
+        'duration_seconds',c.duration_seconds,'call_type',c.call_type,'call_method',c.call_method,'call_mode',c.call_mode,
+        'provider_synced_at',c.provider_synced_at,'superseded',false,'corrects_id',null)
+    from callyzer_calls c left join bolna_app_users u on u.email=c.caller_email
+    where c.account_key=$5 and ($3::boolean or c.caller_email=$4)
+      and c.client_number ~ '^\\+?[0-9 ()-]+$'
+      and (case when c.client_number ~ '^[0-9]{10}$' then '91'||c.client_number
+        else regexp_replace(c.client_number,'[^0-9]','','g') end)=any($6::text[])
+  )`;
+  const counts=(await query<{total:number;logged:number;imported:number}>(`${events}
+    select count(*)::int total,count(*) filter(where source='manual')::int logged,
+      count(*) filter(where source='callyzer')::int imported from events`,values)).rows[0];
+  const pages=Math.max(1,Math.ceil(counts.total/50));
+  const current=Math.min(Math.max(1,Number.isFinite(page)?Math.floor(page):1),pages);
+  const rows=(await query<{payload:ManualHistoryEvent}>(`${events} select payload from events
+    order by occurred_at desc,created_at desc,source,id desc limit 50 offset $7`,[...values,(current-1)*50])).rows.map(row=>row.payload);
+  return {rows,...counts,page:current,pages};
 }

@@ -82,7 +82,7 @@ export function teamEvidenceSql(metrics:TeamMetric[]){
 }
 export type TeamSummary={email:string;name:string|null;active:boolean;counts:Partial<Record<TeamMetric,number>>;average_seconds:number|null;duration_coverage:number};
 function rosterWhere(f:TeamFilters,params:unknown[],userAlias='u') {
- const where:string[]=[];
+ const where:string[]=[`${userAlias}.role='employee'`];
  if(f.person){params.push(f.person.toLowerCase());where.push(`${userAlias}.email=$${params.length}`);}
  if(f.access)where.push(`${userAlias}.active=${f.access==='active'?'true':'false'}`);
  return where;

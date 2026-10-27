@@ -8,7 +8,8 @@ const sql = (input: string) => execFileSync('podman', ['exec', '-i', CONTAINER, 
 test('Details loads manual evidence on demand and pagination does not refetch the record', async ({ adminPage: page, employeePage }) => {
   sql("insert into bolna_manual_attempts(id,assignment_id,actor,assignee,occurred_at,disposition,request_hash) select gen_random_uuid(),1,'priya@eval.test','priya@eval.test',now()-n*interval '1 minute','connected',n::text from generate_series(1,55) n");
   const requests: string[] = [];
-  page.on('request', request => { if (request.url().includes(`/api/details/record/${record}?`)) requests.push(request.url()); });
+  // Ignore requests aborted by the development-only Strict Mode effect rehearsal.
+  page.on('response', response => { if (response.status() === 200 && response.url().includes(`/api/details/record/${record}?`)) requests.push(response.url()); });
   await page.goto('/dashboard/raw?q=Raghav');
   const initialResponse = page.waitForResponse(response => response.url().includes('section=overview'));
   await page.getByRole('button', { name: 'Details for record', exact: true }).click();

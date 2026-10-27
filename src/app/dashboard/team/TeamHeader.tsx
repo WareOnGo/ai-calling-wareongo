@@ -5,7 +5,7 @@ import { IconUsers } from "../icons";
 
 export function TeamHeader({ view, loading = false }: { view: "performance" | "access"; loading?: boolean }) {
   return <RecordsHeader title={view === "performance" ? "Team performance" : "Access control"} icon={<IconUsers size={18}/>}
-    meta={<p className="team-intro">{view === "performance" ? "Manual call activity and outcomes" : "Manage members, roles and sign-in permissions"}</p>}
+    meta={<p className="team-intro">{view === "performance" ? "Calls, outcomes and caller coverage at a glance" : "Manage members, caller links and sign-in permissions"}</p>}
     tabs={<nav className="team-nav" aria-label="Team pages">
       <Link href="/dashboard/team" aria-current={view === "performance" ? "page" : undefined}>Performance</Link>
       <Link href="/dashboard/team/access" aria-current={view === "access" ? "page" : undefined}>Access control</Link>

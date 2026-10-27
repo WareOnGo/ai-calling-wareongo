@@ -195,7 +195,7 @@ export default async function Dashboard({
                     <AssignedCaller current={r.assigned_to} previous={r.assignment_assignee} state={r.assignment_state} people={assignees}/>
                   </td>
                 )}
-                <td><ResultBadge value={r.assignment_outcome} empty="No manual result"/>{r.assignment_closure_reason==='exhausted'&&<><br/>Closed: Exhausted</>}{(r.manual_attempt_count||0)>0&&<><br/><RecordDetails id={r.id} entity="call" label="Manual history" initialSection="Manual activity"/></>}</td>
+                <td><ResultBadge value={r.assignment_outcome} empty="No manual result"/>{r.assignment_closure_reason==='exhausted'&&<><br/>Closed: Exhausted</>}<br/><RecordDetails id={r.id} entity="call" label="Manual history" initialSection="Manual activity" title="Callyzer calls and staff logs for this contact"/></td>
                 <td className="report-notes"><AssignmentNotes text={r.assignment_remarks}/></td>
                 <td><span className={r.assignment_added_to_db ? undefined : "muted"}>{r.assignment_added_to_db ? "Yes" : "No"}</span></td>
                 <td>

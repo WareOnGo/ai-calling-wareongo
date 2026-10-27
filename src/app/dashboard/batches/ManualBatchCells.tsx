@@ -41,7 +41,7 @@ export function ManualBatchCells({ row:r }: { row:BatchMember }) {
       {r.last_attempt_at&&<span className="batch-contact-city">Last call: <time dateTime={r.last_attempt_at}>{dateTime(r.last_attempt_at)}</time></span>}
       {r.next_due_at&&<span className="batch-contact-city">{r.state==='open'?'Follow-up':'Recorded follow-up'}: <time dateTime={r.next_due_at}>{dateTime(r.next_due_at)}</time></span>}
       <span className="batch-contact-city">{r.attempts.toLocaleString()} logged {r.attempts===1?'call':'calls'}</span>
-      {r.attempts>0&&r.entity_id&&r.entity_type&&<RecordDetails entity={r.entity_type} id={r.entity_id} initialSection="Manual activity" label="Call history" title="All manual call history for this record"/>}
+      {r.entity_id&&r.entity_type&&<RecordDetails entity={r.entity_type} id={r.entity_id} initialSection="Manual activity" label="Call history" title="Callyzer calls and staff logs for this contact"/>}
     </td>
   </>;
 }

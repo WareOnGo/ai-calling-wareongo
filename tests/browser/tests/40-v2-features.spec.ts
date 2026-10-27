@@ -122,7 +122,7 @@ test('manual batch rows keep caller notes, follow-ups and ownership history acce
   await expect(completed).toContainText('Completed 15 Oct 26');
   await expect(completed).toContainText('Closure: Resolved');
   await expect(completed).toContainText('WH ID: 1008');
-  await expect(completed.getByRole('button',{name:'Call history for record',exact:true})).toHaveCount(0);
+  await expect(completed.getByRole('button',{name:'Call history for record',exact:true})).toBeVisible();
   await expect(page.getByRole('link',{name:'Export matching members',exact:true})).toHaveCount(0);
   await followup.getByRole('button',{name:'Show less',exact:true}).click();
   await followup.getByText('Assignment instructions',{exact:true}).click();

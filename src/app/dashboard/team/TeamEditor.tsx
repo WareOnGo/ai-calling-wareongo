@@ -12,6 +12,7 @@ import { FilterPanel } from "../FilterPanel";
 import { FiltersToggle } from "../FiltersToggle";
 import { ApplyButton } from "../ApplyButton";
 import { SelectFilter } from "../FilterFields";
+import { CallerLinkEditor } from "./CallerLinkEditor";
 
 export type Person = {
   email: string;
@@ -20,6 +21,8 @@ export type Person = {
   active: boolean;
   open: number;
   done: number;
+  callyzer_number?: string | null;
+  callyzer_tracking_since?: string | null;
 };
 
 // A people directory, not a grid. Every control states its consequence, because
@@ -44,7 +47,7 @@ export function TeamEditor({
     setFeedback(null);
     try {
       await requestJson("/api/users", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-      const text = key === "new" ? `Access granted to ${body.email}` : body.active === false ? `Access removed for ${key}` : body.active === true ? `Access restored for ${key}` : `Role updated for ${key}`;
+      const text = key === "new" ? `Access granted to ${body.email}` : body.callyzer_number !== undefined ? `Caller link updated for ${key}` : body.active === false ? `Access removed for ${key}` : body.active === true ? `Access restored for ${key}` : `Role updated for ${key}`;
       setFeedback({ key, body, text });
       notify(text);
       refresh();
@@ -210,6 +213,7 @@ export function TeamEditor({
                       </span>
                     </button>
                     {status(p.email)}
+                    <CallerLinkEditor key={`${p.email}:${p.callyzer_number}:${p.callyzer_tracking_since}`} email={p.email} number={p.callyzer_number} since={p.callyzer_tracking_since} disabled={!!busy || pending} save={save}/>
                   </li>
                 );
               })}

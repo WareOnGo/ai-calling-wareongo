@@ -4,8 +4,8 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { RawRow } from "@/lib/raw";
 import type { CallRow } from "@/lib/calls";
 import type { AssignmentHistoryRow } from "@/lib/assignments";
-import type { ManualAttempt } from "@/lib/manual-attempts";
-import { DISPOSITION_LABELS,type Disposition } from "@/lib/manual-dispositions";
+import type { ManualCallHistory } from "@/lib/manual-attempts";
+import { ManualCallTimeline } from "./ManualCallTimeline";
 import { area, dateTime, rent } from "@/lib/display";
 import { ResultBadge } from "./ResultBadge";
 import { Dialog } from "./Dialog";
@@ -14,7 +14,7 @@ import { requestJson } from "./requests";
 import { Transcript } from "./Transcript";
 
 type DetailSection = "Overview" | "AI activity" | "Manual activity";
-type ManualDetails = { history: AssignmentHistoryRow[]; historyTotal: number; manual: { rows: ManualAttempt[]; total: number; page: number; pages: number } };
+type ManualDetails = { history: AssignmentHistoryRow[]; historyTotal: number; manual: ManualCallHistory };
 
 export function RecordDetails({ id, entity, label = "Details", aiBatch, aiScope, initialSection = "Overview", children, className = "btn-row details-trigger", ariaLabel, title }: {
   aiBatch?: string; aiScope?: "contact" | "execution"; id: string; entity: "call" | "record"; label?: string;
@@ -108,10 +108,7 @@ function DetailContents({ id, entity, onClose,initialSection,aiBatch,aiScope }: 
         </div>
         <div className="detail-panel" role="tabpanel" id={`${tabId}-panel-2`} aria-labelledby={`${tabId}-tab-2`} hidden={tab !== "Manual activity"}>
         {manualError ? <p role="alert">{manualError} <button type="button" className="btn-row" onClick={() => setManualRetry(value => value + 1)}>Retry manual history</button></p> : !manualData ? <p role="status">Loading manual history…</p> : <>
-        <section className="detail-section"><h3>Manual calls <span className="detail-count">{manualData.manual.total}</span></h3><p className="detail-description">Caller-recorded attempts for this listing/execution. Corrections preserve the original; note edits are not calls.</p>
-          {manualData.manual.rows.length?manualData.manual.rows.map(event=><div className="detail-history" key={event.id}><strong>{dateTime(event.occurred_at)}</strong> · {DISPOSITION_LABELS[event.disposition as Disposition]}{event.superseded&&<span> · superseded by a correction</span>}{event.corrects_id&&<span> · correction</span>}<p>{event.assignee}{event.actor!==event.assignee?` · recorded by ${event.actor}`:""} · <ResultBadge value={event.outcome} empty="No new result"/></p>{event.notes&&<p>{event.notes}</p>}{event.next_due_at&&<p>Follow-up due: {dateTime(event.next_due_at)}</p>}{event.duration_seconds!==null&&<p>Reported duration: {event.duration_seconds}s</p>}</div>):<p>No recorded manual attempts. Older notes or completion records are not proof of an attempt.</p>}
-          {manualData.manual.pages>1&&<nav aria-label="Manual history pages"><button type="button" disabled={manualPage<=1} onClick={()=>setManualPage(p=>p-1)}>Previous attempts</button><span> {manualData.manual.page} / {manualData.manual.pages} </span><button type="button" disabled={manualPage>=manualData.manual.pages} onClick={()=>setManualPage(p=>p+1)}>Next attempts</button></nav>}
-        </section>
+        <ManualCallTimeline history={manualData.manual} onPage={setManualPage}/>
         <section className="detail-section"><h3>Verification history <span className="detail-count">{manualData.historyTotal}</span></h3>{manualData.history.length ? manualData.history.map(h => <div className="detail-history" key={h.id}><strong>{h.assignee_name || h.assignee}</strong> · {h.state === 'dropped' ? 'unassigned' : h.state}<p>{dateTime(h.assigned_at)} · <ResultBadge value={h.outcome} empty="No result yet"/></p>{h.note && <p>Brief: {h.note}</p>}{h.remarks && <p className="detail-text">{h.remarks}</p>}<p>Staff-recorded onboarding: {h.added_to_db && h.wh_id ? "Yes" : "Not yet"}{h.wh_id ? ` · ${h.wh_id}` : ""}</p></div>) : <p className="muted">No verification history yet.</p>}{manualData.historyTotal > manualData.history.length && <p className="muted">Showing the latest {manualData.history.length} of {manualData.historyTotal} assignments.</p>}</section>
         </>}
         </div>

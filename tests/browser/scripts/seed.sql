@@ -8,7 +8,7 @@
 -- test that addresses an assignment by id passes once and then fails.
 -- Reset all app-owned fixture roots, including durable batches and dispatch
 -- state. Otherwise a prior volume/integration run changes browser pagination.
-truncate bolna_ai_attempts, bolna_assignments, bolna_app_users,
+truncate callyzer_sync_state, bolna_ai_attempts, bolna_assignments, bolna_app_users,
   bolna_assignment_batches, bolna_webhook_events, bolna_dispatch_requests,
   call_batches, bolna_call_logs,
   raw_phones, raw_phone_numbers, raw_records restart identity cascade;

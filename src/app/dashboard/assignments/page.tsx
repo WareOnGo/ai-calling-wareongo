@@ -1,3 +1,4 @@
+import { RecordDetails } from "../RecordDetails";
 import { assignmentFiltersSchema } from "@/lib/filters";
 import {dispositionLabel} from "@/lib/manual-dispositions";
 import { countFilters, firstValue, filterValues } from "@/lib/filter-values";
@@ -113,7 +114,7 @@ export default async function Assignments({
                 <td className="assignment-brief">{r.note || <span className="muted">—</span>}</td>
                 <td title={r.entity_type === "record" ? "AI context from a shared phone; may describe another property" : "AI result for this execution"}><ResultBadge value={r.ai_availability} empty="No AI result"/>{r.entity_type === "record" && r.ai_availability && <small className="record-meta">contact context</small>}</td>
                 <td className="record-history"><AiAttemptCard entity={r.entity_type} id={r.entity_id} summary={r.ai_summary}/></td>
-                <td>{resultCell(r)}<span className="record-meta">{dispositionLabel(r.disposition)}{r.closure_reason==='exhausted'&&' · Exhausted'}{r.next_due_at&&<><br/>Due {fmt(r.next_due_at)}</>}</span></td>
+                <td>{resultCell(r)}<RecordDetails id={r.entity_id} entity={r.entity_type} label="Call history" initialSection="Manual activity" title="Callyzer calls and staff logs for this contact"/><span className="record-meta">{dispositionLabel(r.disposition)}{r.closure_reason==='exhausted'&&' · Exhausted'}{r.next_due_at&&<><br/>Due {fmt(r.next_due_at)}</>}</span></td>
                 <td className="assignment-note-cell"><AssignmentNotes text={r.remarks} /></td>
                 <td>{r.added_to_db ? <span className="pill pill-available">yes</span> : <span className="muted">no</span>}</td>
                 <td>{r.wh_id ?? <span className="muted">—</span>}</td>

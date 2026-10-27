@@ -27,6 +27,16 @@ const summary=async()=> (await teamSummary(admin,f,asOf)).find(p=>p.email===empl
 beforeAll(()=>{if(!process.env.TEST_DATABASE_URL||!['127.0.0.1','localhost','[::1]'].includes(new URL(process.env.TEST_DATABASE_URL).hostname))throw Error('Disposable test DB only');});
 beforeEach(async()=>{auth.admin=true;await query('truncate bolna_ai_attempts,bolna_assignments,bolna_app_users,bolna_call_logs,raw_phones,raw_records,raw_phone_numbers restart identity cascade');await query("insert into bolna_app_users(email,role) values($1,'admin'),($2,'employee'),($3,'employee')",[admin.email,employee.email,other]);});
 afterAll(async()=>{await getPool().end();});
+it('keeps admins out of caller performance, evidence and exports even when they have recorded work',async()=>{
+ const callerTask=await task(),adminTask=await task('record',admin.email);
+ await attempt(callerTask,'2026-08-02T01:00:00Z');
+ await attempt(adminTask,'2026-08-02T01:00:00Z');
+ expect((await teamSummary(admin,f,asOf)).map(p=>p.email)).toEqual([employee.email,other]);
+ expect((await teamDetails(admin,f,asOf)).rows.map(r=>r.assignee)).toEqual([employee.email]);
+ const spec=teamDetailExport(admin,f,asOf);
+ expect((await query(spec.sql,spec.params)).rows.map(r=>r.assignee)).toEqual([employee.email]);
+ expect((await teamDetails(admin,{...f,caller:admin.email},asOf)).total).toBe(0);
+});
 it('evidence contacts use the listing primary phone or the correct end of an AI call without multiplying rows',async()=>{
  const listing=await task(),outbound=await task('call'),inbound=await task('call'),missing=await task();
  await query("insert into raw_phone_numbers(phone_last10,phone) values ('9811100001','+919811100001'),('9811100002','+919811100002')");

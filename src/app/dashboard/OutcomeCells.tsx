@@ -2,14 +2,15 @@
 import { useEffect,useRef } from "react";
 import { useDashboardUI } from "./DashboardUI";
 import { ManualAttemptButton } from "./ManualAttemptButton";
+import { RecordDetails } from "./RecordDetails";
 import { DISPOSITION_LABELS,RETRY_DISPOSITIONS,type Disposition } from "@/lib/manual-dispositions";
 import { dateTime } from "@/lib/display";
 import { OUTCOMES } from "@/lib/scope";
 import { IconCheck } from "./icons";
 import { useAutosave, SaveStatus } from "./useAutosave";
 
-type Props = { revision: number; assignmentId: string; outcome: string | null; remarks: string | null; addedToDb: boolean; whId: string | null; state?: string; closureReason?:string|null; disposition?:string|null; nextDueAt?:string|null; onStateChange?: (id: string, state: string) => void };
-export function OutcomeCells({ revision, assignmentId, outcome, remarks, addedToDb, whId, state = "open", closureReason,disposition,nextDueAt,onStateChange }: Props) {
+type Props = { entity: "record" | "call"; entityId: string; revision: number; assignmentId: string; outcome: string | null; remarks: string | null; addedToDb: boolean; whId: string | null; state?: string; closureReason?:string|null; disposition?:string|null; nextDueAt?:string|null; onStateChange?: (id: string, state: string) => void };
+export function OutcomeCells({ entity, entityId, revision, assignmentId, outcome, remarks, addedToDb, whId, state = "open", closureReason,disposition,nextDueAt,onStateChange }: Props) {
   const { pending } = useDashboardUI();
   const key = `assignment-${assignmentId}`;
   const save = useAutosave(key, `/api/assignments/${assignmentId}`, { outcome: outcome ?? "", remarks: remarks ?? "", added_to_db: addedToDb, wh_id: whId ?? "", state,closure_reason:closureReason??"" }, ["outcome", "added_to_db", "state","closure_reason"], revision,["outcome","closure_reason"]);
@@ -29,7 +30,7 @@ export function OutcomeCells({ revision, assignmentId, outcome, remarks, addedTo
   return <>
     <td data-label="Manual result" className={`edit-cell edit-first ${cls}`}><select disabled={pending} className="field field-select outcome-select" data-result={save.values.outcome||undefined} aria-label="Result of the call" value={save.values.outcome} onChange={e => save.set("outcome", e.target.value, true)}><option value="">No manual result</option>{OUTCOMES.map(o => <option key={o}>{o}</option>)}</select>
       {disposition&&<div className="latest-manual-call"><span>Latest manual call</span><strong>{DISPOSITION_LABELS[disposition as Disposition]||disposition}</strong>{nextDueAt&&<span className="manual-call-due">Due {dateTime(nextDueAt)}</span>}</div>}
-      <ManualAttemptButton assignmentId={assignmentId} revision={save.revision} disabled={pending||save.dirty||done}/></td>
+      <ManualAttemptButton assignmentId={assignmentId} revision={save.revision} disabled={pending||save.dirty||done}/><RecordDetails entity={entity} id={entityId} label="Call history" initialSection="Manual activity" title="Callyzer calls and staff logs for this contact"/></td>
     <td data-label="Your notes" className={`edit-cell notes-cell ${cls}`}><textarea disabled={pending} ref={notesInput} className="field notes-field" aria-label="Your notes" rows={2} value={save.values.remarks} placeholder="What did they say?" onChange={e => save.set("remarks", e.target.value)} onBlur={save.flush} />
       {(save.values.outcome==="Unclear"||disposition==="invalid_number"||!!disposition&&RETRY_DISPOSITIONS.includes(disposition)||save.values.closure_reason==="exhausted")&&<select disabled={pending} className="field" aria-label="Closure reason" value={save.values.closure_reason} onChange={e=>save.set("closure_reason",e.target.value,true)}><option value="">Choose closure reason…</option><option value="resolved">No further action — explained in notes</option><option value="escalated">Escalated to an admin — explained in notes</option><option value="invalid_number_verified">Number verified invalid — evidence in notes</option><option value="exhausted">Exhausted follow-ups — explain why in notes</option></select>}
       <SaveStatus id={key} {...save} /></td>

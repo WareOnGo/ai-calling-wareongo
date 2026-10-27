@@ -629,8 +629,8 @@ database account remains an admin; the preference cannot grant admin access.
 | `/dashboard/calls` | Signed-in users; scoped for employees | Call results, transcripts, inference and saved manual-work reporting. |
 | `/dashboard/my` | Signed-in users, including admins | Own manual-call and AI-review assignments, independently paginated. |
 | `/dashboard/assignments` | Admin | Assignment history and human/AI comparison. |
-| `/dashboard/team` | Admin | Team performance, date filters, caller metrics and evidence drill-downs. |
-| `/dashboard/team/access` | Admin | Search members, grant/revoke sign-in access and manage roles. |
+| `/dashboard/team` | Admin | Employee caller overview: Callyzer activity alongside recorded outcomes, expandable coverage and call history. |
+| `/dashboard/team/access` | Admin | Search members, manage access/roles and optionally link Callyzer employee numbers. |
 | `/dashboard/batches` | Admin | Paginated AI/manual batches, stable membership, metric cards and CSV. |
 
 ### Shared query rules
@@ -869,6 +869,7 @@ non-admin requests; ordinary session guards return 401.
 | GET | `/api/balance` | Admin | Cached provider wallet, explicit stale/unavailable states. |
 | GET | `/api/batches/export`, `/api/batches/[id]/export` | Admin | Complete filtered batch/member CSV. |
 | GET | `/api/team/export` | Admin | Date-based metric evidence CSV; the Team page renders summaries directly. |
+| POST | `/api/callyzer/sync` | Worker secret | Resume the bounded Callyzer import; scheduled through pg_cron and pg_net. See [Callyzer setup and coverage](docs/CALLYZER.md). |
 | PATCH | `/api/assignments/[id]` | Assignee or admin | Edit outcome, remarks, state, `added_to_db`, `wh_id`. |
 | DELETE | `/api/assignments/[id]` | Admin | Mark an open assignment dropped; retain history. |
 | GET, POST | `/api/users` | Admin | List or upsert accounts. |
