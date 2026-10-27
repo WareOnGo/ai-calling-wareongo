@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 const patchSchema = z.object({
   outcome: z.union([z.enum(["Available", "Unavailable", "Unclear", ""]), z.null()]).transform(v => v || null).optional(),
   remarks: nullableText.optional(), state: z.enum(["open", "done", "dropped"]).optional(),
+  closure_reason: z.enum(["resolved","escalated","invalid_number_verified","exhausted", ""]).nullable().transform(v=>v||null).optional(),
   added_to_db: z.boolean().optional(), wh_id: nullableText.optional(), revision,
 }).strict().refine(v => Object.keys(v).length > 1, "No editable fields provided");
 
@@ -28,9 +29,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  if (!await getCurrentAdmin()) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  const admin=await getCurrentAdmin();
+  if (!admin) return NextResponse.json({ error: "forbidden" }, { status: 403 });
   try {
-    const ok = await dropAssignment(bigintId.parse((await params).id));
+    const ok = await dropAssignment(bigintId.parse((await params).id),admin.email);
     return NextResponse.json(ok ? { ok: true } : { error: "not found" }, { status: ok ? 200 : 404 });
   } catch (error) { return apiError(error); }
 }

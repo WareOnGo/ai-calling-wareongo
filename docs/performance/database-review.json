@@ -1,0 +1,223 @@
+{
+  "volume": {
+    "raw": 50000,
+    "calls": 10000,
+    "assignments": 5000,
+    "manualAttempts": 5000,
+    "aiAttempts": 2000,
+    "callers": 10
+  },
+  "seedMs": 15149,
+  "label": "audit5",
+  "measurements": {
+    "raw_first": {
+      "ms": [
+        33,
+        21,
+        22,
+        20,
+        21
+      ],
+      "p95": 33,
+      "jsonBytes": 50541
+    },
+    "raw_page_400": {
+      "ms": [
+        68,
+        68,
+        66,
+        68,
+        67
+      ],
+      "p95": 68,
+      "jsonBytes": 50993
+    },
+    "raw_unassigned": {
+      "ms": [
+        337,
+        335,
+        334,
+        322,
+        341
+      ],
+      "p95": 341,
+      "jsonBytes": 49094
+    },
+    "raw_search": {
+      "ms": [
+        734,
+        705,
+        735,
+        708,
+        714
+      ],
+      "p95": 735,
+      "jsonBytes": 1043
+    },
+    "calls_search": {
+      "ms": [
+        591,
+        543,
+        552,
+        535,
+        565
+      ],
+      "p95": 591,
+      "jsonBytes": 1630
+    },
+    "raw_filters": {
+      "ms": [
+        76,
+        74,
+        74,
+        76,
+        77
+      ],
+      "p95": 77,
+      "jsonBytes": 50987
+    },
+    "calls_first": {
+      "ms": [
+        43,
+        44,
+        43,
+        46,
+        45
+      ],
+      "p95": 46,
+      "jsonBytes": 39359
+    },
+    "calls_page_200": {
+      "ms": [
+        44,
+        45,
+        45,
+        43,
+        45
+      ],
+      "p95": 45,
+      "jsonBytes": 40002
+    },
+    "calls_filters": {
+      "ms": [
+        115,
+        114,
+        115,
+        114,
+        116
+      ],
+      "p95": 116,
+      "jsonBytes": 39728
+    },
+    "assignments_page_50": {
+      "ms": [
+        107,
+        109,
+        103,
+        103,
+        103
+      ],
+      "p95": 109,
+      "jsonBytes": 28905
+    },
+    "personal_work": {
+      "ms": [
+        48,
+        26,
+        27,
+        27,
+        26
+      ],
+      "p95": 48,
+      "jsonBytes": 12342
+    },
+    "team_workloads": {
+      "ms": [
+        42,
+        41,
+        40,
+        41,
+        43
+      ],
+      "p95": 43,
+      "jsonBytes": 1181
+    },
+    "team_report": {
+      "ms": [
+        47,
+        46,
+        45,
+        46,
+        46
+      ],
+      "p95": 47,
+      "jsonBytes": 1760
+    },
+    "team_evidence": {
+      "ms": [
+        40,
+        39,
+        37,
+        37,
+        40
+      ],
+      "p95": 40,
+      "jsonBytes": 19732
+    },
+    "preview_250": {
+      "ms": [
+        350,
+        337,
+        344,
+        346,
+        344
+      ],
+      "p95": 350,
+      "jsonBytes": 63021
+    },
+    "all_matching_ids_20000": {
+      "ms": [
+        74,
+        75,
+        79,
+        83,
+        81
+      ],
+      "p95": 83,
+      "jsonBytes": 780043
+    },
+    "ten_concurrent_saves": {
+      "ms": [
+        27,
+        9,
+        9,
+        7,
+        7
+      ],
+      "p95": 27,
+      "jsonBytes": 4945
+    },
+    "manual_batch_250": {
+      "ms": [
+        30,
+        18,
+        19,
+        18,
+        19
+      ],
+      "p95": 30,
+      "jsonBytes": 32858
+    },
+    "ai_batch_250": {
+      "ms": [
+        9,
+        9,
+        6,
+        7,
+        6
+      ],
+      "p95": 9,
+      "jsonBytes": 31658
+    }
+  }
+}

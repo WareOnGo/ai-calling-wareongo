@@ -1,0 +1,272 @@
+{
+  "/dashboard/raw": [
+    {
+      "ms": 896,
+      "documentBytes": 326033
+    },
+    {
+      "ms": 543,
+      "documentBytes": 326033
+    },
+    {
+      "ms": 543,
+      "documentBytes": 326033
+    }
+  ],
+  "/dashboard/raw?page=400": [
+    {
+      "ms": 523,
+      "documentBytes": 331014
+    },
+    {
+      "ms": 551,
+      "documentBytes": 331014
+    },
+    {
+      "ms": 487,
+      "documentBytes": 331014
+    }
+  ],
+  "/dashboard/calls": [
+    {
+      "ms": 481,
+      "documentBytes": 258906
+    },
+    {
+      "ms": 559,
+      "documentBytes": 258906
+    },
+    {
+      "ms": 443,
+      "documentBytes": 258906
+    }
+  ],
+  "/dashboard/calls?page=200": [
+    {
+      "ms": 496,
+      "documentBytes": 258516
+    },
+    {
+      "ms": 469,
+      "documentBytes": 258516
+    },
+    {
+      "ms": 476,
+      "documentBytes": 258516
+    }
+  ],
+  "/dashboard/assignments?page=50": [
+    {
+      "ms": 632,
+      "documentBytes": 289194
+    },
+    {
+      "ms": 558,
+      "documentBytes": 289194
+    },
+    {
+      "ms": 534,
+      "documentBytes": 289194
+    }
+  ],
+  "/dashboard/team": [
+    {
+      "ms": 300,
+      "documentBytes": 104211
+    },
+    {
+      "ms": 322,
+      "documentBytes": 104211
+    },
+    {
+      "ms": 252,
+      "documentBytes": 104211
+    }
+  ],
+  "manual_batch_250": [
+    {
+      "ms": 294,
+      "documentBytes": 122790
+    },
+    {
+      "ms": 271,
+      "documentBytes": 122790
+    },
+    {
+      "ms": 279,
+      "documentBytes": 122790
+    }
+  ],
+  "ai_batch_250": [
+    {
+      "ms": 202,
+      "documentBytes": 83160
+    },
+    {
+      "ms": 235,
+      "documentBytes": 83160
+    },
+    {
+      "ms": 262,
+      "documentBytes": 83160
+    }
+  ],
+  "resources": [
+    {
+      "name": "css/b417e5d363ce73bc.css",
+      "ms": 13
+    },
+    {
+      "name": "chunks/webpack-9660626b6ab2c75c.js",
+      "ms": 9
+    },
+    {
+      "name": "chunks/4bd1b696-e199e788e58acf79.js",
+      "ms": 27
+    },
+    {
+      "name": "chunks/3794-0978865cda773008.js",
+      "ms": 28
+    },
+    {
+      "name": "chunks/main-app-3887069df20d9cc7.js",
+      "ms": 25
+    },
+    {
+      "name": "app/error-e53ae051dc7afe1b.js",
+      "ms": 25
+    },
+    {
+      "name": "chunks/8500-107859ed31978aa3.js",
+      "ms": 26
+    },
+    {
+      "name": "chunks/4638-d06d81ceb89a0656.js",
+      "ms": 30
+    },
+    {
+      "name": "chunks/3037-9d6026bd6c229a30.js",
+      "ms": 35
+    },
+    {
+      "name": "chunks/1913-6ecab985cdbff8da.js",
+      "ms": 35
+    },
+    {
+      "name": "chunks/6910-ebb0f86b3120f5ab.js",
+      "ms": 36
+    },
+    {
+      "name": "calls/loading-009d09627c1b14e8.js",
+      "ms": 35
+    },
+    {
+      "name": "chunks/4235-b6bb060aad57ee84.js",
+      "ms": 30
+    },
+    {
+      "name": "chunks/2368-79a4169ecbadf3fc.js",
+      "ms": 35
+    },
+    {
+      "name": "chunks/6134-6c842e1a8d4aff02.js",
+      "ms": 35
+    },
+    {
+      "name": "calls/page-939b5016e4a24f2a.js",
+      "ms": 35
+    },
+    {
+      "name": "dashboard/layout-762d6ae72961e25e.js",
+      "ms": 34
+    },
+    {
+      "name": "dashboard/error-2f97c72236bf9be4.js",
+      "ms": 35
+    },
+    {
+      "name": "localhost:3129/dashboard?_rsc=GkOQMlibEskYmFvE",
+      "ms": 18
+    },
+    {
+      "name": "dashboard/my?_rsc=GkOQMlibEskYmFvE",
+      "ms": 18
+    },
+    {
+      "name": "dashboard/raw?_rsc=GkOQMlibEskYmFvE",
+      "ms": 18
+    },
+    {
+      "name": "dashboard/assignments?_rsc=GkOQMlibEskYmFvE",
+      "ms": 17
+    },
+    {
+      "name": "localhost:3129/favicon.ico",
+      "ms": 1
+    },
+    {
+      "name": "dashboard/batches?_rsc=GkOQMlibEskYmFvE",
+      "ms": 13
+    },
+    {
+      "name": "dashboard/team?_rsc=GkOQMlibEskYmFvE",
+      "ms": 13
+    },
+    {
+      "name": "dashboard/calls?needs_review=1&_rsc=duyKH3KgPQhl1EHd",
+      "ms": 11
+    },
+    {
+      "name": "dashboard/calls?page=2&_rsc=duyKH3KgPQhl1EHd",
+      "ms": 10
+    },
+    {
+      "name": "dashboard/calls?page=400&_rsc=duyKH3KgPQhl1EHd",
+      "ms": 26
+    },
+    {
+      "name": "localhost:3129/dashboard?_rsc=duyKH3KgPQhl1EHd",
+      "ms": 25
+    },
+    {
+      "name": "dashboard/my?_rsc=f3BmfQjuYksUtr59",
+      "ms": 25
+    },
+    {
+      "name": "dashboard/raw?_rsc=afa6ZP968p8TxDI2",
+      "ms": 23
+    },
+    {
+      "name": "dashboard/assignments?_rsc=FF6zoevrrHYvd2SG",
+      "ms": 20
+    },
+    {
+      "name": "dashboard/batches?_rsc=duyKH3KgPQhl1EHd",
+      "ms": 20
+    },
+    {
+      "name": "my/loading-20e563045c35990b.js",
+      "ms": 19
+    },
+    {
+      "name": "dashboard/team?_rsc=Mo-HyzotNENJbZPM",
+      "ms": 19
+    },
+    {
+      "name": "raw/loading-6785e19793ce36b3.js",
+      "ms": 5
+    },
+    {
+      "name": "assignments/loading-9e05a74c15c6379f.js",
+      "ms": 3
+    },
+    {
+      "name": "team/loading-bab991866d2d04ce.js",
+      "ms": 3
+    },
+    {
+      "name": "call/a606dc9b-2253-f556-495c-14158a38d9e7?manual_page=1",
+      "ms": 56
+    }
+  ]
+}

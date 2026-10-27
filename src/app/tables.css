@@ -1,0 +1,210 @@
+/* Record tables: scan across a row without the visual weight of a spreadsheet.
+   Optional columns and bulk row selection remain available from explicit controls. */
+table.sheet { border-collapse: separate; border-spacing: 0; }
+/* Keep the structural column for old saved widths, but remove its visible gutter. */
+table.sheet .rowgutter, table.sheet .rownum { display: none; }
+table.sheet th, table.sheet td {
+  height: 48px; padding: 10px 12px; border: 0; border-bottom: 1px solid var(--grid-line);
+  font-size: var(--text-body); line-height: 1.5;
+}
+table.sheet tr.colheads th {
+  height: 44px; padding: 11px 12px; font-size: var(--text-caption); font-weight: 600;
+  color: var(--muted); background: var(--surface-subtle); border-bottom-color: var(--border-strong);
+}
+table.sheet tbody tr { --row-bg: var(--surface); }
+table.sheet tbody tr:hover { --row-bg: var(--hover); }
+table.sheet tbody tr:has(.rowsel:checked) { --row-bg: var(--accent-bg); }
+table.sheet tbody td, table.sheet tbody td:hover { background: var(--row-bg); cursor: default; }
+table.sheet tbody td.identity-owner { font-weight: 600; color: var(--heading); line-height: 1.5; }
+.contact-card {
+  position: relative; isolation: isolate; display: inline-grid; width: fit-content;
+  min-width: 0; max-width: min(100%, 240px); padding: 4px 26px 4px 8px; vertical-align: middle;
+  border: 1px solid var(--border); border-radius: var(--radius-input); background: var(--surface);
+  color: var(--text); font-weight: 400; transition: border-color 120ms, background-color 120ms;
+}
+.contact-card-content { position: relative; display: grid; gap: 2px; min-width: 0; z-index: 2; }
+.contact-card-interactive .contact-card-content { pointer-events: none; }
+.contact-card-name { min-width: 0; min-height: 21px; color: var(--heading); font-size: var(--text-body); font-weight: 600; line-height: 1.5; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+table.sheet .contact-card .contact-card-open {
+  position: absolute; inset: 0; z-index: 1; display: block; width: 100%; height: 100%;
+  margin: 0; padding: 0; border: 0; border-radius: inherit; background: transparent;
+  box-shadow: none; cursor: pointer;
+}
+table.sheet .contact-card .contact-card-open:focus-visible { outline: none; }
+.contact-card:has(> .contact-card-open:hover) { border-color: var(--accent-border); background: var(--accent-bg); }
+.contact-card:has(> .contact-card-open:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; border-color: var(--accent); }
+.contact-card-arrow { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); z-index: 2; color: var(--accent); pointer-events: none; }
+.contact-card-phone { display: flex; align-items: center; min-height: 24px; font-size: var(--text-body); font-weight: 400; }
+.contact-card-phone .copytext { max-width: 100%; white-space: nowrap; }
+.contact-card-phone .copytext-v { min-width: 0; overflow-wrap: anywhere; white-space: normal; }
+.contact-card .copybtn { position: relative; pointer-events: auto; min-width: 24px; min-height: 24px; align-items: center; justify-content: center; }
+.contact-card .contact-card-meta { min-width: 0; margin: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.row-done .contact-card-name { color: var(--muted); }
+table.sheet .copytext { gap: 8px; }
+table.sheet .copytext-v { font-size: var(--text-body); font-variant-numeric: tabular-nums; }
+table.sheet td.numeric-cell { text-align: right; font-variant-numeric: tabular-nums; }
+table.sheet th:is([data-column="Sqft"], [data-column="Built-up sqft"], [data-column="Carpet sqft"], [data-column="Rent"], [data-column="DB Sqft"]) { text-align: right; }
+table.sheet td.record-history { font-size: var(--text-support); line-height: 1.65; }
+table.sheet input.rowsel, table.sheet input.selall { width: 16px; height: 16px; vertical-align: middle; }
+table.sheet .cell-input { min-height: 38px; font-size: var(--text-body); padding: 9px 10px; }
+table.sheet td.edit { background: var(--surface-subtle); }
+table.sheet td.edit { padding: 10px; }
+table.sheet td.edit:focus-within { outline: none; background: var(--row-bg); }
+table.sheet .cell-input {
+  border: 1px solid var(--field-border); border-radius: var(--radius-input); background: var(--field-bg);
+}
+table.sheet .cell-input:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+table.sheet td.edit small { display: block; margin-top: 5px; color: var(--muted); white-space: normal; }
+.record-meta { display: block; margin-top: 5px; font-size: var(--text-caption); font-weight: 400; line-height: 1.5; color: var(--muted); }
+table.sheet td { white-space: normal; overflow-wrap: anywhere; }
+table.sheet td:has(.copytext) { overflow-wrap: normal; }
+table.sheet .selcol { padding-inline: 12px; }
+table.sheet td.selcol { vertical-align: middle; }
+
+/* Status is a compact label, so a colored column does not dominate the record. */
+table.sheet tbody td:has(.cell-status) { background: var(--row-bg); color: var(--text); }
+table.sheet tbody td:has(.cell-status):hover { box-shadow: none; }
+.cell-status {
+  display: inline-block; max-width: 100%; padding: 3px 9px; border-radius: var(--radius-pill);
+  color: var(--result-fg, var(--text)); background: var(--result-bg, var(--surface-subtle));
+  font-size: var(--text-caption); font-weight: 500; line-height: 1.5; white-space: normal;
+}
+.cell-status:empty { display: none; }
+table.sheet td:has(.cell-status) .review-tag { display: block; margin: 6px 0 0; font-size: var(--text-caption); }
+
+/* Each calling task reads as a distinct work item. The familiar fields and
+   headings stay together, with a quieter boundary around the editable area. */
+.work-content { background: var(--canvas); padding: var(--space-2) var(--page-gutter) var(--space-5); }
+.work-content .worklist { margin-bottom: 20px; }
+.work-result-summary { border-bottom: 1px solid var(--border); }
+.work-result-tools { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--space-1) var(--space-4); }
+.work-guide > summary { min-height: 24px; padding-block: 3px; cursor: pointer; color: var(--accent); }
+.work-guide .legend { margin: var(--space-2) 0 0; padding: 0; max-width: 52ch; }
+.work-content .worklist .gridwrap { background: transparent; }
+.work-content .section-head { padding: 10px 0; border: 0; background: transparent; color: var(--heading); font-size: var(--text-section); }
+table.task-sheet { border-spacing: 0 10px; background: transparent; }
+table.task-sheet tr.colheads th { height: 44px; padding: 10px; font-size: var(--text-caption); letter-spacing: 0; }
+table.task-sheet tr.colheads th.mine { background: var(--accent-bg); color: var(--accent); }
+table.task-sheet th.mine-first { border-left: 1px solid var(--accent-border); }
+table.task-sheet tbody td {
+  padding: 14px 10px; vertical-align: top; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  font-size: var(--text-body); line-height: 1.5;
+}
+table.task-sheet tbody td.who { border-left: 1px solid var(--border); border-radius: var(--radius-panel) 0 0 var(--radius-panel); vertical-align: middle; }
+table.task-sheet tbody td:last-child { border-right: 1px solid var(--border); border-radius: 0 var(--radius-panel) var(--radius-panel) 0; }
+table.task-sheet tbody td.edit-cell { background: var(--surface-subtle); }
+table.task-sheet tbody tr:hover td.edit-cell { background: var(--surface-raised); }
+table.task-sheet tbody td.edit-first { border-left: 1px solid var(--border); }
+table.task-sheet .who-name { color: var(--heading); font-size: var(--text-body); font-weight: 600; line-height: 1.5; }
+table.task-sheet .row-done .who-name { color: var(--muted); }
+.work-person-heading { align-items: center; }
+.work-context { display: grid; gap: 5px; margin-top: 12px; font-size: var(--text-support); }
+.work-fact { display: flex; flex-wrap: nowrap; align-items: baseline; gap: 8px; padding: 0; border: 0; background: transparent; border-radius: 0; }
+.work-fact dt { min-width: 30px; font-size: var(--text-caption); }
+.work-fact dd { line-height: 1.5; }
+.work-content .work-assignment-note { margin-top: 12px; padding: 8px 10px; background: var(--surface-subtle); border-radius: 0 var(--radius-input) var(--radius-input) 0; }
+.work-content .worklist .brief { font-size: var(--text-caption); font-style: normal; line-height: 1.55; }
+.work-assigned-meta { margin-top: 10px; line-height: 1.5; }
+.work-ai { margin-top: 12px; gap: 8px; }
+.work-ai-cell .work-ai { margin-top: 0; }
+.work-ai .work-ai-status { font-size: var(--text-caption); padding: 4px 9px; }
+.work-ai-count { font-size: var(--text-caption); line-height: 1.5; }
+table.task-sheet .field { min-height: 36px; font-size: var(--text-body); background: var(--field-bg); }
+table.task-sheet .field-select { padding: 8px 5px; font-size: var(--text-support); }
+table.task-sheet .notes-field { min-height: 76px; line-height: 1.55; }
+table.task-sheet .notes-field:focus { min-height: 96px; }
+.task-sheet .btn-done { min-height: 32px; gap: 4px; padding: 6px 5px; font-size: var(--text-support); }
+.task-sheet .notes-cell > .btn-row { margin-top: 8px; font-size: var(--text-caption); padding: 4px 8px; }
+.task-sheet .checkfield { font-size: var(--text-caption); padding-top: 9px; }
+table.assignment-sheet td { padding-block: 14px; }
+table.assignment-sheet .assignment-person { background: var(--row-bg); }
+table.assignment-sheet .assignee-name { font-size: var(--text-body); line-height: 1.5; }
+.assignee-card { display: inline-grid; width: fit-content; min-width: 0; max-width: min(100%, 280px); gap: 3px; padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius-input); background: var(--surface); vertical-align: middle; text-align: left; font-family: inherit; }
+button.assignee-card { cursor: pointer; }
+button.assignee-card:hover { border-color: var(--accent-border); background: var(--accent-bg); }
+table.assignment-sheet .assignee-card .assignee-name { color: var(--heading); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.assignee-attribution { display: block; min-width: 0; color: var(--muted); font-size: var(--text-caption); line-height: 1.5; overflow-wrap: anywhere; }
+.assignee-attribution time, .assignment-completed time { white-space: nowrap; }
+table.assignment-sheet td.assignment-person { padding-block: 7px; }
+.assignee-email { margin-top: 4px; font-size: var(--text-caption); line-height: 1.5; }
+.assignment-subject { line-height: 1.6; }
+.assignment-statusbar { display: flex; flex: none; align-items: center; flex-wrap: wrap; gap: 6px 20px; padding: 0 var(--page-gutter) var(--space-1); }
+.assignment-statusbar .stat-row { margin: 0; gap: 6px; }
+.assignment-statusbar .stat { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; min-width: 0; padding: 6px 10px; border: 1px solid transparent; border-radius: var(--radius-input); background: transparent; }
+.assignment-statusbar a.stat:hover { background: var(--hover); text-decoration: none; }
+.assignment-statusbar .stat-active { border-color: var(--accent-border); background: var(--accent-bg); }
+.assignment-statusbar .stat-n { display: inline-flex; align-items: center; height: 24px; font-size: var(--text-section); font-weight: 600; line-height: 1.5; }
+.assignment-statusbar .stat-l { margin: 0; font-size: var(--text-support); }
+.assignment-stat-scope { margin-left: auto; color: var(--muted); font-size: var(--text-caption); overflow-wrap: anywhere; }
+.assignment-summary { padding: var(--space-1) var(--page-gutter); min-height: 32px; flex-wrap: wrap; }
+.assignment-summary > span { display: inline-flex; align-items: center; min-height: 18px; }
+.team-report-grid .sheet th, .team-report-grid .sheet td { padding: 12px; font-size: var(--text-body); line-height: 1.55; }
+/* Batch evidence can scroll as a table, but contact names and phone numbers
+   must remain legible instead of collapsing into a few characters per line. */
+.batch-grid .sheet th, .batch-grid .sheet td { min-width: 110px; }
+.batch-grid .sheet th:first-child, .batch-grid .sheet td:first-child { min-width: 240px; width: 240px; }
+.team-evidence-grid .sheet th:first-child, .team-evidence-grid .sheet td:first-child { min-width: 240px; }
+
+@media (max-width: 1100px) {
+  .work-content { padding-inline: var(--page-gutter); }
+  .work-content .section-head { padding-inline: 0; }
+}
+@media (max-width: 760px) {
+  .dashboard-content[data-page="/dashboard/assignments"] .page-title > .freshness { flex-basis: auto; flex-direction: column; align-items: flex-end; gap: 0; }
+  .dashboard-content[data-page="/dashboard/assignments"] .loading-timestamp { height: 18px; }
+  .assignment-statusbar { padding: 0 var(--page-gutter) var(--space-2); gap: var(--space-1); }
+  .assignment-statusbar .stat-row { gap: 2px; }
+  .assignment-statusbar .stat { padding: 5px 6px; }
+  .assignment-stat-scope { margin-left: 6px; }
+  .assignment-scope-default { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .assignment-summary { padding-inline: 16px; gap: 4px; }
+  .dashboard-content[data-page="/dashboard/my"] { overflow-y: auto; }
+  .dashboard-content[data-page="/dashboard/my"] .work-content { flex: none; overflow: visible; }
+  /* Reserve the same two lines before and after the result count arrives. */
+  .work-result-summary { flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 6px; }
+  .work-content { padding: 0 var(--page-gutter) var(--space-5); }
+  .work-content .section-head { padding: 14px 0 6px; }
+  .work-content .worklist .gridwrap { overflow: visible; max-height: none; }
+  table.task-sheet { display: block; position: relative; width: 100%; min-width: 0; }
+  table.task-sheet colgroup { display: none; }
+  table.task-sheet thead {
+    position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%);
+  }
+  table.task-sheet tbody { display: grid; gap: var(--space-4); padding-top: var(--space-2); }
+  table.task-sheet tbody tr {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px;
+    padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-panel); background: var(--surface);
+  }
+  table.task-sheet tbody td, table.task-sheet tbody td.who, table.task-sheet tbody td:last-child,
+  table.task-sheet tbody tr:hover td.edit-cell {
+    display: block; width: auto; min-width: 0; max-width: none; height: auto; padding: 0;
+    border: 0; border-radius: 0; background: transparent; box-shadow: none;
+  }
+  table.task-sheet tbody td.rownum { display: none; }
+  table.task-sheet td.who, table.task-sheet td.work-ai-cell, table.task-sheet td.edit-first,
+  table.task-sheet td.notes-cell, table.task-sheet td[data-label="Finished?"] { grid-column: 1 / -1; }
+  table.task-sheet td[data-label]::before {
+    content: attr(data-label); display: block; margin-bottom: 7px; color: var(--muted); font-size: var(--text-caption); font-weight: 500;
+  }
+  table.task-sheet td.center { text-align: left; }
+  table.task-sheet td[data-label="Finished?"] { border-top: 1px solid var(--border); padding-top: 14px; text-align: right; }
+  table.task-sheet td[data-label="Finished?"]::before { display: inline; margin-right: 12px; }
+  table.task-sheet .btn-done { min-height: 40px; padding: 8px 14px; }
+  table.task-sheet .checkfield { min-height: 40px; padding: 0; }
+  table.task-sheet .field, table.task-sheet .field-select { min-height: 42px; padding: 10px; font-size: var(--text-section); }
+  table.task-sheet .notes-field, table.task-sheet .notes-field:focus { min-height: 88px; }
+  .work-content .work-context { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .work-content .work-fact { flex-direction: column; gap: 2px; }
+  .work-content .work-fact dd { overflow-wrap: anywhere; }
+  .work-content .work-ai-cell { padding-block: 12px; border-block: 1px solid var(--border); }
+  .work-content .work-ai { flex-direction: row; flex-wrap: wrap; align-items: center; margin-top: 0; }
+}
+
+/* Selection tools appear only while reviewing selected assignments. */
+.assignment-bulk-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; padding: 8px var(--page-gutter); border-bottom: 1px solid var(--border); background: var(--accent-bg); }
+.assignment-bulk-bar .selection-summary { padding: 0; border: 0; background: transparent; flex: 1 1 260px; }
+.assignment-bulk-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.mismatch-context { margin: 0; padding: 8px var(--page-gutter); color: var(--muted); font-size: var(--text-support); border-bottom: 1px solid var(--border); }
+.assignment-sheet .review-tag { display: inline-block; white-space: nowrap; }
+.bulk-skipped { padding-left: 20px; color: var(--muted); }
+.bulk-skipped li + li { margin-top: 6px; }

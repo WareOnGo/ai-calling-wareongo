@@ -23,6 +23,9 @@ export function getPool(): Pool {
       ssl: databaseTls(u.hostname),
       statement_timeout: 15_000,
       idle_in_transaction_session_timeout: 20_000,
+      // Interactive reads spent ~3s compiling 256 JIT expressions for <20ms
+      // of execution. pg-pool awaits this hook before lending a new session.
+      onConnect: async client => { await client.query("set timezone='UTC'; set jit = off; set pg_trgm.word_similarity_threshold = 0.5"); },
     });
   }
   return globalForPg.__pgPool;

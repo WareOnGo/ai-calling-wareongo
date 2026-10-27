@@ -6,6 +6,13 @@ import Link from "next/link";
 import { useDashboardUI } from "../DashboardUI";
 import { requestJson } from "../requests";
 import { IconPlus, IconCheck, IconUsers, IconLock } from "../icons";
+import { countFilters, firstValue, type SearchValues } from "@/lib/filter-values";
+import { FilterForm } from "../FilterForm";
+import { FilterPanel } from "../FilterPanel";
+import { FiltersToggle } from "../FiltersToggle";
+import { ApplyButton } from "../ApplyButton";
+import { SelectFilter } from "../FilterFields";
+import { CallerLinkEditor } from "./CallerLinkEditor";
 
 export type Person = {
   email: string;
@@ -14,6 +21,8 @@ export type Person = {
   active: boolean;
   open: number;
   done: number;
+  callyzer_number?: string | null;
+  callyzer_tracking_since?: string | null;
 };
 
 // A people directory, not a grid. Every control states its consequence, because
@@ -28,6 +37,9 @@ export function TeamEditor({
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [role, setRole] = useState("employee");
+  const [filters, setFilters] = useState<SearchValues>({});
+  const search = firstValue(filters.q) || "", roleFilter = firstValue(filters.role), accessFilter = firstValue(filters.access);
+  const filtered = !!(search.trim() || roleFilter || accessFilter);
 
   async function save(body: Record<string, unknown>, key: string) {
     if (busy || pending) return false;
@@ -35,7 +47,7 @@ export function TeamEditor({
     setFeedback(null);
     try {
       await requestJson("/api/users", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-      const text = key === "new" ? `Access granted to ${body.email}` : body.active === false ? `Access removed for ${key}` : body.active === true ? `Access restored for ${key}` : `Role updated for ${key}`;
+      const text = key === "new" ? `Access granted to ${body.email}` : body.callyzer_number !== undefined ? `Caller link updated for ${key}` : body.active === false ? `Access removed for ${key}` : body.active === true ? `Access restored for ${key}` : `Role updated for ${key}`;
       setFeedback({ key, body, text });
       notify(text);
       refresh();
@@ -57,24 +69,27 @@ export function TeamEditor({
     }
   }
 
+  const matching = people.filter(person => `${person.name || ""} ${person.email}`.toLowerCase().includes(search.trim().toLowerCase()) && (!roleFilter || person.role === roleFilter) && (!accessFilter || person.active === (accessFilter === "active")));
   const groups: { key: string; title: string; hint: string; rows: Person[] }[] = [
     {
       key: "admins", title: "Admins", hint: "Full access — can assign work and manage this list.",
-      rows: people.filter((p) => p.active && p.role === "admin"),
+      rows: matching.filter((p) => p.active && p.role === "admin"),
     },
     {
       key: "employees", title: "Employees", hint: "See only the work assigned to them.",
-      rows: people.filter((p) => p.active && p.role === "employee"),
+      rows: matching.filter((p) => p.active && p.role === "employee"),
     },
     {
       key: "revoked", title: "No access", hint: "Cannot sign in. Their past work is kept.",
-      rows: people.filter((p) => !p.active),
+      rows: matching.filter((p) => !p.active),
     },
   ];
 
   return (
     <div className="team">
-      <TeamAccessNote />
+      <div className="team-access-toolbar"><TeamAccessNote />
+        {!open && <button type="button" className="btn-primary add-trigger" disabled={!!busy || pending} onClick={() => setOpen(true)}><IconPlus size={15}/> Add someone</button>}
+      </div>
 
       {open ? (
         <form className="addcard" onSubmit={add} aria-busy={busy === "new"}>
@@ -113,15 +128,21 @@ export function TeamEditor({
           {status("new")}
           </fieldset>
         </form>
-      ) : (
-        <button type="button" className="btn-primary add-trigger" disabled={!!busy || pending} onClick={() => setOpen(true)}>
-          <IconPlus size={15} /> Add someone
-        </button>
-      )}
+      ) : null}
 
       {!open && feedback?.key === "new" && status("new")}
 
-      {groups.map((g) => (
+      <FilterForm key={JSON.stringify(filters)} action="/dashboard/team/access" applied={filters} onApply={setFilters} savedViews={false} className="team-directory-tools" labels={{q:"Search",role:"Role",access:"Access"}} formatValue={(key,value)=>key==='role'?(value==='admin'?'Admins':'Employees'):key==='access'?(value==='active'?'Can sign in':'Access removed'):value}
+        actions={<span role="status">{filtered ? `${matching.length} of ${people.length} members` : `${people.filter(person => person.active).length} with access · ${people.length} members`}</span>}>
+        <div className="search"><input name="q" aria-label="Search team members" type="search" placeholder="Search by name or email…" defaultValue={search}/></div>
+        <FiltersToggle count={countFilters(filters,["role","access"])}/><ApplyButton/>
+        <FilterPanel groups={[{label:"Access",content:<>
+          <SelectFilter name="role" label="Role" ariaLabel="Filter by role" applied={filters} any="All roles" options={[{value:"admin",label:"Admins"},{value:"employee",label:"Employees"}]}/>
+          <SelectFilter name="access" label="Access" ariaLabel="Filter by access" applied={filters} any="All members" options={[{value:"active",label:"Can sign in"},{value:"removed",label:"Access removed"}]}/>
+        </>}]}/>
+      </FilterForm>
+      {!matching.length && filtered && <p className="team-no-matches">No members match these filters. Try another name, role or access status.</p>}
+      {groups.filter(group => !filtered || group.rows.length).map((g) => (
         <section key={g.key} className="people-group">
           <h2 className="group-head">
             {g.title} <span className="count">{g.rows.length}</span>
@@ -192,6 +213,7 @@ export function TeamEditor({
                       </span>
                     </button>
                     {status(p.email)}
+                    <CallerLinkEditor key={`${p.email}:${p.callyzer_number}:${p.callyzer_tracking_since}`} email={p.email} number={p.callyzer_number} since={p.callyzer_tracking_since} disabled={!!busy || pending} save={save}/>
                   </li>
                 );
               })}
