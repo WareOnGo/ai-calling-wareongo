@@ -1,6 +1,7 @@
 import { RecordDetails } from "../RecordDetails";
 import { assignmentFiltersSchema } from "@/lib/filters";
 import {dispositionLabel} from "@/lib/manual-dispositions";
+import { manualHistorySummaries } from "@/lib/manual-attempts";
 import { countFilters, firstValue, filterValues } from "@/lib/filter-values";
 import { RecordsPagination } from "../RecordsPagination";
 import { RecordsHeader } from "../RecordsHeader";
@@ -44,15 +45,25 @@ function ago(iso: string): string {
 
 // The employee's verdict vs what the AI heard. Agreement is the useful signal, so
 // a mismatch is called out rather than left for the reader to spot.
-function resultCell(r: AssignmentHistoryRow) {
-  if (!r.outcome) return <span className="muted">—</span>;
+function manualResultCard(r: AssignmentHistoryRow, historyCount: number) {
   const ai = (r.ai_availability ?? "").trim();
-  const disagrees = r.ai_comparable && ai.toLowerCase() !== r.outcome.toLowerCase();
+  const disagrees = r.outcome && r.ai_comparable && ai.toLowerCase() !== r.outcome.toLowerCase();
   return (
-    <>
-      <ResultBadge value={r.outcome}/>
-      {disagrees && r.entity_type === "call" && <span className="review-tag" title={`AI heard "${ai}"`}>≠ AI</span>}
-    </>
+    <div className="manual-result-card">
+      <div className="manual-result-summary">
+        <div className="manual-result-heading">
+          <ResultBadge value={r.outcome} empty="No result yet"/>
+          {disagrees && r.entity_type === "call" && <span className="review-tag" title={`AI heard "${ai}"`}>≠ AI</span>}
+        </div>
+        <span className="manual-result-log">{historyCount ? `${historyCount} call ${historyCount === 1 ? "record" : "records"}` : "No call records yet"}</span>
+        {r.disposition && <span className="manual-result-log">{dispositionLabel(r.disposition)}</span>}
+        {r.closure_reason === "exhausted" && <span className="manual-result-followup">Follow-ups exhausted</span>}
+        {r.next_due_at && <span className="manual-result-followup">Follow-up <time dateTime={r.next_due_at}>{fmt(r.next_due_at)}</time></span>}
+      </div>
+      <RecordDetails id={r.entity_id} entity={r.entity_type} label="Call history" initialSection="Manual activity" className="manual-result-history" title="Callyzer calls and staff logs for this contact">
+        <span>Call history</span><svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m6 3 5 5-5 5"/></svg>
+      </RecordDetails>
+    </div>
   );
 }
 
@@ -72,6 +83,7 @@ export default async function Assignments({
     assignmentTotals(user, sp.assignee, filters),
     listUsers(),
   ]);
+  const callHistory=await manualHistorySummaries(user,rows.map(r=>({entity:r.entity_type,id:r.entity_id})));
 
   const activeFilters = countFilters(sp, ASSIGNMENT_FILTER_KEYS);
 
@@ -114,7 +126,7 @@ export default async function Assignments({
                 <td className="assignment-brief">{r.note || <span className="muted">—</span>}</td>
                 <td title={r.entity_type === "record" ? "AI context from a shared phone; may describe another property" : "AI result for this execution"}><ResultBadge value={r.ai_availability} empty="No AI result"/>{r.entity_type === "record" && r.ai_availability && <small className="record-meta">contact context</small>}</td>
                 <td className="record-history"><AiAttemptCard entity={r.entity_type} id={r.entity_id} summary={r.ai_summary}/></td>
-                <td>{resultCell(r)}<RecordDetails id={r.entity_id} entity={r.entity_type} label="Call history" initialSection="Manual activity" title="Callyzer calls and staff logs for this contact"/><span className="record-meta">{dispositionLabel(r.disposition)}{r.closure_reason==='exhausted'&&' · Exhausted'}{r.next_due_at&&<><br/>Due {fmt(r.next_due_at)}</>}</span></td>
+                <td>{manualResultCard(r,callHistory.get(`${r.entity_type}:${r.entity_id}`)!.total)}</td>
                 <td className="assignment-note-cell"><AssignmentNotes text={r.remarks} /></td>
                 <td>{r.added_to_db ? <span className="pill pill-available">yes</span> : <span className="muted">no</span>}</td>
                 <td>{r.wh_id ?? <span className="muted">—</span>}</td>

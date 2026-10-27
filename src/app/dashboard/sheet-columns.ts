@@ -20,7 +20,7 @@ export const ASSIGNMENT_COLUMNS = [
 ];
 export const ASSIGNMENT_WIDTHS: Record<string, number> = {
   Contact: 240, City: 125, Channel: 110, Assignee: 170, Assigned: 115,
-  Status: 88, Brief: 245, "AI result": 115, "AI attempts": 175, "Manual result": 125, Notes: 195,
+  Status: 88, Brief: 245, "AI result": 115, "AI attempts": 175, "Manual result": 200, Notes: 195,
   "In DB": 80, "WH ID": 110, Actions: 100,
 };
 

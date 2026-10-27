@@ -1,7 +1,7 @@
 import {beforeAll,beforeEach,afterAll,it,expect,vi} from 'vitest';
 import {randomUUID} from 'node:crypto';
 import {query,getPool} from '@/lib/db';
-import {manualHistory,recordManualAttempt} from '@/lib/manual-attempts';
+import {manualHistory,manualHistorySummaries,recordManualAttempt} from '@/lib/manual-attempts';
 import {GET as detailsApi} from '@/app/api/details/[entity]/[id]/route';
 
 const admin={email:'admin@timeline.test',isAdmin:true},caller={email:'caller@timeline.test',isAdmin:false},other={email:'other@timeline.test',isAdmin:false};
@@ -41,6 +41,30 @@ it('interleaves imported calls and corrected staff logs without writing attempts
  expect((await query('select count(*)::int n from bolna_effective_manual_attempts')).rows[0].n).toBe(1);
  expect((await query('select revision,outcome from bolna_assignments where id=$1',[assignment])).rows[0]).toEqual({revision:2,outcome:null});
  expect(history.rows.some(e=>'request_hash' in e)).toBe(false);
+ expect((await manualHistorySummaries(admin,[{entity:'record',id:record}])).get(`record:${record}`)).toEqual({total:3,logged:2,imported:1});
+ expect((await manualHistory(admin,'record',record.toUpperCase())).total).toBe(3);
+});
+
+it('keeps page summaries equal to their timelines for mixed sources, duplicate targets and empty history',async()=>{
+ await imported('own');await imported('other',{owner:other.email});
+ await imported('wrong-country',{phone:'1-9811100001'});await imported('other-account',{account:'elsewhere'});
+ await recordManualAttempt(assignment,caller,{id:randomUUID(),revision:0,occurred_at:'2026-10-20T09:00:00Z',disposition:'connected'});
+ const empty=randomUUID();await query("insert into raw_records(id,source,source_record_id) values($1::uuid,'manual-timeline',$1::text)",[empty]);
+ const targets=[{entity:'record' as const,id:record},{entity:'record' as const,id:record},{entity:'call' as const,id:execution},{entity:'record' as const,id:empty}];
+ const summaries=await manualHistorySummaries(admin,targets);
+ expect(summaries.size).toBe(3);
+ expect(summaries.get(`record:${record}`)).toEqual({total:3,logged:1,imported:2});
+ expect(summaries.get(`call:${execution}`)).toEqual({total:2,logged:0,imported:2});
+ expect(summaries.get(`record:${empty}`)).toEqual({total:0,logged:0,imported:0});
+ for(const target of targets){
+  const {total,logged,imported}=await manualHistory(admin,target.entity,target.id);
+  expect(summaries.get(`${target.entity}:${target.id}`)).toEqual({total,logged,imported});
+ }
+ const own=await manualHistorySummaries(caller,targets);
+ expect(own.get(`record:${record}`)).toEqual({total:2,logged:1,imported:1});
+ expect(own.get(`call:${execution}`)?.total).toBe(0);
+ await query("update bolna_assignments set state='dropped' where id=$1",[assignment]);
+ expect((await manualHistorySummaries(caller,targets)).get(`record:${record}`)?.total).toBe(0);
 });
 
 it('matches all linked contact numbers with full country identity and preserves source channels',async()=>{

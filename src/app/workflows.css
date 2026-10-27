@@ -247,6 +247,16 @@ table.sheet .record-history .ai-attempt-summary:hover { border-color: currentCol
 .ai-attempt-available { --attempt-bg: var(--fill-green-bg); --attempt-fg: var(--fill-green-tx); }
 .ai-attempt-unavailable { --attempt-bg: var(--fill-red-bg); --attempt-fg: var(--fill-red-tx); }
 .ai-attempt-unclear { --attempt-bg: var(--fill-yel-bg); --attempt-fg: var(--fill-yel-tx); }
+.manual-result-card { display: flex; flex-direction: column; width: 100%; border: 1px solid var(--border); border-radius: var(--radius-input); background: var(--surface); overflow: hidden; }
+.manual-result-summary { display: grid; gap: 6px; padding: 10px; }
+.manual-result-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 22px; font-size: var(--text-support); }
+.manual-result-heading .pill, .manual-result-heading .review-tag { margin: 0; }
+.manual-result-log, .manual-result-followup { color: var(--muted); font-size: var(--text-caption); line-height: 1.5; overflow-wrap: normal; }
+.manual-result-followup time { display: block; }
+.manual-result-history { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 36px; margin: 0; padding: 7px 10px; border: 0; border-top: 1px solid var(--border); border-radius: 0; background: var(--surface-subtle); color: var(--accent); font: inherit; font-size: var(--text-caption); font-weight: 500; text-align: left; cursor: pointer; }
+.manual-result-history svg { flex: none; }
+.manual-result-history:hover { background: var(--accent-bg); }
+.manual-result-history:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
 /* Outcomes have the same meaning in reports and editable calling tasks. */
 select.outcome-select[data-result="Available"] { background-color: var(--fill-green-bg); color: var(--fill-green-tx); }
 select.outcome-select[data-result="Unavailable"] { background-color: var(--fill-red-bg); color: var(--fill-red-tx); }

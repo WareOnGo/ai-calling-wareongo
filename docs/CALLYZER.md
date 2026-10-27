@@ -26,7 +26,10 @@ values are stored at `:00` seconds; invalid dates and times still fail validatio
 
 The shared **Manual activity → Call history** drawer in Assignments, Raw Dataset,
 AI Calls, My Work and manual batches interleaves imported calls with staff logs.
-History links are available even without staff logs. Imported calls match all full
+History links are available even without staff logs. Assignment cards count both
+imported and manually entered records using the same matching query as their
+timeline, batched for the visible page. The drawer lists only sources with entries.
+Imported calls match all full
 phone numbers on a listing, or the customer number on an execution (the sender for
 inbound calls). Local numbers use the dashboard's India convention; international
 country codes are kept, so equal last-ten digits alone do not establish a match.
