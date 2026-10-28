@@ -25,28 +25,13 @@ not complete schema equivalence: compare an installation with private/custom
 schema changes before adopting it. Missing columns or incompatible constraints
 fail the transaction rather than being silently skipped.
 
-The runner holds a session advisory lock and commits each migration separately.
-Applied file checksums are verified. Baseline and migrations 001–005 are unchanged.
-The unshipped 006–019 development sequence is consolidated into 006 schema,
-007 retained-payload recovery and 008 concurrent indexes. No superseded intermediate
-tables or policies are created. An installation carrying retired migration names
-is refused; rebuild a disposable development database or prepare a specific
-forward upgrade. Never bypass the ledger or edit applied production migrations.
-
-Stage 007 uses 250-row transactions and commits evidence with its cursor. Its
-checksum is recorded only after recovery finishes. An interruption resumes that
-cursor; the already-recorded schema stage is not rerun.
-
-Stage 008 builds indexes concurrently. Its lock timeout is zero so older
-transactions can finish, while the overall statement timeout defaults to ten
-minutes (`MIGRATION_INDEX_TIMEOUT_MS`, 1000–3600000). Invalid partial indexes are
-removed before retrying. Ordinary statements retain thirty-second statement and
-two-second lock limits. A failure rolls back only the active transaction;
-earlier stages remain applied. Fix the cause and rerun. No down migrations exist.
-
-See the [deployment runbook](../docs/DEPLOYMENT.md) for maintenance, recovery,
-backfill catch-up and production-volume rehearsal requirements.
-
+The migration runner serializes itself with a transaction advisory lock, runs
+DDL and ledger writes in one transaction, and records SHA-256 checksums in
+`bolna_schema_migrations`. A later run is a no-op unless a new file was added.
+Changing an applied file is rejected. Add another numbered migration instead.
+Lock waits are limited to two seconds and statements to thirty seconds; a timeout
+rolls back the transaction. Inspect contention before retrying rather than leaving
+a DDL request queued indefinitely behind production traffic.
 Do not use private `db:push` or old post-push SQL after adopting this history;
 they do not know about the new job, revision, reservation and retry columns.
 
@@ -152,41 +137,3 @@ out of logs. To pause only this scheduler, use
 References: [Supabase Cron](https://supabase.com/docs/guides/cron/quickstart),
 [pg_net HTTP timeouts and responses](https://supabase.com/docs/guides/database/extensions/pg_net),
 and [Bolna batch states](https://www.bolna.ai/docs/api-reference/batches/get_batch).
-
-
-## Bolna DB Fixes rollout (006–008)
-
-The schema stage adds shared contact ownership, durable manual batches, manual
-attempt/audit history, canonical completion rules, numeric/search helpers,
-per-dial AI history and the reconciliation cursor/lease. It preserves safe exact-call
-legacy onboarding without manufacturing dates. Obsolete contact claims, wallet
-cache and duplicate delivery-ledger tables are absent from the consolidated schema.
-
-Done inserts/transitions need a logged call. Already-Done edits skip that one
-requirement but still validate result, WH ID, notes and closure whenever relevant
-values change. Available always needs a positive integer WH ID, including Exhausted
-closures. Retry work can be deliberately closed as Exhausted with a substantive
-reason; there is no additional attempt threshold or automatic cap. Invalid legacy
-completions can be repaired atomically or reopened.
-
-Provider timestamps without an offset are interpreted as UTC, independently of
-session TimeZone. Explicit offsets retain their instant. The app stores UTC and
-displays IST. Confirm the provider convention against a known call before rollout.
-
-Run [handoff-audit.sql](handoff-audit.sql) after schema migration on staging (it uses
-handoff views/functions). It identifies overlapping ownership, invalid Done rows,
-missing phones, reused references and legacy ungrouped assignments. Row samples
-are capped at 200. Source imports do not automatically resolve ownership conflicts.
-
-The local rehearsals cover fresh, legacy, through-005, interrupted recovery and
-concurrent-index timeout/retry. They check co-tenant preservation, legacy onboarding,
-unknown dates, retired-history rejection and an index wait exceeding two seconds.
-They do not replace a representative staging migration and restore rehearsal.
-
-## V2 manual-call tags
-
-`012_manual_call_tags.sql` adds Owner unresponsive, Leased out and No property for rent to the assignment and manual-event constraints. Owner unresponsive joins the retryable dispositions used by follow-up and completion checks. Existing events, audit history and trigger enablement are preserved. Apply this forward migration before deploying the V2 tag controls; no new credentials are needed.
-
-Migration 012 was applied to the shared production database on 21 October 2026 with explicit approval. The transaction verified unchanged fingerprints for all 2,379 assignments, 2 manual attempts and 3,084 assignment-audit records, and preserved every trigger's enabled/disabled state. The migration ledger and validated constraints were rechecked after commit. Migration 009 remains pending and was not included.
-
-Both app URLs now use the expanded database vocabulary. The V2 UI and the explicit ownership check for reopening a single assignment are implemented on the feature branch and take effect when that code is deployed. The reopening check must run in the application because the shared database still has `bolna_assignment_contacts_sync` and `bolna_assignment_quality_guard` disabled for compatibility with the older dashboard.

@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { filterFormSnapshot } from "./filter-form-state";
 import { useDashboardUI } from "./DashboardUI";
 
-// Apply is enabled only when the draft differs from the applied query.
-export function ApplyButton({ label = "Apply", primary = false }: { label?: string; primary?: boolean } = {}) {
-  const { pending, transitioning } = useDashboardUI();
+// Blue + enabled only when the filter form differs from the currently-applied
+// state; grey + disabled when there's nothing new to apply.
+export function ApplyButton() {
+  const { pending } = useDashboardUI();
   const ref = useRef<HTMLButtonElement>(null);
   const [dirty, setDirty] = useState(false);
 
@@ -15,7 +15,11 @@ export function ApplyButton({ label = "Apply", primary = false }: { label?: stri
     const form = btn?.closest("form");
     if (!form) return;
 
-    const serialize = () => filterFormSnapshot(form);
+    const serialize = () => {
+      const parts: string[] = [];
+      for (const [k, v] of new FormData(form).entries()) parts.push(`${k}=${String(v)}`);
+      return parts.join("&");
+    };
     const initial = serialize();
     const onChange = () => setDirty(serialize() !== initial);
 
@@ -28,8 +32,8 @@ export function ApplyButton({ label = "Apply", primary = false }: { label?: stri
   }, []);
 
   return (
-    <button ref={ref} type="submit" className={`${primary ? "btn-primary" : "btn"} apply-button`} disabled={!dirty || pending}>
-      {transitioning ? "Applying…" : label}
+    <button ref={ref} type="submit" className="btn apply-button" disabled={!dirty || pending}>
+      {pending ? "Applying…" : "Apply"}
     </button>
   );
 }

@@ -3,12 +3,10 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, useTransition, useMemo } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Dialog } from "./Dialog";
-import { WalletBalanceProvider } from "./WalletBalance";
 
 type Save = { dirty: boolean; status: string; label: string; retry: () => void; discard: () => void };
 type UI = {
   pending: boolean;
-  transitioning: boolean;
   navigate: (href: string) => void;
   refresh: () => void;
   notify: (text: string) => void;
@@ -27,10 +25,7 @@ export function useDashboardUI() {
 export function DashboardUI({ children, header, userEmail, isAdmin }: { children: React.ReactNode; header?: React.ReactNode; userEmail: string; isAdmin: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [transitioning, startTransition] = useTransition();
-  const [hydrated, setHydrated] = useState(false);
-  useEffect(() => setHydrated(true), []);
-  const pending = transitioning || !hydrated;
+  const [pending, startTransition] = useTransition();
   const saves = useRef(new Map<string, Save>());
   const [saveList, setSaveList] = useState<[string, Save][]>([]);
   const [message, setMessage] = useState("");
@@ -77,9 +72,7 @@ export function DashboardUI({ children, header, userEmail, isAdmin }: { children
       if (!a || a.target === "_blank" || a.download || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button !== 0) return;
       const url = new URL(a.href, location.href);
       if (url.origin === location.origin && url.pathname.startsWith('/dashboard')) {
-        // Prevent Next/browser navigation, but let the link's own click handler
-        // run (for example, to dismiss the modal it belongs to).
-        e.preventDefault();
+        e.preventDefault(); e.stopPropagation();
         navigate(url.pathname + url.search + url.hash);
       }
     };
@@ -91,29 +84,29 @@ export function DashboardUI({ children, header, userEmail, isAdmin }: { children
   const failed = saveList.filter(([, s]) => s.status === "error");
   const saving = saveList.some(([, s]) => s.status === "saving");
   const dirty = saveList.filter(([, s]) => s.dirty);
-  const context = useMemo(() => ({ pending, transitioning, navigate, refresh, notify, reportSave, hasDrafts, isAdmin, viewStorageKey: `dashboard-views:${userEmail}` }), [pending, transitioning, navigate, refresh, notify, reportSave, hasDrafts, isAdmin, userEmail]);
-  return <WalletBalanceProvider scope={`${userEmail}:${isAdmin}`}><Context.Provider value={context}>
+  const context = useMemo(() => ({ pending, navigate, refresh, notify, reportSave, hasDrafts, isAdmin, viewStorageKey: `dashboard-views:${userEmail}` }), [pending, navigate, refresh, notify, reportSave, hasDrafts, isAdmin, userEmail]);
+  return <Context.Provider value={context}>
     {header}
-    {transitioning && <div className="navigation-progress" role="status"><span />Updating results…</div>}
-    {(saveList.length > 0 || pathname === "/dashboard/my") && <div className={`sheet-save-status${failed.length ? " has-error" : ""}${!failed.length && !saving && !dirty.length ? " is-idle" : ""}`} role="status" aria-live="polite">
+    {pending && <div className="navigation-progress" role="status"><span />Updating results…</div>}
+    {(saveList.length > 0 || pathname === "/dashboard/calls" || pathname === "/dashboard/my") && <div className={`sheet-save-status${failed.length ? " has-error" : ""}`} role="status" aria-live="polite">
       {!saveList.length ? "Edits save automatically" : failed.length ? <>{failed.length} {failed.length === 1 ? "row hasn't" : "rows haven't"} saved. Your drafts are still here.
         <button type="button" onClick={() => failed.forEach(([, s]) => s.retry())}>Retry</button>
         <button type="button" onClick={() => document.getElementById(`save-${failed[0][0]}`)?.scrollIntoView({ block: "center", inline: "nearest" })}>Show change</button>
         <button type="button" disabled={saving} onClick={() => setDiscardOpen(true)}>Discard unsaved changes…</button>
       </> : saving ? "Saving changes…" : dirty.length ? <>Unsaved changes<button type="button" onClick={() => dirty.forEach(([, s]) => s.retry())}>Save changes</button><button type="button" onClick={() => setDiscardOpen(true)}>Discard…</button></> : "All changes saved"}
     </div>}
-    <div className="dashboard-content dash-main" aria-busy={pending} data-hydrated={hydrated} data-page={pathname}>{children}</div>
+    <div className="dashboard-content dash-main" aria-busy={pending} data-page={pathname}>{children}</div>
     <div className="notification-region" role="status" aria-live="polite">{message && <div className="snackbar">{message}<button type="button" onClick={() => setMessage("")} aria-label="Dismiss notification">×</button></div>}</div>
     {discardOpen && <Dialog title="Discard unsaved changes?" onClose={() => setDiscardOpen(false)} busy={saving}>
       <div className="modal-body"><p>This removes the unsaved edits in {dirty.length} {dirty.length === 1 ? 'row' : 'rows'}. Successfully saved changes will stay.</p></div>
       <div className="modal-foot"><button className="btn secondary" onClick={() => setDiscardOpen(false)}>Keep editing</button><button className="btn" disabled={saving} onClick={() => {dirty.forEach(([, s]) => s.discard());setDiscardOpen(false);notify('Unsaved changes discarded');}}>Discard changes</button></div>
     </Dialog>}
-  </Context.Provider></WalletBalanceProvider>;
+  </Context.Provider>;
 }
 
 export function Freshness({ updatedAt }: { updatedAt: string }) {
-  const { pending, transitioning, refresh } = useDashboardUI();
+  const { pending, refresh } = useDashboardUI();
   return <span className="freshness">Updated {new Date(updatedAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" })} IST
-    <button type="button" className="btn-row" disabled={pending} onClick={refresh}>{transitioning ? "Refreshing…" : "Refresh"}</button>
+    <button type="button" className="btn-row" disabled={pending} onClick={refresh}>{pending ? "Refreshing…" : "Refresh"}</button>
   </span>;
 }

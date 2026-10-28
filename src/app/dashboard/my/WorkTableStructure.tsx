@@ -4,26 +4,26 @@ import { hasWorkCriteria, workHref, WORK_SORT_LABELS, type WorkFilters } from "@
 
 export function WorkColumns() {
   return <colgroup>
-    <col className="rowgutter" style={{ width: 32 }} /><col style={{ width: "22%" }} />
-    <col style={{ width: 170 }} /><col style={{ width: 162 }} /><col />
-    <col style={{ width: 88 }} /><col style={{ width: 90 }} /><col style={{ width: 116 }} />
+    <col style={{ width: 32 }} /><col style={{ width: "22%" }} />
+    <col style={{ width: 170 }} /><col style={{ width: 140 }} /><col />
+    <col style={{ width: 88 }} /><col style={{ width: 90 }} /><col style={{ width: 110 }} />
   </colgroup>;
 }
 
 export function WorkHeaders() {
   return <thead><tr className="colheads">
-    <th className="rowgutter" aria-label="Row" /><th>Contact</th><th>AI status</th>
-    <th className="mine mine-first"><IconPencil size={12} />Manual result</th>
+    <th className="rowgutter" aria-label="Row" /><th>Who to call</th><th>Phone / AI status</th>
+    <th className="mine mine-first"><IconPencil size={12} />Result</th>
     <th className="mine">Your notes</th><th className="mine">In DB?</th>
     <th className="mine">WH ID</th><th className="mine">Finished?</th>
   </tr></thead>;
 }
 
 export function WorkLegend() {
-  return <details className="work-guide"><summary>Updates save automatically</summary><p className="legend">
+  return <p className="legend">
     <span className="legend-sys">Assignment details</span> are read only.{" "}
     <span className="legend-mine"><IconPencil size={11} />Your updates</span> save automatically.
-  </p></details>;
+  </p>;
 }
 
 export function WorkStatusBar({ filters, total = 0, open = 0, loading = false }: { filters: WorkFilters; total?: number; open?: number; loading?: boolean }) {
@@ -32,12 +32,12 @@ export function WorkStatusBar({ filters, total = 0, open = 0, loading = false }:
       const content = <>{label}<span>{loading ? <span className="skeleton skeleton-inline" style={{ width: 12, height: 10 }} /> : count.toLocaleString()}</span></>;
       return loading ? <a key={key} aria-current={(filters.view || "all") === key ? "page" : undefined}>{content}</a> : <Link key={key} href={workHref(filters, { view: key === "all" ? undefined : String(key) })} aria-current={(filters.view || "all") === key ? "page" : undefined}>{content}</Link>;
     })}
-  </nav>{hasWorkCriteria(filters) && <span className="work-scope">Counts match your filters</span>}</div>;
+  </nav><span className="work-scope">{hasWorkCriteria(filters) ? "Counts match your filters" : "All assignments to you"}</span></div>;
 }
 
 export function WorkResultSummary({ filters, count = 0, loading = false }: { filters: WorkFilters; count?: number; loading?: boolean }) {
   return <div className="work-result-summary">
     <span>{loading ? <span className="skeleton" style={{ width: 145, height: 12 }} /> : <>{count.toLocaleString()} {filters.view ? `${filters.view} ` : ""}{count === 1 ? "assignment" : "assignments"}{hasWorkCriteria(filters) ? " matching filters" : ""}</>}</span>
-    <div className="work-result-tools"><span>{!filters.view && "Open work first · "}{WORK_SORT_LABELS[filters.sort || "newest"]}</span><WorkLegend/></div>
+    <span>{!filters.view && "Open work first · "}{WORK_SORT_LABELS[filters.sort || "newest"]}</span>
   </div>;
 }

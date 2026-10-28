@@ -9,22 +9,6 @@ function deferred() {
 }
 const initial = { notes: "original", added: false, state: "open" };
 describe("confirmed autosave state", () => {
-  it('retains a dependent result draft on validation failure while rolling back Done',async()=>{
-    const values={outcome:'Unavailable',state:'open',remarks:''};
-    const error=Object.assign(new Error('Explain the closure'),{field:'remarks'});
-    const send=vi.fn().mockRejectedValueOnce(error).mockResolvedValue(undefined);
-    const save=new Autosave(values,send,['outcome','state'],['outcome']);
-    save.set('outcome','Unclear');save.set('state','done');await save.flush();
-    expect(save.getSnapshot()).toMatchObject({values:{outcome:'Unclear',state:'open'},status:'error',dirty:true});
-    save.set('remarks','Explained and escalated to the administrator');await save.flush();
-    expect(save.getSnapshot().dirty).toBe(true);
-    save.retry();await vi.waitFor(()=>expect(save.getSnapshot()).toMatchObject({values:{outcome:'Unclear',state:'done'},status:'saved',dirty:false}));
-    expect(send).toHaveBeenLastCalledWith({outcome:'Unclear',state:'done'});
-  });
-  it('still rolls back a result draft on an unconfirmed network failure',async()=>{
-    const save=new Autosave({outcome:'Unavailable'},vi.fn().mockRejectedValue(new Error('offline')),['outcome'],['outcome']);
-    save.set('outcome','Unclear');await save.flush();expect(save.getSnapshot()).toMatchObject({values:{outcome:'Unavailable'},status:'error',dirty:true});
-  });
   it("saves a change and a later restoration to the original value", async () => {
     const send = vi.fn().mockResolvedValue(undefined);
     const save = new Autosave(initial, send);

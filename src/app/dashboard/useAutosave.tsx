@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { Autosave, type Values } from "@/lib/autosave";
 import { useDashboardUI } from "./DashboardUI";
 import { requestJson } from "./requests";
 
-export function useAutosave<T extends Values>(id: string, url: string, initial: T, rollback: (keyof T)[] = [], initialRevision = 0, validationDrafts: (keyof T)[] = []) {
+export function useAutosave<T extends Values>(id: string, url: string, initial: T, rollback: (keyof T)[] = [], initialRevision = 0) {
   const { reportSave, viewStorageKey } = useDashboardUI();
   const version = useRef(initialRevision);
   const ref = useRef<Autosave<T> | null>(null);
@@ -13,7 +13,7 @@ export function useAutosave<T extends Values>(id: string, url: string, initial: 
     if (version.current < 0) throw new Error("This recovered draft predates version checks. Copy your changes, discard this draft, then refresh.");
     const result = await requestJson(url, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...patch, revision: version.current }) });
     version.current = result.revision;
-  }, rollback, validationDrafts);
+  }, rollback);
   const queue = ref.current;
   const snapshot = useSyncExternalStore(queue.subscribe, queue.getSnapshot, queue.getSnapshot);
   const storageKey = `${viewStorageKey}:draft:${id}`;
@@ -36,24 +36,18 @@ export function useAutosave<T extends Values>(id: string, url: string, initial: 
     return queue.subscribe(persist);
   }, [queue, storageKey]);
   const initialKey = JSON.stringify(initial);
-  // Reconcile the server revision before refreshed controls become interactive.
-  // A quick edit after logging a call must not submit the previous revision.
-  // Dirty drafts retain their original revision so conflicts remain protected.
-  useLayoutEffect(() => { if (!queue.getSnapshot().dirty) version.current = initialRevision; queue.reconcile(JSON.parse(initialKey)); }, [queue, initialKey, initialRevision]);
+  useEffect(() => { if (!queue.getSnapshot().dirty) version.current = initialRevision; queue.reconcile(JSON.parse(initialKey)); }, [queue, initialKey, initialRevision]);
   useEffect(() => {
     const report = () => { const current = queue.getSnapshot(); reportSave(id, { dirty: current.dirty, status: current.status, label: id, retry: queue.retry, discard: queue.discard }); };
     report();
     const unsubscribe = queue.subscribe(report);
     return () => {unsubscribe();reportSave(id, null);};
   }, [id, queue, reportSave]);
-  // A server refresh can advance only the revision (for example an attempt event)
-  // without changing any editable value. reconcile then emits no render, so
-  // consumers must receive the fresh prop revision in this render itself.
-  return { ...snapshot, revision:snapshot.dirty ? version.current : Math.max(initialRevision,version.current),set: queue.set.bind(queue), flush: () => queue.flush(), retry: queue.retry };
+  return { ...snapshot, set: queue.set.bind(queue), flush: () => queue.flush(), retry: queue.retry };
 }
 
 export function SaveStatus({ id, status, error, retry }: { id: string; status: string; error: string; retry: () => void }) {
   return <span id={`save-${id}`} className={`save-status ${status}`} role="status" aria-live="polite">
-    {status === "saving" ? "Saving…" : status === "error" ? <><span>{error || "Couldn't save."}</span> <button type="button" onPointerDown={e=>e.preventDefault()} onClick={retry}>Retry</button>{error.includes('sign-in expired') && <> · <a href="/" target="_blank" rel="noreferrer">Sign in again</a></>}</> : status === "dirty" ? "Not saved yet" : status === "saved" ? "Saved" : null}
+    {status === "saving" ? "Saving…" : status === "error" ? <><span>{error || "Couldn't save."}</span> <button type="button" onClick={retry}>Retry</button>{error.includes('sign-in expired') && <> · <a href="/" target="_blank" rel="noreferrer">Sign in again</a></>}</> : status === "dirty" ? "Not saved yet" : status === "saved" ? "Saved" : null}
   </span>;
 }

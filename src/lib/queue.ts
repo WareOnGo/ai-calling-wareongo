@@ -10,7 +10,7 @@ export type CallCat = "" | "dead" | "unclear" | "available" | "unavailable";
 // is true when the number is already in a live (sending/scheduled) batch.
 export type QueueSel = {
   id: string; name: string; contact: string; area: string; state: string;
-  cat: CallCat; queued: boolean; phones?: string[]; owners?: {email:string;name:string|null;state:string;outcome:string|null}[]; aiCalls?: number;
+  cat: CallCat; queued: boolean;
 };
 
 // The Bolna batch CSV shape (mirrors the manual Rajkot/Delhi exports).
@@ -69,19 +69,13 @@ export function normNum(s: string | null | undefined): string {
 // Dedup by normalized number, keeping the first occurrence. Rows with no number
 // pass through (they'll be shown as skipped downstream, not silently dropped).
 export function dedupByNumber(rows: QueueSel[]): QueueSel[] {
-  const parent=rows.map((_,i)=>i),byPhone=new Map<string,number>();
-  const root=(i:number):number=>parent[i]===i?i:(parent[i]=root(parent[i]));
-  rows.forEach((row,i)=>{for(const phone of [...(row.phones||[]),row.contact].map(normNum).filter(Boolean)){
-    const prior=byPhone.get(phone);if(prior!==undefined){const a=root(i),b=root(prior);parent[Math.max(a,b)]=Math.min(a,b);}else byPhone.set(phone,i);
-  }});
-  const groups=new Map<number,QueueSel>();
-  rows.forEach((row,i)=>{
-    const key=root(i),first=groups.get(key);
-    if(!first){groups.set(key,{...row,...(row.phones?{phones:[...row.phones]}:{})});return;}
-    // Metadata on a duplicate still constrains the whole shared-contact group.
-    if(first.phones||row.phones)first.phones=[...new Set([...(first.phones||[normNum(first.contact)]),...(row.phones||[normNum(row.contact)])])];
-    if(first.owners||row.owners)first.owners=[...new Map([...(first.owners||[]),...(row.owners||[])].map(o=>[o.email+':'+o.state,o])).values()];
-    first.queued ||= row.queued;if(first.aiCalls!==undefined||row.aiCalls!==undefined)first.aiCalls=Math.max(first.aiCalls||0,row.aiCalls||0);
-  });
-  return [...groups.values()];
+  const seen = new Set<string>();
+  const out: QueueSel[] = [];
+  for (const r of rows) {
+    const key = normNum(r.contact);
+    if (key && seen.has(key)) continue;
+    if (key) seen.add(key);
+    out.push(r);
+  }
+  return out;
 }

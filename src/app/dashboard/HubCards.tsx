@@ -6,7 +6,6 @@ export function HubCards({ isAdmin, open = 0, teamOpen = 0, loading = false }: {
 }) {
   return (
     <div className="hub">
-      <h1 className="sr-only">Dashboard</h1>
       <div className="hub-grid">
         <Link className="hub-card" href="/dashboard/my">
           <div className="hub-icon"><IconClipboard size={28} /></div>
@@ -17,7 +16,7 @@ export function HubCards({ isAdmin, open = 0, teamOpen = 0, loading = false }: {
 
         {isAdmin && <Link className="hub-card" href="/dashboard/calls">
           <div className="hub-icon"><IconPhone size={28} /></div>
-          <h2>AI Calls</h2>
+          <h2>Call Analytics</h2>
           <p>
             Browse, filter, and review Bolna verification calls — availability, transcripts, and the matched dataset listing for every number.
           </p>
@@ -43,9 +42,8 @@ export function HubCards({ isAdmin, open = 0, teamOpen = 0, loading = false }: {
           </Link>
         )}
 
-        {isAdmin && <Link className="hub-card" href="/dashboard/batches"><div className="hub-icon"><IconClipboard size={28}/></div><h2>Batches</h2><p>Review AI dispatches and manual assignment runs, their original members, outcomes, and follow-ups.</p><span className="hub-go">Browse batches →</span></Link>}
         {isAdmin && (
-          <Link className="hub-card" href="/dashboard/team/access">
+          <Link className="hub-card" href="/dashboard/team">
             <div className="hub-icon"><IconUsers size={28} /></div>
             <h2>Team</h2>
             <p>Manage accounts and roles, and see how much work each person has open.</p>

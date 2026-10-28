@@ -1,32 +1,15 @@
-import localFont from "next/font/local";
-import "./theme.css";
 import "./globals.css";
-import "./tables.css";
-import "./typography.css";
-import "./workflows.css";
-import "./queue.css";
-import "./chrome.css";
-import "./batches.css";
-import "./team.css";
-
-const inter = localFont({
-  src: "./fonts/InterVariable.woff2",
-  variable: "--font-inter",
-  weight: "100 900",
-  display: "swap",
-  fallback: ["Arial"],
-});
 
 export const metadata = {
-  title: "CallOnGo — WareOnGo",
-  description: "WareOnGo's workspace for AI calls, manual follow-ups and warehouse verification.",
+  title: "Bolna Calls — WareOnGo",
+  description: "Call data dashboard for Bolna voice-AI verification calls.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     // suppressHydrationWarning: the pre-paint script below sets data-theme on <html>
     // before hydration, so this one attribute intentionally differs server vs client.
-    <html lang="en" className={inter.variable} suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <head>
         {/* Apply saved theme before paint to avoid a light flash. */}
         <script

@@ -1,6 +1,5 @@
 import { ApiError } from "./api";
 import { query, transaction } from "@/lib/db";
-import { callyzerAccount, normalizeEmployeeNumber, trackingStart, type CallyzerDevice } from "./callyzer";
 
 // bolna_app_users is THE access list. A row here is what lets someone sign in, and
 // its role is what makes them an admin — there is no env allowlist any more.
@@ -17,15 +16,11 @@ export type AppUser = {
   role: Role;
   active: boolean;
   created_at?: string;
-  callyzer_number?: string | null;
-  callyzer_tracking_since?: string | null;
-  callyzer_device?: CallyzerDevice | null;
 };
 
 export async function listUsers(): Promise<AppUser[]> {
   const res = await query<AppUser>(
-    `select email, name, role, active, created_at::text as created_at,
-       callyzer_number,callyzer_tracking_since::text,callyzer_device
+    `select email, name, role, active, created_at::text as created_at
        from bolna_app_users order by active desc, role, email`,
   );
   return res.rows;
@@ -65,22 +60,10 @@ export async function upsertUser(u: {
   name?: string | null;
   role?: Role;
   active?: boolean;
-  callyzer_number?: string | null;
-  callyzer_since?: string | null;
 }): Promise<AppUser> {
-  const linking = u.callyzer_number !== undefined;
-  let number: string | null = null, since: string | null = null;
-  if (linking && u.callyzer_number) {
-    try { number = normalizeEmployeeNumber(u.callyzer_number); since = trackingStart(u.callyzer_since || ""); }
-    catch (error) { throw new ApiError(400, error instanceof Error ? error.message : "Invalid Callyzer link"); }
-    if (Date.parse(since) > Date.now()) throw new ApiError(400, "Tracking date cannot be in the future");
-  } else if (u.callyzer_since) throw new ApiError(400, "A Callyzer number is required with a tracking date");
   return transaction(async client => {
     // All role writes serialize, including two admins attempting to remove each other.
     await client.query("select pg_advisory_xact_lock(81620401)");
-    if (linking && !(await client.query("select 1 from bolna_app_users where email=$1",[u.email.toLowerCase()])).rowCount) {
-      throw new ApiError(404, "Add this caller in Access control before linking Callyzer");
-    }
     if (u.role === "employee" || u.active === false) {
       const check = await client.query(`select 1 from bolna_app_users where email = $1 and active and role = 'admin'
         and (select count(*) from bolna_app_users where active and role = 'admin') <= 1`, [u.email.toLowerCase()]);
@@ -96,17 +79,6 @@ export async function upsertUser(u: {
        returning email, name, role, active`,
       [u.email.toLowerCase(), u.name ?? null, u.role ?? null, u.active ?? null, u.name !== undefined],
     );
-    if (linking) {
-      const duplicate = number && (await client.query("select 1 from bolna_app_users where callyzer_number=$1 and email<>$2",[number,u.email.toLowerCase()])).rowCount;
-      if (duplicate) throw new ApiError(409, "This Callyzer number is already linked to another caller");
-      const linked = await client.query<AppUser>(`update bolna_app_users set
-        callyzer_device=case when callyzer_number is distinct from $2 then null else callyzer_device end,
-        callyzer_number=$2,callyzer_tracking_since=$3 where email=$1
-        returning email,name,role,active,callyzer_number,callyzer_tracking_since::text,callyzer_device`,[u.email.toLowerCase(),number,since]);
-      if (number) await client.query(`update callyzer_calls set caller_email=$1 where account_key=$2
-        and employee_number=$3 and occurred_at >= $4::timestamptz and caller_email is null`,[u.email.toLowerCase(),callyzerAccount(),number,since]);
-      return linked.rows[0];
-    }
     return res.rows[0];
   });
 }
@@ -120,18 +92,4 @@ export async function getWorkload(): Promise<Workload[]> {
        from bolna_assignments group by 1, 2, 3 order by 1, 2, 3`,
   );
   return res.rows.map((r) => ({ ...r, n: Number(r.n) }));
-}
-
-export type AssigneeWorkload={email:string;name:string|null;open:number;manual_open:number;ai_open:number;done_today:number};
-/** Today's valid completions use Indian calendar boundaries, independent of server TZ. */
-export async function getAssigneeWorkloads(asOf = new Date()):Promise<AssigneeWorkload[]> {
-  return (await query<AssigneeWorkload>(`select u.email,u.name,
-    count(a.id) filter(where a.state='open')::int as open,
-    count(a.id) filter(where a.state='open' and a.entity_type='record')::int as manual_open,
-    count(a.id) filter(where a.state='open' and a.entity_type='call')::int as ai_open,
-    count(a.id) filter(where a.state='done' and a.completed_at >= date_trunc('day',$1::timestamptz at time zone 'Asia/Kolkata') at time zone 'Asia/Kolkata'
-      and a.completed_at < (date_trunc('day',$1::timestamptz at time zone 'Asia/Kolkata')+interval '1 day') at time zone 'Asia/Kolkata'
-      and bolna_assignment_quality(a.state,a.outcome,a.wh_id,a.remarks,a.disposition,a.closure_reason) is null)::int as done_today
-    from bolna_app_users u left join bolna_assignments a on a.assignee=u.email where u.active
-    group by u.email,u.name order by coalesce(nullif(u.name,''),u.email)`,[asOf.toISOString()])).rows;
 }

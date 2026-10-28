@@ -10,14 +10,3 @@ export function providerTimestamp(value:string|null|undefined):string|null {
   const milliseconds=Date.parse(`${year}-${month}-${day}T${hour}:${minute}:${second}${fraction}${zone}`);
   return Number.isFinite(milliseconds)?new Date(milliseconds).toISOString():null;
 }
-
-export function elapsedTime(value:number):string {
-  if(!Number.isFinite(value)||value<0)return 'Unknown interval';
-  let seconds=Math.round(value);
-  const parts:string[]=[];
-  for(const [size,label] of [[86400,'day'],[3600,'hour'],[60,'minute'],[1,'second']] as const){
-    const count=Math.floor(seconds/size);seconds%=size;
-    if(count)parts.push(`${count.toLocaleString('en-IN')} ${label}${count===1?'':'s'}`);
-  }
-  return parts.join(' ')||'0 seconds';
-}

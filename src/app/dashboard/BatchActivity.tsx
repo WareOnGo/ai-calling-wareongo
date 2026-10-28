@@ -1,6 +1,4 @@
 "use client";
-import Link from "next/link";
-import { useDashboardUI } from "./DashboardUI";
 import { useEffect, useState } from "react";
 import { Dialog } from "./Dialog";
 import { requestJson } from "./requests";
@@ -31,7 +29,6 @@ export function BatchActivity() {
   return <><button type="button" className="btn-row" onClick={() => setOpen(true)}>Recent batches</button>
     {open && <Dialog wide title="Recent calling batches" onClose={() => setOpen(false)}>
       <div className="modal-body batch-list">
-        <p><Link href="/dashboard/batches">Browse all AI and manual batches</Link></p>
         <p className="muted">Latest 20 batches across the team. Updates every 15 seconds while open.</p>
         {error && <p role="alert" className="assign-error">{error}</p>}
         {loading && !data && <p role="status">Loading batches…</p>}
@@ -49,18 +46,17 @@ export function BatchActivity() {
   </>;
 }
 
-export function BatchResolution({ batch, onResolved }: { batch: {id:string;bolna_batch_id:string|null}; onResolved?: () => void }) {
-  const {refresh}=useDashboardUI();
+function BatchResolution({ batch, onResolved }: { batch: Batch; onResolved: () => void }) {
   const [open, setOpen] = useState(false), [busy, setBusy] = useState(false), [note, setNote] = useState("");
   const [confirmed, setConfirmed] = useState(false), [error, setError] = useState("");
   const [state, setState] = useState<"completed" | "canceled">("completed");
   async function act(body: object) {
     setBusy(true); setError("");
-    try { await requestJson(`/api/batches/${batch.id}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(60_000) }); (onResolved||refresh)(); setOpen(false); }
+    try { await requestJson(`/api/batches/${batch.id}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(60_000) }); onResolved(); setOpen(false); }
     catch (e) { setError(e instanceof Error ? e.message : "Could not update batch"); }
     finally { setBusy(false); }
   }
-  return <div className="batch-resolution">
+  return <div>
     {batch.bolna_batch_id && <button type="button" className="btn-row" disabled={busy} onClick={() => act({ action: "reconcile" })}>Check Bolna status</button>}
     <button type="button" className="btn-row" disabled={busy} onClick={() => setOpen(v => !v)}>Resolve batch</button>
     {open && <fieldset disabled={busy}>

@@ -1,14 +1,11 @@
 {
-  "name": "callongo",
+  "name": "bolna-processing",
   "version": "0.1.0",
   "private": true,
-  "engines": {
-    "node": "22.x"
-  },
-  "description": "CallOnGo — WareOnGo's workspace for AI calls, manual follow-ups and warehouse verification.",
+  "description": "Bolna Processing \u2014 receives Bolna post-call webhooks, enriches them with OpenAI, and stores results in Supabase Postgres.",
   "scripts": {
-    "dev": "next dev --webpack",
-    "build": "next build --webpack",
+    "dev": "next dev",
+    "build": "next build",
     "start": "next start",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -22,14 +19,13 @@
     "drain": "node --env-file=.env.local scripts/drain.mjs http://localhost:3000/api/process",
     "enrich": "node --env-file=.env.local scripts/drain.mjs http://localhost:3000/api/enrich",
     "test:integration": "vitest run --config vitest.integration.config.ts",
-    "test:stage": "node tests/run-stage.mjs",
     "typecheck": "tsc --noEmit --incremental false",
     "db:migrate": "node database/migrate.mjs",
     "check": "npm run typecheck && npm test",
-    "dev:preview": "node scripts/dev-preview.mjs"
+    "test:browser": "playwright test --config tests/browser/playwright.config.ts"
   },
   "dependencies": {
-    "next": "16.4.0",
+    "next": "^15.1.0",
     "openai": "^4.77.0",
     "pg": "^8.13.1",
     "react": "^19.0.0",
@@ -37,6 +33,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@playwright/test": "1.62.1",
     "@types/node": "^22.10.0",
     "@types/pg": "^8.11.10",
     "@types/react": "^19.0.0",

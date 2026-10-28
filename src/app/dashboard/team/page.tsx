@@ -1,23 +1,44 @@
-import Link from "next/link";
-import { parseTeamFilters } from "@/lib/team-report";
-import { firstValue, type SearchValues } from "@/lib/filter-values";
 import { requireAdmin } from "@/lib/auth";
-import { TeamReport } from "./TeamReport";
-import { TeamHeader } from "./TeamHeader";
-import { parseActivityFilters } from "@/lib/callyzer-report";
+import { listUsers, getWorkload } from "@/lib/users";
+import { TeamEditor, type Person } from "./TeamEditor";
+import { Freshness } from "../DashboardUI";
+import { IconUsers } from "../icons";
 
 export const dynamic = "force-dynamic";
 
-// Report dates and caller filters remain shareable.
-export default async function TeamPerformance({ searchParams }: { searchParams: Promise<SearchValues> }) {
-  const viewer = await requireAdmin();
-  const sp = await searchParams;
-  let filters, activity;
-  try {
-    filters = parseTeamFilters(Object.fromEntries(Object.entries(sp).map(([key, value]) => [key, firstValue(value)])));
-    activity = parseActivityFilters(Object.fromEntries(Object.entries(sp).map(([key, value]) => [key, firstValue(value)])));
-  } catch (error) {
-    return <><TeamHeader view="performance"/><div className="team-page"><p role="alert">Invalid report range. {error instanceof Error ? error.message : "Check the dates."} <Link href="/dashboard/team">Reset report</Link></p></div></>;
+// Admin-only. Since bolna_app_users became the access list (there is no
+// ALLOWED_EMAILS any more), this page IS access control — so it's laid out as a
+// people directory grouped by what each person can do, not as another spreadsheet.
+export default async function Team() {
+  const me = await requireAdmin();
+  const [users, workload] = await Promise.all([listUsers(), getWorkload()]);
+
+  const counts = new Map<string, { open: number; done: number }>();
+  for (const w of workload) {
+    const row = counts.get(w.assignee) ?? { open: 0, done: 0 };
+    if (w.state === "open") row.open += w.n;
+    if (w.state === "done") row.done += w.n;
+    counts.set(w.assignee, row);
   }
-  return <><TeamHeader view="performance"/><div className="team-page"><TeamReport viewer={viewer} filters={filters} activity={activity}/></div></>;
+
+  const people: Person[] = users.map((u) => ({
+    ...u,
+    open: counts.get(u.email)?.open ?? 0,
+    done: counts.get(u.email)?.done ?? 0,
+  }));
+
+  // Passed down so the UI can DISABLE the last admin's controls with an explanation,
+  // rather than letting the click through to a 400 from the API.
+  const activeAdmins = people.filter((p) => p.active && p.role === "admin").length;
+
+  return (
+    <>
+      <div className="page-title">
+        <span className="pt-icon"><IconUsers size={18} /></span> Team
+        <span className="title-sub">{people.filter((p) => p.active).length} with access</span>
+        <Freshness updatedAt={new Date().toISOString()} />
+      </div>
+      <TeamEditor people={people} activeAdmins={activeAdmins} myEmail={me.email} />
+    </>
+  );
 }
