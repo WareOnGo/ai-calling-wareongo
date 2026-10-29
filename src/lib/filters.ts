@@ -7,7 +7,7 @@ const choices = (allowed:string[]) => multiple.refine(v=>(Array.isArray(v)?v:v?[
 const flag = z.preprocess(v => v === "1" || v === "true" ? true : v === "0" || v === "false" ? false : v === "" || v === null ? undefined : v, z.boolean().optional());
 const area = optional(z.union([z.number(), z.string().regex(/^\d+(\.\d+)?$/).transform(Number)]).pipe(z.number().finite().nonnegative()));
 const yesNo = optional(z.enum(["yes", "no"]));
-const reporting = { added_to_db: yesNo, wh_id: text, has_notes: yesNo, has_manual_calls: yesNo, manual_disposition: choices(["none", ...DISPOSITIONS]) };
+const reporting = { warehouse_match: yesNo, added_to_db: yesNo, wh_id: text, has_notes: yesNo, has_manual_calls: yesNo, manual_disposition: choices(["none", ...DISPOSITIONS]) };
 const common = {q:text,source:multiple,state:multiple,contact:choices(["broker","owner"]),assignee:multiple,
   assignment_state:optional(z.enum(["unassigned","open","done","never"])),city:text,
   min_area:area,max_area:area,onboarded:optional(z.enum(["yes","no"])),has_ai_calls:yesNo,

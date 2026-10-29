@@ -8,6 +8,7 @@ import { getDispatchAgents, type DispatchAgent } from "./agents";
 import { normNum, type QueueSel } from "./queue";
 import { CALL_LANGUAGES, LANGUAGE_LABELS, computeScheduleAt, type CallLanguage, type RoutingMode } from "./routing";
 import type { Viewer } from "./scope";
+import { warehousesByPhone } from './warehouse-contacts';
 
 export const dispatchSchema = z.object({
   ids: selectedIds, intentKey: uuid, confirm: z.literal(true),
@@ -18,7 +19,7 @@ export const dispatchSchema = z.object({
 }).strict();
 export type DispatchInput = z.output<typeof dispatchSchema>;
 export const ACTIVE_BATCH_SQL = "('sending', 'creating', 'scheduling', 'scheduled', 'uncertain')";
-type Counts = { total: number; callable: number; held_region: number; already_queued: number; excluded_by_cat: number; skipped_no_number: number };
+type Counts = { total: number; callable: number; held_region: number; already_queued: number; excluded_by_cat: number; skipped_no_number: number; warehouse_exists?: number };
 type Batch = Counts & {
   id: string; state: string; request_hash: string; bolna_batch_id: string | null; scheduled_at: string;
   agent_id: string; agent_language: CallLanguage | null; last_error: string | null;
@@ -31,7 +32,7 @@ export type DispatchBatchResult = {
 export type DispatchResult = {
   dispatchId: string; routingMode: RoutingMode; scheduled: boolean; state: string;
   scheduledAt: string; total: number; callable: number; heldRegion: number; alreadyQueued: number;
-  excludedByCat: number; skippedNoNumber: number; batches: DispatchBatchResult[];
+  excludedByCat: number; skippedNoNumber: number; warehouseExists: number; batches: DispatchBatchResult[];
   // Compatibility for the earlier single-batch client and existing operator links.
   batchId: string; bolnaBatchId: string | null;
 };
@@ -51,7 +52,7 @@ function response(request: DispatchRequest, rows: Batch[]): DispatchResult {
     : batches.every(b => b.state === "canceled") ? "canceled" : "creating";
   return { dispatchId: request.id, routingMode: request.routing_mode, scheduled, state, scheduledAt: request.scheduled_at,
     total: request.total, callable: request.callable, heldRegion: request.held_region, alreadyQueued: request.already_queued,
-    excludedByCat: request.excluded_by_cat, skippedNoNumber: request.skipped_no_number, batches,
+    excludedByCat: request.excluded_by_cat, skippedNoNumber: request.skipped_no_number, warehouseExists:request.warehouse_exists??0, batches,
     batchId: batches[0]?.batchId ?? request.id, bolnaBatchId: batches[0]?.bolnaBatchId ?? null };
 }
 function requestHash(input: DispatchInput, legacy = false) {
@@ -123,6 +124,7 @@ export async function dispatchBatch(viewer: Viewer, input: DispatchInput): Promi
     if(candidates.some(r=>JSON.stringify([...(r.phones||[])].sort())!==JSON.stringify([...(byId.get(r.id)||[])].sort())))
       throw new ApiError(409,'Contact numbers changed. Refresh the queue preview before dispatching.');
     const phones=[...new Set(contacts.flatMap(r=>r.phones))];
+    const warehouses=await warehousesByPhone(client,phones);
     const owners=(await client.query<{phone_last10:string;email:string;name:string|null;state:'open';outcome:string|null}>(`select distinct c.phone_last10,a.assignee email,u.name,a.state,a.outcome
       from bolna_assignments a join bolna_assignment_contacts c using(entity_type,entity_id) join bolna_app_users u on u.email=a.assignee
       where a.state='open' and c.phone_last10=any($1::text[])`,[phones])).rows;
@@ -132,15 +134,15 @@ export async function dispatchBatch(viewer: Viewer, input: DispatchInput): Promi
       union select right(regexp_replace(i.contact_number, '\\D', '', 'g'), 10)
         from call_batch_items i join call_batches b on b.id = i.batch_id where b.state in ${ACTIVE_BATCH_SQL}`);
     const reserved = new Set(live.rows.map(r => r.phone));
-    const summary = assembleBatch(candidates.map(r => ({ ...r, owners:(r.phones||[]).flatMap(phone=>byPhone.get(phone)||[]),queued: (r.phones||[normNum(r.contact)]).some(phone=>reserved.has(phone)) })), input.excludeCats,
+    const summary = assembleBatch(candidates.map(r => ({ ...r, warehouseIds:[...new Set((r.phones||[]).flatMap(phone=>warehouses.get(phone)||[]))], owners:(r.phones||[]).flatMap(phone=>byPhone.get(phone)||[]),queued: (r.phones||[normNum(r.contact)]).some(phone=>reserved.has(phone)) })), input.excludeCats,
       { mode: input.routingMode, availableLanguages });
-    if (!summary.callable.length) throw new ApiError(409, "No callable numbers remain after routing and reservation checks");
+    if (!summary.callable.length) throw new ApiError(409, summary.warehouseExists ? 'Numbers with warehouses already added to DB are excluded. No callable numbers remain.' : "No callable numbers remain after routing and reservation checks");
     const scheduledAt = computeScheduleAt(new Date());
     const request = (await client.query<DispatchRequest>(`insert into bolna_dispatch_requests
-      (id, created_by, request_hash, routing_mode, scheduled_at, total, callable, excluded_by_cat, held_region, already_queued, skipped_no_number)
-      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning *`,
+      (id, created_by, request_hash, routing_mode, scheduled_at, total, callable, excluded_by_cat, held_region, already_queued, skipped_no_number, warehouse_exists)
+      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) returning *`,
       [input.intentKey, viewer.email, hash, input.routingMode, scheduledAt, summary.total, summary.callable.length,
-        summary.excludedByCat, summary.heldRegion, summary.alreadyQueued, summary.skippedNoNumber])).rows[0];
+        summary.excludedByCat, summary.heldRegion, summary.alreadyQueued, summary.skippedNoNumber,summary.warehouseExists])).rows[0];
     const batches: { batch: Batch; rows: QueueSel[]; agent: DispatchAgent }[] = [];
     for (const language of CALL_LANGUAGES) {
       const rows = summary.groups[language];

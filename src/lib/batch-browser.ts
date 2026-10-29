@@ -1,4 +1,5 @@
 import { categoryWhere, warehouseWhere } from "./filter-values";
+import { warehouseIdsSql } from './warehouse-contacts';
 import {z} from 'zod';
 import {query} from './db';
 import {ApiError,uuid} from './api';
@@ -70,7 +71,7 @@ export async function getBatch(viewer:Viewer,kind:'ai'|'manual',id:string):Promi
 }
 export type BatchMember={member_id:string;entity_type:'record'|'call'|null;entity_id:string|null;assignment_id:string|null;name:string|null;phone:string|null;city:string|null;assignee:string|null;current_owner:string|null;state:string;disposition:string|null;outcome:string|null;wh_id:string|null;onboarded:boolean;quality_issue:string|null;retry_due:boolean;connected:boolean;attempts:number;execution_id:string|null;status:string|null;available:boolean;assigned:boolean;attempted:boolean;pending:boolean;failure:boolean;blocked:boolean;dropped:boolean;done:boolean;open:boolean;unclear:boolean;unavailable:boolean;
  assignee_name:string|null;current_owner_name:string|null;assigned_by:string|null;assigned_by_name:string|null;assigned_at:string|null;completed_at:string|null;
- remarks:string|null;note:string|null;manual_disposition:string|null;closure_reason:string|null;next_due_at:string|null;last_attempt_at:string|null;added_to_db:boolean|null;
+ remarks:string|null;note:string|null;manual_disposition:string|null;closure_reason:string|null;next_due_at:string|null;last_attempt_at:string|null;added_to_db:boolean|null;warehouse_ids:number[];
 };
 export const MANUAL_CARDS=[
  ['all','Records in batch'],['assigned','Assignments recorded'],['open','Still open'],
@@ -100,6 +101,7 @@ function membersBase(batch:BatchRow):{sql:string;params:unknown[]}{
   const params:unknown[]=legacy?[]:[batch.id];
   params.push(CONNECTED_DISPOSITIONS);
   return {params,sql:`select m.member_id,m.entity_type,m.entity_id::text,m.assignment_id::text,
+   ${warehouseIdsSql('m.entity_type','m.entity_id')} as warehouse_ids,
    ${ASSIGNMENT_SUBJECT} name,
    coalesce(case when cl.call_type='inbound' then cl.from_number else cl.to_number end,rphone.phone) phone,
    ${ASSIGNMENT_CITY} city,m.assignee,caller.name assignee_name,
@@ -129,6 +131,7 @@ function membersBase(batch:BatchRow):{sql:string;params:unknown[]}{
    left join lateral(select count(*) attempts,bool_or(e.disposition=any($${params.length}::text[])) connected from bolna_effective_manual_attempts e where e.assignment_id=a.id) activity on true`};
  }
  return {params:[batch.id,batch.bolna_batch_id,[...TERMINAL_STATUSES]],sql:`select i.phone member_id,'record'::text entity_type,i.record_id entity_id,null::text assignment_id,i.name,i.phone,i.city,
+  array(select warehouse_id from bolna_warehouse_contacts where phone_last10=i.phone order by warehouse_id) as warehouse_ids,
   null::text assignee,null::text assignee_name,null::text current_owner,null::text current_owner_name,
   null::text assigned_by,null::text assigned_by_name,null::text assigned_at,null::text completed_at,
   null::text remarks,null::text note,null::text manual_disposition,null::text closure_reason,null::text next_due_at,null::text last_attempt_at,null::boolean added_to_db,
@@ -156,7 +159,7 @@ export const batchMemberFiltersSchema = z.object({
  q: z.string().trim().max(1000).optional(), city: z.string().trim().max(1000).optional(),
  allocation:memberValues, outcome: memberValues, state: memberValues, assignee: memberValues, current_owner: memberValues,
  has_attempts: z.enum(['yes','no']).optional(), connected: z.enum(['yes','no']).optional(),
- onboarded: z.enum(['yes','no']).optional(), wh_id: z.string().trim().max(1000).optional(),
+ onboarded: z.enum(['yes','no']).optional(), warehouse_match: z.enum(['yes','no']).optional(), wh_id: z.string().trim().max(1000).optional(),
 });
 export type BatchMemberFilters = z.infer<typeof batchMemberFiltersSchema>;
 function memberWhere(batch: BatchRow, metric: string, f: BatchMemberFilters, params: unknown[]) {
@@ -169,7 +172,8 @@ function memberWhere(batch: BatchRow, metric: string, f: BatchMemberFilters, par
  if(f.city){params.push(f.city);where.push(`coalesce(city,'') ilike '%'||$${params.length}||'%'`);}
  if(f.has_attempts)where.push(f.has_attempts==='yes'?'attempts>0':'attempts=0');
  for(const key of ['connected','onboarded'] as const)if(f[key])where.push(`${key}=${f[key]==='yes'?'true':'false'}`);
- if(f.wh_id)where.push(warehouseWhere('wh_id',f.wh_id,params));
+ if(f.wh_id){const recorded=warehouseWhere('wh_id',f.wh_id,params);where.push(`(${recorded} or $${params.length}=any(warehouse_ids::text[]))`);}
+ if(f.warehouse_match)where.push(`cardinality(warehouse_ids)${f.warehouse_match==='yes'?'>0':'=0'}`);
  return where.length ? 'where '+where.join(' and ') : '';
 }
 export function batchMembersExport(viewer:Viewer,batch:BatchRow,metric='all',filters:BatchMemberFilters={}):ExportQuery{

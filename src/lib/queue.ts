@@ -10,7 +10,7 @@ export type CallCat = "" | "dead" | "unclear" | "available" | "unavailable";
 // is true when the number is already in a live (sending/scheduled) batch.
 export type QueueSel = {
   id: string; name: string; contact: string; area: string; state: string;
-  cat: CallCat; queued: boolean; phones?: string[]; owners?: {email:string;name:string|null;state:string;outcome:string|null}[]; aiCalls?: number;
+  cat: CallCat; queued: boolean; phones?: string[]; warehouseIds?: number[]; owners?: {email:string;name:string|null;state:string;outcome:string|null}[]; aiCalls?: number;
 };
 
 // The Bolna batch CSV shape (mirrors the manual Rajkot/Delhi exports).
@@ -81,6 +81,7 @@ export function dedupByNumber(rows: QueueSel[]): QueueSel[] {
     // Metadata on a duplicate still constrains the whole shared-contact group.
     if(first.phones||row.phones)first.phones=[...new Set([...(first.phones||[normNum(first.contact)]),...(row.phones||[normNum(row.contact)])])];
     if(first.owners||row.owners)first.owners=[...new Map([...(first.owners||[]),...(row.owners||[])].map(o=>[o.email+':'+o.state,o])).values()];
+    if(first.warehouseIds||row.warehouseIds)first.warehouseIds=[...new Set([...(first.warehouseIds||[]),...(row.warehouseIds||[])])].sort((a,b)=>a-b);
     first.queued ||= row.queued;if(first.aiCalls!==undefined||row.aiCalls!==undefined)first.aiCalls=Math.max(first.aiCalls||0,row.aiCalls||0);
   });
   return [...groups.values()];

@@ -49,6 +49,8 @@ const COLUMNS: { label: string; get: (r: CallRow) => unknown }[] = [
   { label: "WH ID", get: (r) => r.assignment_wh_id },
   { label: "Legacy call Added", get: (r) => r.added_to_db ? "yes" : "no" },
   { label: "Legacy call WH ID", get: (r) => r.wh_id },
+  { label: "Warehouse DB match", get: (r) => r.warehouse_ids.length ? "yes" : "no" },
+  { label: "Matched warehouse IDs", get: (r) => r.warehouse_ids.join("; ") },
 ];
 
 export const maxDuration = 300;

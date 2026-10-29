@@ -1,3 +1,4 @@
+import { WarehouseNotice } from "../WarehouseNotice";
 import { AiActivityFilter, ReportingFilters, REPORTING_FILTER_KEYS, SelectFilter, YesNoFilter, DateFilters } from "../FilterFields";
 import {dispositionLabel} from "@/lib/manual-dispositions";
 import {AiAttemptCard} from '../AiAttemptCard';
@@ -159,7 +160,7 @@ export default async function RawDataset({
                     data-state={r.state ?? ""}
                   />
                 </td>
-                <td className="identity-owner"><ContactCard name={r.owner_name} nameDisplay={hl(r.owner_name, terms)} phone={r.phone} phoneDisplay={hl(r.phone, terms)} details={{id: r.id, entity: "record"}} /></td>
+                <td className="identity-owner"><ContactCard name={r.owner_name} nameDisplay={hl(r.owner_name, terms)} phone={r.phone} phoneDisplay={hl(r.phone, terms)} details={{id: r.id, entity: "record"}} /><WarehouseNotice ids={r.warehouse_ids}/></td>
                 <td>{r.contact_type === "probable broker" ? <span className="review-tag">probable broker</span> : "owner"}</td>
                 <td>{hl(r.city, terms)}</td>
                 <td>{hl(r.state, terms)}</td>

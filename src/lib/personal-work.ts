@@ -5,6 +5,7 @@ import { area, rent } from "./display";
 import type { Viewer } from "./scope";
 
 export type WorkItem = {
+  warehouseIds: number[];
   revision: number; id: string; entityId: string; entity: "record" | "call"; who: string; phone: string | null;
   context: { city: string | null; area: string | null; rent: string | null }; ai: string | null; aiCount: number; brief: string | null;
   assignedBy: string; assignedByName: string | null; assignedAt: string;
@@ -14,7 +15,7 @@ export type WorkItem = {
 export type WorkPage = { rows: WorkItem[]; total: number; page: number; pages: number };
 export type WorkTotals = { record: { open: number; done: number }; call: { open: number; done: number } };
 function criteria(filters: WorkFilters) {
-  return { has_ai_calls:filters.has_ai_calls,manual_disposition:filters.manual_disposition,completed_from:filters.completed_from,completed_to:filters.completed_to,ai_result:filters.ai_result, wh_id:filters.wh_id, has_notes:filters.has_notes, has_manual_calls:filters.has_manual_calls, date_from:filters.date_from, date_to:filters.date_to, follow_up:filters.follow_up,q: filters.q, city: filters.city, region: filters.region, assigned_by: filters.assigned_by, outcome: filters.outcome, added_to_db: filters.added_to_db };
+  return { warehouse_match:filters.warehouse_match,has_ai_calls:filters.has_ai_calls,manual_disposition:filters.manual_disposition,completed_from:filters.completed_from,completed_to:filters.completed_to,ai_result:filters.ai_result, wh_id:filters.wh_id, has_notes:filters.has_notes, has_manual_calls:filters.has_manual_calls, date_from:filters.date_from, date_to:filters.date_to, follow_up:filters.follow_up,q: filters.q, city: filters.city, region: filters.region, assigned_by: filters.assigned_by, outcome: filters.outcome, added_to_db: filters.added_to_db };
 }
 export async function personalTotals(email: string, filters: WorkFilters = {}): Promise<WorkTotals> {
   const rows = hasWorkCriteria(filters)
@@ -32,6 +33,7 @@ export async function personalWork(user: Viewer, entity: "call" | "record", filt
   const rows = result.rows.map(a => {
     const context = a.work_context!;
     return {
+      warehouseIds: a.warehouse_ids,
       revision: a.revision, id: a.id, entityId: a.entity_id, entity, who: a.subject || context.owner_name || "Unnamed owner", phone: a.phone,
       context: {
         city: context.city || a.city,

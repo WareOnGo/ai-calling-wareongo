@@ -1,4 +1,5 @@
 import type { VerificationFilters } from "./scope";
+import { warehouseIdsSql } from './warehouse-contacts';
 import { aiAttemptsExistSql, aiAttemptSummarySql, type AiAttemptSummary } from "./ai-summary";
 import {matchesCallSearch,rawSearch,matchesSearch} from "./search";
 import {cityWhere} from "./filter-values";
@@ -12,6 +13,7 @@ import { INFERENCE_VERSION } from "@/lib/openai";
 import { assignmentScope, currentAssignmentLateral, ownershipFilter,verificationFilters, type Viewer } from "@/lib/scope";
 
 export type CallRow = {
+  warehouse_ids: number[];
   ai_summary: AiAttemptSummary;
   revision: number;
   id: string;
@@ -124,7 +126,8 @@ const CAN_ENRICH_SQL = `(
   and (inferred = false or inference_version < ${INFERENCE_VERSION})
 ) as can_enrich`;
 
-const SELECT_LIST = `(select revision from bolna_call_logs c where c.id = bolna_call_analysis.id) as revision, id, agent_id, call_created_at, call_type, from_number, to_number, owner_name, db_area,
+const SELECT_LIST = `${warehouseIdsSql("'call'", 'bolna_call_analysis.id')} as warehouse_ids,
+       (select revision from bolna_call_logs c where c.id = bolna_call_analysis.id) as revision, id, agent_id, call_created_at, call_type, from_number, to_number, owner_name, db_area,
        status, availability, segment, confidence, built_up_area_sqft, carpet_area_sqft, expected_rent,
        notes, transcript, recording_url, needs_review, inferred, ${CAN_ENRICH_SQL},
        call_status, called_by, added_to_db, wh_id,

@@ -18,6 +18,7 @@ import {BatchResolution} from '../../../BatchActivity';
 import {BatchStatus} from '../../BatchStatus';
 import {BatchLiveUpdates} from '../../BatchLiveUpdates';
 import {ManualBatchCells} from '../../ManualBatchCells';
+import {WarehouseNotice} from '../../../WarehouseNotice';
 export const dynamic='force-dynamic';
 
 export default async function BatchDetail({params,searchParams}:{params:Promise<{kind:string;id:string}>;searchParams:Promise<SearchValues>}){
@@ -55,7 +56,7 @@ export default async function BatchDetail({params,searchParams}:{params:Promise<
       : r.entity_id && /^[0-9a-f-]{36}$/i.test(r.entity_id) && r.entity_type
         ? {id: r.entity_id, entity: r.entity_type} : undefined;
     return <tr key={r.member_id}>
-      <td><ContactCard name={r.name} phone={r.phone} details={details} metadata={r.city || 'Unknown city'}/></td>
+      <td><ContactCard name={r.name} phone={r.phone} details={details} metadata={r.city || 'Unknown city'}/>{kind==='ai'&&<WarehouseNotice ids={r.warehouse_ids}/>}</td>
       {kind==='manual'?<ManualBatchCells row={r}/>:<>
       <td><span className="batch-call-state">{r.state}</span></td>
       <td><ResultBadge value={r.outcome}/>{r.wh_id&&<small className="batch-contact-city">WH ID: {r.wh_id}</small>}</td>

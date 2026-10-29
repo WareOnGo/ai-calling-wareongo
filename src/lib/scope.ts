@@ -1,4 +1,5 @@
 import { filterValues,categoryWhere,warehouseWhere,hasText,type FilterValue } from "./filter-values";
+import { warehouseMatchSql } from './warehouse-contacts';
 import { CONTACT_PHONES_SQL } from "./assignment-contacts";
 // Row-level visibility scope. THE single chokepoint for "employees only see what
 // they've been assigned" — both grid filter builders (lib/calls.ts, lib/raw.ts) run
@@ -143,10 +144,13 @@ export function isAssignmentState(v: unknown): v is AssignmentState {
 }
 
 
-/** Manual verification belongs to the latest visible entity episode, not a phone match. */
-export type VerificationFilters = { manual_outcome?: FilterValue; manual_disposition?: FilterValue; onboarded?: "yes" | "no"; added_to_db?: "yes" | "no"; wh_id?: string; has_notes?: "yes" | "no"; has_manual_calls?: "yes" | "no" };
+/** Saved verification belongs to the visible episode; warehouse matches have their own filter. */
+export type VerificationFilters = { warehouse_match?: "yes" | "no"; manual_outcome?: FilterValue; manual_disposition?: FilterValue; onboarded?: "yes" | "no"; added_to_db?: "yes" | "no"; wh_id?: string; has_notes?: "yes" | "no"; has_manual_calls?: "yes" | "no" };
 export function verificationFilters(entity:EntityType,idExpr:string,viewer:Viewer,f:VerificationFilters,params:unknown[]){
-  const where:string[]=[];if(!filterValues(f.manual_outcome).length&&!filterValues(f.manual_disposition).length&&!f.onboarded&&!f.added_to_db&&!f.wh_id&&!f.has_notes&&!f.has_manual_calls)return where;let owner="";
+  const where:string[]=[];
+  if(f.warehouse_match)where.push(`${f.warehouse_match==='no'?'not ':''}${warehouseMatchSql(`'${entity}'`,idExpr)}`);
+  if(!filterValues(f.manual_outcome).length&&!filterValues(f.manual_disposition).length&&!f.onboarded&&!f.added_to_db&&!f.wh_id&&!f.has_notes&&!f.has_manual_calls)return where;
+  let owner="";
   if(!viewer.isAdmin){params.push(viewer.email.toLowerCase());owner=` and a.assignee=$${params.length}`;}
   const latest=`from bolna_assignments a where a.entity_type='${entity}' and a.entity_id=${idExpr} and a.state<>'dropped'${owner} order by (a.state='open') desc,a.assigned_at desc,a.id desc limit 1`;
   const outcome=categoryWhere(`(select a.outcome ${latest})`,f.manual_outcome,params,'none');if(outcome)where.push(outcome);
@@ -160,7 +164,8 @@ export function verificationFilters(entity:EntityType,idExpr:string,viewer:Viewe
   if (f.wh_id) {
     const legacy = entity === 'call' ? `(select c.wh_id from bolna_call_logs c where c.id=${idExpr})` : 'null::text';
     const wh = `(case when (select a.id ${latest}) is null then ${legacy} else (select a.wh_id ${latest}) end)`;
-    where.push(warehouseWhere(wh, f.wh_id, params));
+    const recorded=warehouseWhere(wh, f.wh_id, params);
+    where.push(`(${recorded} or exists(select 1 from bolna_warehouse_matches w where w.entity_type='${entity}' and w.entity_id=${idExpr} and w.warehouse_id::text=$${params.length}))`);
   }
   if (f.has_notes) { const notes = `(${hasText(`(select a.remarks ${latest})`)})`; where.push(f.has_notes === 'yes' ? notes : `not ${notes}`); }
   if (f.has_manual_calls) {

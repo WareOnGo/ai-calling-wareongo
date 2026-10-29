@@ -1,3 +1,4 @@
+import { WarehouseReference } from "../WarehouseNotice";
 import { AiActivityFilter, ReportingFilters, REPORTING_FILTER_KEYS, SelectFilter, YesNoFilter, DateFilters } from "../FilterFields";
 import {AiAttemptCard} from '../AiAttemptCard';
 import { firstValue } from "@/lib/filter-values";
@@ -199,8 +200,8 @@ export default async function Dashboard({
                 <td className="report-notes"><AssignmentNotes text={r.assignment_remarks}/></td>
                 <td><span className={r.assignment_added_to_db ? undefined : "muted"}>{r.assignment_added_to_db ? "Yes" : "No"}</span></td>
                 <td>
-                  {r.assignment_wh_id || <span className="muted">—</span>}
-                  {(r.wh_id || r.added_to_db) && <small className="legacy-reference">Legacy call: {r.wh_id || "ID missing"}{r.added_to_db ? " · Added" : ""}</small>}
+                  <WarehouseReference savedId={r.assignment_wh_id} ids={r.warehouse_ids}/>
+                  {((r.wh_id && r.wh_id !== r.assignment_wh_id) || (r.added_to_db && !r.assignment_added_to_db)) && <small className="legacy-reference">Legacy call: {r.wh_id || "ID missing"}{r.added_to_db ? " · Added" : ""}</small>}
                 </td>
                 <td title="Legacy metadata; actual callers are recorded in manual history">{r.called_by || "—"}</td>
                 <td>{r.source_cities ? hl(r.source_cities, terms) : <span className="muted">Unknown</span>}</td>

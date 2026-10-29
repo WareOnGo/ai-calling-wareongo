@@ -502,6 +502,12 @@ table.sheet td.edit-cell.err    { box-shadow: inset 3px 0 0 var(--fill-red-tx); 
 .pill-record      { background: var(--fill-purple-bg); color: var(--fill-purple-tx); }
 .pill-call        { background: var(--fill-blue-bg); color: var(--fill-blue-tx); }
 
+/* Warehouse matches sit beside the saved value in the existing WH ID column. */
+.warehouse-reference { display: grid; gap: var(--space-1); min-width: 0; }
+.warehouse-reference-value { font-variant-numeric: tabular-nums; white-space: normal; overflow-wrap: anywhere; }
+.warehouse-reference-source { display: block; margin-top: var(--space-1); color: var(--fill-green-tx); font-size: var(--text-caption); line-height: 1.4; white-space: normal; overflow-wrap: anywhere; }
+.warehouse-reference > .warehouse-reference-source { margin-top: 0; }
+
 /* ---- click-to-copy ---- */
 .copytext { display: inline-flex; align-items: center; gap: 6px; }
 .copytext-v { font-variant-numeric: tabular-nums; }

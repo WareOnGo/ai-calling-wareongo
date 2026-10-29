@@ -7,6 +7,7 @@ import { CONTACT_PHONES_SQL } from "./assignment-contacts";
 import {assignmentFiltersSchema} from './filters';
 import {assignmentSelectionQuery} from './assignments';
 import type {Viewer} from './scope';
+import { warehousesByPhone } from './warehouse-contacts';
 
 export const BULK_ASSIGNMENT_LIMIT=20000;
 export const bulkAssignmentSchema=z.object({
@@ -16,7 +17,7 @@ export const bulkAssignmentSchema=z.object({
   previewHash:z.string().regex(/^[a-f0-9]{64}$/).optional(),
 }).strict().refine(body=>!!body.ids!==!!body.filters,'Provide selected IDs or all-matching filters');
 export type BulkAssignmentRequest=z.infer<typeof bulkAssignmentSchema>;
-export type BulkAssignmentPreview={action:'unassign'|'reopen';selected:number;eligible:number;skippedState:number;skippedOwner:number;skippedInactive:number;previewHash:string};
+export type BulkAssignmentPreview={action:'unassign'|'reopen';selected:number;eligible:number;skippedState:number;skippedOwner:number;skippedInactive:number;skippedWarehouse:number;previewHash:string};
 type Selected={id:string;entity_type:string;entity_id:string;assignee:string;state:string;revision:number};
 
 async function plan(client:PoolClient,viewer:Viewer,body:BulkAssignmentRequest,lock=false) {
@@ -26,7 +27,8 @@ async function plan(client:PoolClient,viewer:Viewer,body:BulkAssignmentRequest,l
   if(rows.length>BULK_ASSIGNMENT_LIMIT)throw new ApiError(400,`Select at most ${BULK_ASSIGNMENT_LIMIT.toLocaleString()} assignments. Narrow the filters first.`);
   if(body.ids&&rows.length!==body.ids.length)throw new ApiError(409,'Some assignments no longer exist. Refresh the selection.');
   const eligible:string[]=[],selectedState=body.action==='unassign'?'open':'done';
-  let skippedState=0,skippedOwner=0,skippedInactive=0;
+  let skippedState=0,skippedOwner=0,skippedInactive=0,skippedWarehouse=0;
+  const registered=new Set<string>();
   const candidates=rows.filter(row=>row.state===selectedState);
   const keys=new Map<string,string[]>();
   const occupied=new Set<string>();
@@ -37,6 +39,8 @@ async function plan(client:PoolClient,viewer:Viewer,body:BulkAssignmentRequest,l
       join (${CONTACT_PHONES_SQL}) c using(entity_type,entity_id) where a.id=any($1::bigint[])`,[candidates.map(row=>row.id)])).rows;
     for(const row of candidates)keys.set(row.id,[`entity:${row.entity_type}:${row.entity_id}`]);
     for(const contact of contacts)keys.get(contact.id)!.push(`phone:${contact.phone_last10}`);
+    const warehouses=await warehousesByPhone(client,contacts.map(c=>c.phone_last10));
+    for(const contact of contacts)if(warehouses.has(contact.phone_last10))registered.add(contact.id);
     const owners=(await client.query<{entity_type:string;entity_id:string;phone_last10:string|null}>(`select a.entity_type,a.entity_id,c.phone_last10
       from bolna_assignments a left join (${CONTACT_PHONES_SQL}) c using(entity_type,entity_id)
       where a.state='open' and (a.entity_id=any($1::uuid[]) or c.phone_last10=any($2::text[]))`,
@@ -46,6 +50,7 @@ async function plan(client:PoolClient,viewer:Viewer,body:BulkAssignmentRequest,l
   for(const row of rows) {
     if(row.state!==selectedState){skippedState++;continue;}
     if(body.action==='reopen') {
+      if(registered.has(row.id)){skippedWarehouse++;continue;}
       if(!active.has(row.assignee)){skippedInactive++;continue;}
       const contactKeys=keys.get(row.id)!;
       if(contactKeys.some(key=>occupied.has(key))){skippedOwner++;continue;}
@@ -53,7 +58,7 @@ async function plan(client:PoolClient,viewer:Viewer,body:BulkAssignmentRequest,l
     }
     eligible.push(row.id);
   }
-  const preview:BulkAssignmentPreview={action:body.action,selected:rows.length,eligible:eligible.length,skippedState,skippedOwner,skippedInactive,
+  const preview:BulkAssignmentPreview={action:body.action,selected:rows.length,eligible:eligible.length,skippedState,skippedOwner,skippedInactive,skippedWarehouse,
     previewHash:allocationHash({action:body.action,rows,eligible})};
   return {preview,eligible};
 }

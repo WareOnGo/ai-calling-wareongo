@@ -1,5 +1,38 @@
 # Dashboard visual and UX overhaul
 
+## Warehouse matching review — 30 October 2026
+
+WH ID placement was subsequently checked in the actual tables. Assignments and
+AI Calls now put every matched ID in their existing WH ID cell with a compact
+source label. A different saved value remains labeled Saved; the phone matches
+appear beneath it. My Work keeps the matches directly beneath its editable WH ID
+field. Identical legacy references are no longer repeated in AI Calls.
+No live data was changed in this visual follow-up. Type checking, the production
+build and all nine focused production browser tests passed, including both
+themes at 1366px/390px and 320px allocation dialogs. Inspected synthetic captures:
+[WH ID column](visual-overhaul/warehouse-whid-column.png),
+[My Work on mobile](visual-overhaul/warehouse-whid-my-work-390-dark.png),
+[preserved saved ID](visual-overhaul/warehouse-whid-assignments-1366-light.png).
+
+Caller and AI allocation dialogs exclude numbers linked to the imported WAG
+warehouse snapshot and display every matching integer WHID. The shared notice is
+also available in records, calls, assignments, My Work and batch history. The
+Warehouse DB match filter has applied chips and preserves count/export scope.
+
+The production build, type checking, 136 unit tests, all 379 integration tests and
+five focused production-mode browser checks passed. Browser coverage includes
+1366px light, 390px dark and 320px calling dialogs, rendered text contrast, viewport
+overflow, exact CSV contents, filter interaction and preserved caller notes.
+The 320px manual dialog and 390px dark AI dialog were inspected visually; their
+action footers remain reachable and WHIDs wrap within the contact preview.
+Synthetic captures: [manual 320px](visual-overhaul/warehouse-manual-320.png),
+[AI 390px dark](visual-overhaul/warehouse-ai-390-dark.png).
+
+The build required a retry after a security advisory notice. The production
+dependency audit still flags Next.js and Zod; these package findings remain open
+and are recorded in the [review report](warehouse-review-2026-10-30.json).
+This feature review does not establish complete WCAG or security conformance.
+
 Branch: `codex/bolna-visual-overhaul`, based on `8fb7597`. Implementation and preview are isolated in the `bolna-visual-overhaul` worktree, alongside the original app checkout. The preview is at `http://localhost:3000` using the existing local configuration.
 
 ## What changed

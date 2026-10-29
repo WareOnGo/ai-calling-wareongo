@@ -1,4 +1,5 @@
 "use client";
+import { WarehouseNotice } from "./WarehouseNotice";
 import { AiTimeline } from "./AiTimeline";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { RawRow } from "@/lib/raw";
@@ -77,6 +78,7 @@ function DetailContents({ id, entity, onClose,initialSection,aiBatch,aiScope }: 
     </>}
     <div className="modal-body detail-body" ref={body}>
       {error ? <div role="alert"><p>{error}</p><button type="button" className="btn" onClick={() => setAttempt(n => n + 1)}>Retry</button></div> : !r ? <div role="status"><p>Loading details…</p>{[1,2,3,4].map(i => <p className="skeleton detail-skeleton" key={i} />)}</div> : <>
+        <WarehouseNotice ids={r.warehouse_ids}/>
         <div className="detail-panel" role="tabpanel" id={`${tabId}-panel-0`} aria-labelledby={`${tabId}-tab-0`} hidden={tab !== "Overview"}>
           <section className="detail-section" aria-label="Property"><h3>Property</h3><Facts values={{ "Location": entity === "record" ? [r.city,r.state].filter(Boolean).join(", ") : r.db_area || r.raw_city,
             ...(entity === "record" ? { "Size": area(r.area_sqft) } : { "Built-up area": area(r.built_up_area_sqft), "Carpet area": area(r.carpet_area_sqft), "Listing area": area(r.raw_area_sqft) }), "Rent": rent(entity === "record" ? r.rent : r.expected_rent) }} />

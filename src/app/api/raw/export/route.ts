@@ -42,6 +42,8 @@ const COLUMNS: { label: string; get: (r: RawExportRow) => unknown }[] = [
   { label: "Human Remarks", get: (r) => r.assignment_remarks },
   { label: "Human In DB", get: (r) => (r.assignment_added_to_db ? "yes" : "") },
   { label: "Human WH ID", get: (r) => r.assignment_wh_id },
+  { label: "Warehouse DB match", get: (r) => r.warehouse_ids.length ? "yes" : "no" },
+  { label: "Matched warehouse IDs", get: (r) => r.warehouse_ids.join("; ") },
   { label: "Metadata (JSON)", get: (r) => (r.metadata ? JSON.stringify(r.metadata) : "") },
 ];
 

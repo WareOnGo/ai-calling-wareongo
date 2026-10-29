@@ -8,9 +8,10 @@ import { dateTime } from "@/lib/display";
 import { OUTCOMES } from "@/lib/scope";
 import { IconCheck } from "./icons";
 import { useAutosave, SaveStatus } from "./useAutosave";
+import { WarehouseMatchNote } from './WarehouseNotice';
 
-type Props = { entity: "record" | "call"; entityId: string; revision: number; assignmentId: string; outcome: string | null; remarks: string | null; addedToDb: boolean; whId: string | null; state?: string; closureReason?:string|null; disposition?:string|null; nextDueAt?:string|null; onStateChange?: (id: string, state: string) => void };
-export function OutcomeCells({ entity, entityId, revision, assignmentId, outcome, remarks, addedToDb, whId, state = "open", closureReason,disposition,nextDueAt,onStateChange }: Props) {
+type Props = { entity: "record" | "call"; entityId: string; revision: number; assignmentId: string; outcome: string | null; remarks: string | null; addedToDb: boolean; whId: string | null; warehouseIds?: number[]; state?: string; closureReason?:string|null; disposition?:string|null; nextDueAt?:string|null; onStateChange?: (id: string, state: string) => void };
+export function OutcomeCells({ entity, entityId, revision, assignmentId, outcome, remarks, addedToDb, whId, warehouseIds, state = "open", closureReason,disposition,nextDueAt,onStateChange }: Props) {
   const { pending } = useDashboardUI();
   const key = `assignment-${assignmentId}`;
   const save = useAutosave(key, `/api/assignments/${assignmentId}`, { outcome: outcome ?? "", remarks: remarks ?? "", added_to_db: addedToDb, wh_id: whId ?? "", state,closure_reason:closureReason??"" }, ["outcome", "added_to_db", "state","closure_reason"], revision,["outcome","closure_reason"]);
@@ -35,7 +36,7 @@ export function OutcomeCells({ entity, entityId, revision, assignmentId, outcome
       {(save.values.outcome==="Unclear"||disposition==="invalid_number"||!!disposition&&RETRY_DISPOSITIONS.includes(disposition)||save.values.closure_reason==="exhausted")&&<select disabled={pending} className="field" aria-label="Closure reason" value={save.values.closure_reason} onChange={e=>save.set("closure_reason",e.target.value,true)}><option value="">Choose closure reason…</option><option value="resolved">No further action — explained in notes</option><option value="escalated">Escalated to an admin — explained in notes</option><option value="invalid_number_verified">Number verified invalid — evidence in notes</option><option value="exhausted">Exhausted follow-ups — explain why in notes</option></select>}
       <SaveStatus id={key} {...save} /></td>
     <td data-label="In DB?" className={`edit-cell center ${cls}`}><label className="checkfield" title="Your verification: this warehouse is in the database"><input disabled={pending} type="checkbox" checked={save.values.added_to_db} onChange={e => save.set("added_to_db", e.target.checked, true)} /><span>{save.values.added_to_db ? "Added" : "Not yet"}</span></label></td>
-    <td data-label="WH ID" className={`edit-cell ${cls}`}><input disabled={pending} ref={whInput} className="field field-narrow" aria-label="Warehouse ID" inputMode="numeric" pattern="[1-9][0-9]*" value={save.values.wh_id} placeholder="WH ID" onChange={e => save.set("wh_id", e.target.value)} onBlur={save.flush} /></td>
+    <td data-label="WH ID" className={`edit-cell ${cls}`}><input disabled={pending} ref={whInput} className="field field-narrow" aria-label="Warehouse ID" inputMode="numeric" pattern="[1-9][0-9]*" value={save.values.wh_id} placeholder="WH ID" onChange={e => save.set("wh_id", e.target.value)} onBlur={save.flush} /><WarehouseMatchNote ids={warehouseIds} savedId={save.values.wh_id}/></td>
     <td data-label="Finished?" className={`edit-cell ${cls}`}><button type="button" disabled={pending} className={`btn-done${done ? " is-done" : ""}`} aria-pressed={done} onClick={() => save.set("state", done ? "open" : "done", true)} title={done ? "Reopen this one" : "Mark finished — it stays visible"}><IconCheck size={14} />{done ? "Done" : "Mark done"}</button></td>
   </>;
 }

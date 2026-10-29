@@ -4,6 +4,7 @@ import { ApiError } from "./api";
 import { CONTACT_PHONES_SQL } from "./assignment-contacts";
 import { query, transaction } from "./db";
 import type { EntityType } from "./scope";
+import { warehousesByPhone } from './warehouse-contacts';
 
 export const ASSIGN_CAP = 20000;
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -18,12 +19,12 @@ type Owner = { id: string; entity_type: string; entity_id: string; assignee: str
 type CompletedOwner = { assignee: string; state: 'done'; outcome: string | null; disposition: string | null; count: number };
 type PreviewAi = { execution_id: string; status: string | null; result: string | null; known_attempts: number; recorded_at: string | null; scope: 'execution' | 'contact' };
 export type AllocationItem = {
-  id: string; name: string | null; phones: string[]; disposition: "assign" | "reassign" | "owned" | "duplicate" | "missing_phone";
+  id: string; name: string | null; phones: string[]; warehouseIds: number[]; disposition: "assign" | "reassign" | "owned" | "duplicate" | "missing_phone" | "warehouse_exists";
   assignee: string | null; owners: Owner[]; completed: number; completed_by: CompletedOwner[]; ai_result: string | null; ai: PreviewAi | null;
 };
 export type AssignSummary = {
   requested: number; assigned: number; reassigned: number; skipped: number; capped: boolean;
-  duplicateContacts: number; skippedOwned: number; skippedNoPhone: number; retained: number;
+  duplicateContacts: number; skippedOwned: number; skippedNoPhone: number; skippedWarehouse: number; retained: number;
   batchId: string; perCaller: Record<string, number>;
 };
 export type AllocationOptions = {
@@ -33,7 +34,7 @@ export type AllocationOptions = {
 };
 export type AllocationPreview = {
   previewHash: string; requested: number; validPhones: number; uniquePhones: number;
-  eligible: number; owned: number; duplicateContacts: number; missingPhone: number; completedHistory: number;
+  eligible: number; owned: number; duplicateContacts: number; missingPhone: number; warehouseExists: number; warehouseNumbers: number; completedHistory: number;
   ownerCounts: Record<string, number>; completedOwners: Record<string, number>; aiResults: Record<string, number>; aiStatuses: Record<string, number>; perCaller: Record<string, number>;
   capped: boolean; items: AllocationItem[];
 };
@@ -56,6 +57,7 @@ async function plan(client: PoolClient, opts: AllocationOptions): Promise<Alloca
   const byId = new Map<string,string[]>();
   for (const row of contacts) byId.set(row.entity_id,[...(byId.get(row.entity_id)||[]),row.phone_last10]);
   const phones=[...new Set(contacts.map(row=>row.phone_last10))];
+  const warehouses = await warehousesByPhone(client, phones);
   const owners=(await client.query<Owner>(`select a.id::text,a.entity_type,a.entity_id,a.assignee,a.revision,a.state,a.outcome,a.disposition,a.next_due_at::text,
       coalesce(array_agg(v.phone_last10 order by v.phone_last10) filter(where v.phone_last10 is not null),'{}') as phones
       from bolna_assignments a left join (${CONTACT_PHONES_SQL}) v using(entity_type,entity_id)
@@ -111,16 +113,18 @@ async function plan(client: PoolClient, opts: AllocationOptions): Promise<Alloca
       aiStatuses[ai.status||"Unknown status"]=(aiStatuses[ai.status||"Unknown status"]||0)+1;
     }
     const assignee=callers[(Number(prior)+cursor)%callers.length];
-    const disposition=!rowPhones.length?"missing_phone":rowPhones.some(phone=>seen.has(phone))?"duplicate":
+    const warehouseIds=[...new Set(rowPhones.flatMap(phone=>warehouses.get(phone)||[]))].sort((a,b)=>a-b);
+    const disposition=!rowPhones.length?"missing_phone":warehouseIds.length?"warehouse_exists":rowPhones.some(phone=>seen.has(phone))?"duplicate":
       overlapping.length && (!opts.reassign || overlapping.some(owner=>callers.includes(owner.assignee)))?"owned":overlapping.length?"reassign":"assign";
     if(disposition==="assign" || disposition==="reassign") {
       cursor++; perCaller[assignee]=(perCaller[assignee]||0)+1; rowPhones.forEach(phone=>seen.add(phone));
     }
-    return {id,name:names.get(id) || null,phones:rowPhones,disposition,assignee:disposition==="assign"||disposition==="reassign"?assignee:null,owners:overlapping,completed:completed.get(id)||0,completed_by:completedById.get(id)||[],ai_result,ai};
+    return {id,name:names.get(id) || null,phones:rowPhones,warehouseIds,disposition,assignee:disposition==="assign"||disposition==="reassign"?assignee:null,owners:overlapping,completed:completed.get(id)||0,completed_by:completedById.get(id)||[],ai_result,ai};
   });
   const count=(disposition:string)=>items.filter(item=>item.disposition===disposition).length;
-  return { previewHash:allocationHash({entity:opts.entity,callers,reassign:!!opts.reassign,items:items.map(({id,phones,disposition,assignee,owners})=>({id,phones,disposition,assignee,owners:owners.map(({id,assignee,phones})=>({id,assignee,phones}))}))}),
+  return { previewHash:allocationHash({entity:opts.entity,callers,reassign:!!opts.reassign,items:items.map(({id,phones,warehouseIds,disposition,assignee,owners})=>({id,phones,warehouseIds,disposition,assignee,owners:owners.map(({id,assignee,phones})=>({id,assignee,phones}))}))}),
     requested:ids.length,validPhones:byId.size,uniquePhones:phones.length,eligible:cursor,owned:count("owned"),duplicateContacts:count("duplicate"),missingPhone:count("missing_phone"),
+    warehouseExists:count('warehouse_exists'),warehouseNumbers:warehouses.size,
     completedHistory:completed.size,ownerCounts,completedOwners,aiResults,aiStatuses,perCaller,capped:capped||!!opts.capped,items };
 }
 export async function previewAssignment(opts: AllocationOptions) {
@@ -153,7 +157,7 @@ export async function assignEntities(opts: AllocationOptions): Promise<AssignSum
       select $1,x.id,x.assignment_id,x.disposition,x.assignee,x.phones,x.owners from jsonb_to_recordset($2::jsonb)
       as x(id uuid,assignment_id bigint,disposition text,assignee text,phones text[],owners jsonb)`,[batchId,JSON.stringify(preview.items.map(item=>({...item,assignment_id:insertedById.get(item.id)??null})))]);
     const result: AssignSummary={requested:preview.requested,assigned:inserted.length,reassigned:dropped.length,skipped:preview.requested-inserted.length,
-      capped:preview.capped,duplicateContacts:preview.duplicateContacts,skippedOwned:preview.owned,skippedNoPhone:preview.missingPhone,
+      capped:preview.capped,duplicateContacts:preview.duplicateContacts,skippedOwned:preview.owned,skippedNoPhone:preview.missingPhone,skippedWarehouse:preview.warehouseExists,
       retained:preview.items.filter(item=>item.disposition==="owned"&&item.owners.some(owner=>callers.includes(owner.assignee))).length,batchId,perCaller:preview.perCaller};
     await client.query("update bolna_assignment_batches set summary=$2::jsonb where id=$1",[batchId,JSON.stringify(result)]);
     return result;

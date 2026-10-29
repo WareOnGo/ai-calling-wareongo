@@ -1,5 +1,58 @@
 # Database migrations
 
+## Warehouse phone backfill (014)
+
+`014_warehouse_contacts.sql` adds phone-to-warehouse associations and guards new
+caller assignments, reopening and AI batch items. Matching covers **all raw
+listings**, including unassigned records and alternate phones, plus AI execution
+numbers and retained-phone fallbacks. Existing tasks remain editable; importing
+the snapshot does not close work or change availability, caller notes or owners.
+
+After applying 014, run the one-time data migration with explicit caller and WAG
+connections. It only reads WAG's `Warehouse` table; the dashboard needs no WAG
+credentials at runtime. Use verified TLS and `DATABASE_SSL_CA` as above.
+
+```bash
+# Set DIRECT_URL (caller) and WAREHOUSE_DATABASE_URL (WAG) in the environment.
+node database/backfill-warehouse-contacts.mjs          # full transaction, rolled back
+node database/backfill-warehouse-contacts.mjs --apply  # commit the one-time import
+```
+
+The import strips phone formatting/country prefixes, matches the final ten
+digits and splits comma/slash/semicolon/pipe/newline-separated numbers. Every
+warehouse ID is retained in `bolna_warehouse_contacts`; `bolna_warehouse_matches`
+relates those numbers to raw records and calls. The import fills an empty legacy
+WHID only for a single unambiguous warehouse and marks matched assignments/calls
+as added to DB. Nonempty IDs are preserved. Invalid legacy completion records
+retain their scalar WHID until repaired; all matched IDs still appear in the UI.
+Each changed assignment is audited and its revision increments. The source
+snapshot time, checksum and counts are stored in `bolna_warehouse_imports`;
+repeating the data migration is a no-op. No rolling refresh or scheduler is added.
+
+This migration is required before deploying the updated application. On a shared
+installation with unrelated pending migrations, review its ledger and apply only
+014 in a transaction with its checksum recorded, without replaying older files.
+
+Applied and verified on 30 October 2026 IST. The snapshot matched 988 raw phone
+numbers across 2,493 raw listings and 362 assignments. It filled 145 blank
+assignment WHIDs and 424 blank call WHIDs; existing IDs, notes, outcomes, owners,
+states and dates were preserved. Both new guards are enabled, and existing
+trigger settings and pending migration 009 were preserved. See the
+[backfill report](../docs/warehouse-backfill-2026-10-30.json) for counts and checksums.
+
+The adversarial review found that an in-place caller change could bypass 014
+while the shared installation's general ownership trigger is disabled.
+`015_warehouse_reassignment_guard.sql` adds `assignee` to the guard's trigger and
+change detection. It was rehearsed with rollback, applied, and independently
+verified on 30 October 2026 IST. All assignment data, audit records, imported
+associations, existing trigger settings and pending migration 009 were preserved.
+Migration 014's applied checksum remains unchanged.
+
+The UI exposes the phone association through **Warehouse DB match** and all
+matched WHIDs. **Added to DB** and **Onboarded** retain their saved verification
+semantics. Raw, call and batch CSVs include separate match and matched-ID columns.
+See the [review report](../docs/warehouse-review-2026-10-30.json).
+
 `baseline.sql` contains only Bolna Processing's tables, indexes, constraints,
 generated phone column and analysis view. Source datasets, credentials and other
 applications' tables are excluded. `migrations/` is the authoritative forward

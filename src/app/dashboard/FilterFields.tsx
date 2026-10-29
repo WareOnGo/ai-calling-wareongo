@@ -26,6 +26,7 @@ export function YesNoFilter({ name, label, applied, yes = "Yes", no = "No", aria
 export function ReportingFilters({ applied }: { applied: SearchValues }) {
   return <>
     <YesNoFilter name="added_to_db" label="Added to DB" applied={applied} yes="Added" no="Not added" />
+    <YesNoFilter name="warehouse_match" label="Warehouse DB match" applied={applied} yes="Warehouse already added" no="No warehouse match" />
     <label><span>WH ID</span><input name="wh_id" aria-label="WH ID" defaultValue={firstValue(applied.wh_id) || ""} placeholder="e.g. 261" /><small>Matches a complete warehouse ID.</small></label>
     <YesNoFilter name="has_notes" label="Manual notes" applied={applied} yes="Has notes" no="No notes" />
     <YesNoFilter name="has_manual_calls" label="Manual calls logged" applied={applied} yes="At least one call" no="No calls logged" />
@@ -33,7 +34,7 @@ export function ReportingFilters({ applied }: { applied: SearchValues }) {
   </>;
 }
 
-export const REPORTING_FILTER_KEYS = ["added_to_db", "wh_id", "has_notes", "has_manual_calls", "manual_disposition"];
+export const REPORTING_FILTER_KEYS = ["added_to_db", "warehouse_match", "wh_id", "has_notes", "has_manual_calls", "manual_disposition"];
 
 export function AiActivityFilter({applied}:{applied:SearchValues}) {
   return <YesNoFilter name="has_ai_calls" label="AI attempts" applied={applied} yes="At least one recorded attempt" no="No attempts recorded"/>;

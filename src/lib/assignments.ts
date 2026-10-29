@@ -1,5 +1,6 @@
 import { warehouseWhere, dateRangeWhere, hasText } from "./filter-values";
 import { aiAttemptsExistSql, aiAttemptSummarySql, type AiAttemptSummary } from "./ai-summary";
+import { warehouseIdsSql, warehouseMatchSql } from './warehouse-contacts';
 import { categoryWhere, filterValues, type FilterValue } from "./filter-values";
 import { ApiError } from "./api";
 import { query, transaction } from "@/lib/db";
@@ -79,6 +80,8 @@ export async function updateAssignment(
   // The shared legacy deployment can leave the ownership trigger disabled.
   // Enforce reopening here, under the same lock used by assignment allocation.
   if(patch.state==='open' && current.state!=='open') {
+    const registered=await client.query('select 1 from bolna_warehouse_matches where entity_type=$1 and entity_id=$2 limit 1',[current.entity_type,current.entity_id]);
+    if(registered.rowCount)throw new ApiError(409,'This number has a warehouse already added to DB and cannot be reopened.','WAREHOUSE_ALREADY_ADDED');
     const owner=await client.query(`select 1 from (${contactTargets('$1::text','$2::uuid')}) contacts
       join bolna_assignments a using(entity_type,entity_id)
       where a.state='open' and a.id<>$3::bigint limit 1`,[current.entity_type,current.entity_id,id]);
@@ -125,6 +128,7 @@ export async function dropAssignment(id: string, actor: string | null = null): P
 // ---------------------------------------------------------------------------
 
 export type AssignmentHistoryRow = {
+  warehouse_ids: number[];
   work_context?: { owner_name: string | null; city: string | null; area_sqft: string | null; built_up_area_sqft: string | null; carpet_area_sqft: string | null; rent: string | null };
   ai_summary: AiAttemptSummary;
   batch_id: string | null;
@@ -156,6 +160,7 @@ export type AssignmentHistoryRow = {
 };
 
 export type HistoryFilters = {
+  warehouse_match?: "yes" | "no";
   assignment_id?: string;
   entity_id?: string;
   batch_id?: string;
@@ -257,7 +262,11 @@ function historyWhere(viewer: import("./scope").Viewer, f: HistoryFilters): { sq
     where.push("a.state='done'");
     where.push(...dateRangeWhere('a.completed_at',f.completed_from,f.completed_to,params));
   }
-  if (f.wh_id) where.push(warehouseWhere('a.wh_id', f.wh_id, params));
+  if (f.wh_id) {
+    const recorded=warehouseWhere('a.wh_id', f.wh_id, params);
+    where.push(`(${recorded} or exists(select 1 from bolna_warehouse_matches w where w.entity_type=a.entity_type and w.entity_id=a.entity_id and w.warehouse_id::text=$${params.length}))`);
+  }
+  if(f.warehouse_match)where.push(`${f.warehouse_match==='no'?'not ':''}${warehouseMatchSql('a.entity_type','a.entity_id')}`);
   if (f.has_notes) where.push(`${f.has_notes === 'no' ? 'not ' : ''}(${hasText('a.remarks')})`);
   if (f.has_manual_calls) where.push(`${f.has_manual_calls === 'no' ? 'not ' : ''}exists(select 1 from bolna_effective_manual_attempts e where e.assignment_id=a.id)`);
   where.push(...dateRangeWhere('a.assigned_at', f.date_from, f.date_to, params));
@@ -303,7 +312,8 @@ export async function listAssignments(viewer: import("./scope").Viewer, f: Histo
        select a.* ${historyFilterFrom(f, true)} ${whereSql}
        order by ${order} limit ${pageSize} offset ${(page - 1) * pageSize}
      )
-     select a.revision, a.id::text as id, a.batch_id::text, a.entity_type, a.entity_id::text as entity_id,
+     select ${warehouseIdsSql('a.entity_type', 'a.entity_id')} as warehouse_ids,
+            a.revision, a.id::text as id, a.batch_id::text, a.entity_type, a.entity_id::text as entity_id,
             ${HISTORY_SUBJECT} as subject,
             coalesce(rphone.phone, case when cl.call_type = 'inbound' then cl.from_number else cl.to_number end) as phone,
             ${HISTORY_CITY} as city,

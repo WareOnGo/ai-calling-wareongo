@@ -1,3 +1,4 @@
+import { WarehouseReference } from "../WarehouseNotice";
 import { RecordDetails } from "../RecordDetails";
 import { assignmentFiltersSchema } from "@/lib/filters";
 import {dispositionLabel} from "@/lib/manual-dispositions";
@@ -129,7 +130,7 @@ export default async function Assignments({
                 <td>{manualResultCard(r,callHistory.get(`${r.entity_type}:${r.entity_id}`)!.total)}</td>
                 <td className="assignment-note-cell"><AssignmentNotes text={r.remarks} /></td>
                 <td>{r.added_to_db ? <span className="pill pill-available">yes</span> : <span className="muted">no</span>}</td>
-                <td>{r.wh_id ?? <span className="muted">—</span>}</td>
+                <td><WarehouseReference savedId={r.wh_id} ids={r.warehouse_ids}/></td>
                 <td className="actions">
                   {r.state === "done" && <ReopenAssignment id={r.id} revision={r.revision}/>}
                   {r.state === "open" && <UnassignButton id={r.id} who={r.assignee_name || r.assignee} />}

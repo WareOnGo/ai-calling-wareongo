@@ -1,5 +1,20 @@
 # Dashboard filter audit — 14 October 2026
 
+## Warehouse matching review — 30 October 2026
+
+**Warehouse DB match** filters the imported WAG phone associations in Raw Dataset,
+AI Calls, Assignments, My Work and both batch types. Any/Yes/No use the same scope
+for counts, pages, exports and all-matching selection. All associated WHIDs remain
+searchable and are exported in a separate column, including ambiguous matches.
+Saved Added to DB and staff-onboarding criteria retain their existing semantics;
+a phone association does not silently replace a caller's saved verification.
+
+Regression checks cover unassigned raw matches, alternate numbers, empty matches,
+employee scope, My Work totals, CSV columns and applied filter chips. The new
+filters and warehouse notices use the existing shared components and colors.
+The [adversarial review report](warehouse-review-2026-10-30.json) records the
+validation results and unresolved dependency advisories.
+
 Application changes are maintained on `codex/bolna-visual-overhaul`. The development preview stays on port 3000. The filter layout needs no new environment variable or dependency. Migration 012 for the V2 manual tags was applied to the shared database with approval on 21 October 2026.
 
 ## Interaction rules

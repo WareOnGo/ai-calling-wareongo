@@ -167,6 +167,7 @@ export function QueueForCalling({ availableLanguages }: { availableLanguages: Ca
   const missing = summary.skippedNoNumber;
   const showLanguage = callable.length > 0 || heldRegion > 0 || summary.excludedByCat > 0;
   const skipped = [
+    [summary.warehouseExists, "with warehouses already added to DB"],
     [alreadyQueued, "already queued"],
     [summary.humanOwned, "assigned to callers"],
     [heldRegion, "held for language"],
@@ -210,7 +211,9 @@ export function QueueForCalling({ availableLanguages }: { availableLanguages: Ca
               <h2>{callable.length > 0 ? <><span>{callable.length.toLocaleString()}</span> ready to call</> : "No contacts ready to call"}</h2>
               <p>{matchingCount.toLocaleString()} {matchingCount === 1 ? "record" : "records"} selected{plannedLanguages.length > 0 && <> · {routeSummary}</>}</p>
               {skipped.length > 0 && <ul className="queue-skipped">{skipped.map(([count, label]) => <li key={label}><strong>{Number(count).toLocaleString()}</strong> {label}</li>)}</ul>}
-              {callable.length === 0 && <p className="queue-next-step">{alreadyQueued > 0 ? "Queued contacts will continue in their existing batches."
+              {summary.warehouseExists > 0 && <p className="warn" role="status"><strong>Numbers with warehouses already added to DB</strong> are excluded from AI calls. Their warehouse IDs are shown under Review contacts.</p>}
+              {callable.length === 0 && <p className="queue-next-step">{summary.warehouseExists > 0 ? "Choose numbers without warehouses already added to DB."
+                : alreadyQueued > 0 ? "Queued contacts will continue in their existing batches."
                 : heldRegion > 0 ? "Review the call language to include contacts with an available agent."
                 : summary.excludedByCat > 0 ? "Review the previous outcomes below to include contacts again."
                 : summary.humanOwned > 0 ? "Contacts with open manual assignments are held automatically."
@@ -221,7 +224,7 @@ export function QueueForCalling({ availableLanguages }: { availableLanguages: Ca
             {showLanguage && languageSettings}
             {calledTotal > 0 && <details className="queue-disclosure queue-previous">
               <summary>Previous AI calls <span>{calledTotal.toLocaleString()} {calledTotal === 1 ? "contact" : "contacts"}</span></summary>
-              <p>Choose which previous outcomes to include. Queued contacts and open manual assignments stay excluded.</p>
+              <p>Choose which previous outcomes to include. Numbers with warehouses already added to DB, queued contacts and open manual assignments stay excluded.</p>
               <div className="queue-outcomes">{presentCats.map(category => <label key={category.key}>
                 <input type="checkbox" checked={!offCats.has(category.key)} disabled={sending || uncertain} onChange={() => toggleCat(category.key)} />
                 <span>{category.label}</span><small>{catCounts[category.key].toLocaleString()}</small>

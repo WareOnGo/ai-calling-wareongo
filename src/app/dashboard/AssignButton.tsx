@@ -62,6 +62,7 @@ export function AssignButton({ entity, total, assignees }: { entity: "record" | 
             {Object.entries(result.perCaller).map(([email, n]) => <li key={email}>{email}: {n} new tasks</li>)}
             {result.reassigned > 0 && <li>{result.reassigned} taken from a previous owner</li>}
             {result.skippedOwned > 0 && <li>{result.skippedOwned} skipped — a linked phone already has a caller</li>}
+            {result.skippedWarehouse > 0 && <li>{result.skippedWarehouse} skipped — numbers with warehouses already added to DB</li>}
             {result.duplicateContacts > 0 && <li>{result.duplicateContacts} duplicate calling targets grouped by phone. Source listings are preserved.</li>}
             {result.skippedNoPhone > 0 && <li>{result.skippedNoPhone} left out — no phone number to call</li>}
             {result.capped && <li>Assignment limit reached. Narrow the filters for remaining work.</li>}
@@ -88,6 +89,7 @@ export function AssignButton({ entity, total, assignees }: { entity: "record" | 
           {preview && <section aria-label="Assignment preview" className="assignment-preview">
             {split && enoughCallers && <h3 className="allocation-split-title">{splitLabel}</h3>}
             <div className="allocation-summary"><strong>{preview.eligible} eligible</strong> of {preview.requested} rows</div>
+            {preview.warehouseExists > 0 && <p className="warn" role="status"><strong>Numbers with warehouses already added to DB: {preview.warehouseNumbers}.</strong> {preview.warehouseExists} selected {preview.warehouseExists===1?'row':'rows'} excluded from assignment. Warehouse IDs are shown in the record preview.</p>}
             <div className="allocation-impact">{preview.owned > 0 && <span>{preview.owned} kept with current owners</span>}{preview.duplicateContacts > 0 && <span>{preview.duplicateContacts} duplicate targets</span>}{preview.missingPhone > 0 && <span>{preview.missingPhone} missing valid phone</span>}</div>
             {!split && Object.entries(preview.perCaller).map(([email, n]) => <p className="allocation-recipient" key={email}>New work for {email}: <strong>{n}</strong></p>)}
             {preview.capped && <p role="status">Preview limited to 20,000 rows. Narrow your filters.</p>}

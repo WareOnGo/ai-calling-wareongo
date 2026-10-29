@@ -4,6 +4,7 @@ import { allocationLabel, dispositionLabel } from '@/lib/manual-dispositions';
 import { AssignmentNotes } from '../assignments/AssignmentNotes';
 import { RecordDetails } from '../RecordDetails';
 import { ResultBadge } from '../ResultBadge';
+import { WarehouseNotice } from '../WarehouseNotice';
 
 const STATUS_LABELS:Record<string,string>={open:'Open',done:'Marked done',dropped:'Unassigned',unallocated:'Not assigned'};
 const CLOSURE_LABELS:Record<string,string>={resolved:'Resolved',escalated:'Escalated',invalid_number_verified:'Invalid number verified',exhausted:'Follow-ups exhausted'};
@@ -31,6 +32,7 @@ export function ManualBatchCells({ row:r }: { row:BatchMember }) {
       <ResultBadge value={r.outcome}/>
       {r.added_to_db!==null&&<span className="batch-contact-city">{r.added_to_db?'Marked added to DB':'Not marked added to DB'}</span>}
       {r.wh_id&&<span className="batch-contact-city">WH ID: {r.wh_id}</span>}
+      <WarehouseNotice ids={r.warehouse_ids}/>
     </td>
     <td className="batch-caller-notes">
       <AssignmentNotes text={r.remarks}/>

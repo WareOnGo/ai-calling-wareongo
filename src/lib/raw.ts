@@ -1,4 +1,5 @@
 import type { VerificationFilters } from "./scope";
+import { warehouseIdsSql } from './warehouse-contacts';
 import { aiAttemptsExistSql, aiAttemptSummarySql, type AiAttemptSummary } from "./ai-summary";
 import {rawSearch,matchesSearch} from "./search";
 import {cityWhere,dateRangeWhere,hasText} from "./filter-values";
@@ -14,6 +15,7 @@ import { assignmentScope, currentAssignmentLateral, contactTargets, ownershipFil
 // Powers the raw listing view and server-validated batch selection.
 
 export type RawRow = {
+  warehouse_ids: number[];
   ai_summary: AiAttemptSummary;
   ai_attempt_count:number;ai_inbound_count:number;ai_conversation_count:number;
   ai_history_result: 'Available' | 'Unavailable' | 'Unclear' | null;
@@ -88,6 +90,7 @@ export type RawFilters = VerificationFilters & {
 export const RAW_PAGE_SIZE = 50;
 
 const SELECT_LIST = `
+  ${warehouseIdsSql("'record'", 'r.id')} as warehouse_ids,
   r.id, r.source, r.source_record_id, r.owner_name, r.owner_first_name,
   r.warehouse_type, r.listing_status, r.area_sqft::text as area_sqft,
   r.metadata->>'rent'  as rent,
@@ -313,6 +316,7 @@ const QUEUE_CAP = 20000; // safety ceiling; Delhi (largest city set) is ~2.5k
 // Raw shape from SQL before classification; `cat` is derived in JS via the shared,
 // unit-tested deriveCat() so server and client tag identically.
 type QueueRowSql = {
+  warehouse_ids: number[];
   id: string; name: string; contact: string | null; area: string; state: string;
   call_count: string; last_avail: string | null; phones:string[]; owners:NonNullable<QueueSel["owners"]>;
 };
@@ -321,6 +325,7 @@ type QueueRowSql = {
 // `where` and `params` are spliced in by the callers (filters vs. explicit ids).
 const QUEUE_SELECT = `
   select r.id,
+         ${warehouseIdsSql("'record'", 'r.id')} as warehouse_ids,
          coalesce(r.owner_first_name, r.owner_name, '') as name,
          (select pp.phone from raw_phones rp join raw_phone_numbers pp on pp.phone_id = rp.phone_id
             where rp.master_id = r.id and nullif(trim(pp.phone), '') is not null order by rp.is_primary desc, rp.phone_id limit 1) as contact,
@@ -347,7 +352,7 @@ function toQueueSel(r: QueueRowSql, queued: Set<string>): QueueSel {
   return {
     id: r.id, name: r.name, contact, area: r.area, state: r.state,
     cat: deriveCat(r.call_count, r.last_avail),
-    phones:r.phones,owners:r.owners,aiCalls:Number(r.call_count),
+    phones:r.phones,warehouseIds:r.warehouse_ids,owners:r.owners,aiCalls:Number(r.call_count),
     queued: r.phones.some(phone=>queued.has(phone)),
   };
 }

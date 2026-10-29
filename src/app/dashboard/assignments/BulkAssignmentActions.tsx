@@ -45,7 +45,8 @@ export function BulkAssignmentActions({filters}:{filters:SearchValues}) {
         {preview&&<>
           <p><strong>{preview.eligible.toLocaleString()} of {preview.selected.toLocaleString()} assignments</strong> will be {action==='unassign'?'unassigned':'reopened'}.</p>
           <p>{action==='unassign'?'Open work will leave the caller’s queue. Notes, results and assignment history are kept.':'Completed work will return to the same caller’s queue. Existing notes and results are kept.'}</p>
-          {!!(preview.skippedState+preview.skippedOwner+preview.skippedInactive)&&<ul className="bulk-skipped">
+          {!!(preview.skippedState+preview.skippedOwner+preview.skippedInactive+preview.skippedWarehouse)&&<ul className="bulk-skipped">
+            {preview.skippedWarehouse>0&&<li>{preview.skippedWarehouse.toLocaleString()} skipped: numbers with warehouses already added to DB.</li>}
             {preview.skippedState>0&&<li>{preview.skippedState.toLocaleString()} skipped: {action==='unassign'?'not open':'not completed'}.</li>}
             {preview.skippedOwner>0&&<li>{preview.skippedOwner.toLocaleString()} skipped: the contact already has open work or is repeated in this selection.</li>}
             {preview.skippedInactive>0&&<li>{preview.skippedInactive.toLocaleString()} skipped: the caller no longer has access.</li>}

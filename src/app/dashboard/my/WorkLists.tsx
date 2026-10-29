@@ -56,7 +56,7 @@ export function WorkLists({ records, calls, totals, matchingTotals, filters, ass
               <AssignmentBrief id={r.id} note={r.brief} assignedBy={r.assignedBy} name={r.assignedByName} assignedAt={r.assignedAt} />
             </td>
             <td className="work-ai-cell"><AiCallStatus result={r.ai} count={r.aiCount} /></td>
-            <OutcomeCells entity={entity} entityId={r.entityId} closureReason={r.closureReason} disposition={r.disposition} nextDueAt={r.nextDueAt} revision={r.revision} assignmentId={r.id} outcome={r.outcome} remarks={r.remarks} addedToDb={r.addedToDb} whId={r.whId} state={r.state} onStateChange={onStateChange} />
+            <OutcomeCells entity={entity} entityId={r.entityId} closureReason={r.closureReason} disposition={r.disposition} nextDueAt={r.nextDueAt} revision={r.revision} assignmentId={r.id} outcome={r.outcome} remarks={r.remarks} addedToDb={r.addedToDb} whId={r.whId} warehouseIds={r.warehouseIds} state={r.state} onStateChange={onStateChange} />
           </tr>)}</tbody>
         </table></div>
         {list.pages > 1 && <nav className="work-pager" aria-label={`${title} pages`}>
