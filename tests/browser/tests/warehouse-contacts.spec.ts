@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import pg from 'pg';
 import { ADMIN, EMPLOYEE, DB_URL } from '../lib/env.mjs';
 import { sessionCookie } from '../lib/session.mjs';
@@ -28,6 +28,12 @@ test.beforeAll(async()=>{
   await db.query('commit');
 });
 test.afterAll(async()=>{await db.query('truncate bolna_warehouse_imports cascade');await db.end();});
+// Wait for streamed fallback copies to leave the DOM before using strict locators.
+async function ready(page: Page) {
+  await expect(page.locator('.dashboard-content')).toHaveAttribute('data-hydrated','true');
+  await expect(page.locator('[hidden][id^="S:"]')).toHaveCount(0);
+  await expect(page.locator('[data-loading-view]')).toHaveCount(0);
+}
 test.beforeEach(async({context})=>{
   await context.addCookies([sessionCookie(ADMIN.email) as never]);
   await context.route('**/api/balance*',route=>route.fulfill({json:{balance:42,unit:'USD',state:'fresh',low:false,refreshedAt:new Date().toISOString()}}));
@@ -38,7 +44,7 @@ for(const width of [1366,390,320])test(`warehouse warnings exclude caller and AI
   await page.setViewportSize({width,height:width===390?844:900});
   if(width===390)await page.addInitScript(()=>localStorage.setItem('theme','dark'));
   await page.goto('/dashboard/raw');
-  await expect(page.locator('.dashboard-content')).toHaveAttribute('data-hydrated','true');
+  await ready(page);
   await expect(page.getByText('Warehouse already added to DB',{exact:false}).first()).toBeVisible();
   await expect(page.getByText('WH 501, 502',{exact:true}).first()).toBeVisible();
   await page.locator(`.rowsel[data-id="${registered}"]`).check();
@@ -107,7 +113,7 @@ test(`matched IDs occupy the existing WH ID column at ${width}px in ${theme}`,as
   await db.query("update bolna_assignments set wh_id='999' where entity_id=$1",[registered]);
   try{
     await page.goto('/dashboard/assignments');
-    await expect(page.locator('.dashboard-content')).toHaveAttribute('data-hydrated','true');
+    await ready(page);
     await page.locator('.column-menu > summary').filter({hasText:/^Columns$/}).click();
     await page.locator('.column-options').getByRole('checkbox',{name:'WH ID',exact:true}).check();
     await page.locator('.column-menu > summary').filter({hasText:/^Columns$/}).click();
@@ -123,7 +129,7 @@ test(`matched IDs occupy the existing WH ID column at ${width}px in ${theme}`,as
     await page.screenshot({path:info.outputPath(`warehouse-assignment-${width}-${theme}.png`),fullPage:true});
 
     await page.goto('/dashboard/calls');
-    await expect(page.locator('.dashboard-content')).toHaveAttribute('data-hydrated','true');
+    await ready(page);
     const call=page.locator('.warehouse-reference');
     await expect(call.locator('.warehouse-reference-value')).toHaveText('501, 502');
     await expect(call.locator('.warehouse-reference-source')).toHaveText('Matched in warehouse DB');

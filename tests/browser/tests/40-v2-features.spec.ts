@@ -231,8 +231,8 @@ test('PDF items retain batch IDs, attribution, timestamps, USD balance and calle
   await expect(page.getByLabel('Bolna balance',{exact:true})).toContainText('$42.00 USD');
   await page.getByTitle('Open details for Raghav Sharma',{exact:true}).click();
   const details=page.getByRole('dialog');await details.getByRole('tab',{name:'Manual activity',exact:true}).click();
-  await expect(details.locator('.detail-history').filter({hasText:'No response on this attempt'})).toContainText('15 Oct 2026');
-  await expect(details.locator('.detail-history').filter({hasText:'No response on this attempt'})).toContainText('Busy');
+  await expect(details.locator('.manual-call-history .attempt-card').filter({hasText:'No response on this attempt'})).toContainText('15 Oct 2026');
+  await expect(details.locator('.manual-call-history .attempt-card').filter({hasText:'No response on this attempt'})).toContainText('Busy');
   await page.keyboard.press('Escape');
   await page.goto('/dashboard/team/access');await ready(page);
   const person=page.locator('.person').filter({hasText:'priya@eval.test'});
