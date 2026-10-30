@@ -6,7 +6,7 @@ For a fresh environment: Local synthetic checks do not certify production migrat
 
 ## Before rollout
 
-1. Review the Next.js 16.4.0 major upgrade, lockfile, required Node runtime and hosting adapter. Run the tracked checks and production browser harness.
+1. Review the Next.js 16.4.3 upgrade, lockfile, required Node runtime and hosting adapter. Run the tracked checks and production browser harness.
 2. Supply the intended DDL-capable direct connection explicitly, using verified TLS and `DATABASE_SSL_CA` when needed. The runner does not load `.env.local`. Never print connection credentials.
 3. Check existing migration names/checksums. Baseline and 001–005 are unchanged. The retired, unshipped 006–019 sequence was consolidated into 006–008. A database with retired names is refused: rebuild disposable development data or prepare a reviewed forward upgrade. Do not delete ledger entries or bypass checksum mismatches.
 4. Rehearse schema, recovery and indexes on staging, measuring duration, locks and disk space. Ordinary statements retain 30-second statement and two-second lock limits. Concurrent indexes have no lock timeout, with a ten-minute statement limit configurable through `MIGRATION_INDEX_TIMEOUT_MS` (1000–3600000).

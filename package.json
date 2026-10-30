@@ -23,7 +23,7 @@
     "enrich": "node --env-file=.env.local scripts/drain.mjs http://localhost:3000/api/enrich",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:stage": "node tests/run-stage.mjs",
-    "typecheck": "tsc --noEmit --incremental false",
+    "typecheck": "next typegen && tsc --noEmit --incremental false",
     "db:migrate": "node database/migrate.mjs",
     "check": "npm run typecheck && npm test",
     "dev:preview": "node scripts/dev-preview.mjs"

@@ -1,12 +1,16 @@
 import { test, expect, bodyOverflowsX } from './fixtures';
 
-test('zero attempts keep their count and omit empty history actions', async ({ adminPage: page }) => {
+test('zero AI attempts keep their count while contact call history remains available', async ({ adminPage: page }) => {
   for (const path of ['raw', 'calls', 'assignments']) {
     await page.goto('/dashboard/' + path);
     await expect(page.getByRole('button', {name:'Show AI attempts'})).toHaveCount(0);
-    await expect(page.getByRole('button', {name:/^Manual (calls|history) for/})).toHaveCount(0);
     await expect(page.locator('tbody .details-trigger').first()).toBeVisible();
     await expect(page.locator('tbody .record-history').first()).toContainText('0');
+    const history = page.getByRole('button', {name:/^(Manual calls|Manual history|Call history) for/}).first();
+    await history.click();
+    await expect(page.getByRole('dialog').getByRole('tab', {name:'Manual activity', exact:true})).toHaveAttribute('aria-selected','true');
+    await expect(page.getByRole('dialog')).toContainText('No recorded or imported calls for this contact');
+    await page.keyboard.press('Escape');
   }
 });
 
@@ -52,7 +56,8 @@ for (const width of [320, 390]) for (const theme of ['light', 'dark']) {
       const bounds = await control.boundingBox();
       expect(bounds).not.toBeNull();
       expect(bounds!.x).toBeGreaterThanOrEqual(0);
-      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+      // Browser scroll positions round fractional table widths to whole pixels.
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width + 1);
     }
     await row.getByLabel('Your notes').fill('Mobile notes remain attached to this calling task');
     await row.getByLabel('Your notes').blur();

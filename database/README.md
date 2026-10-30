@@ -90,8 +90,9 @@ with saved notes, flags and WHIDs. See the
 `016_warehouse_sync.sql` creates private sync state, run history and a review queue.
 It starts **disabled**. It does not install a cron job, change the original import,
 or modify previously applied migrations. `017_warehouse_sync_cursors.sql` adds
-warehouse, audit and rotating-review cursors. Apply only these two migrations on
-the shared production database; unrelated pending migration 009 must remain pending.
+warehouse, audit and rotating-review cursors. Their original production rollout
+applied only these two migrations. Migration 009 was deployed separately on
+30 October 2026; see its rollout record below.
 
 The existing `enrich-analysis` cron keeps its identity and ten-minute schedule.
 Its wrapper independently queues the existing enrichment endpoint and, when due,
