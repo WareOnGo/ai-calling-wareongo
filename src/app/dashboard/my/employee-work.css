@@ -1140,3 +1140,16 @@
   :is(#employee-work, .employee-work-dialog, .employee-work-status, .employee-work-notification) .work-more-filters .work-filter > span, :is(#employee-work, .employee-work-dialog, .employee-work-status, .employee-work-notification):is(.work-more-filters .work-filter > span) { min-width: 75px; }
   :is(#employee-work, .employee-work-dialog, .employee-work-status, .employee-work-notification) .work-more-filters .work-filter .field, :is(#employee-work, .employee-work-dialog, .employee-work-status, .employee-work-notification):is(.work-more-filters .work-filter .field), :is(#employee-work, .employee-work-dialog, .employee-work-status, .employee-work-notification) .work-more-filters .work-filter select, :is(#employee-work, .employee-work-dialog, .employee-work-status, .employee-work-notification):is(.work-more-filters .work-filter select) { width: 100%; flex: 1; }
 }
+
+/* Menu improvements are shared with the overhaul; task styling stays frozen. */
+#employee-work .views-menu > .column-options {
+  left: auto;
+  right: 0;
+  max-width: calc(100vw - 24px);
+  max-height: var(--column-menu-height, 360px);
+  transform: translateX(var(--column-menu-offset, 0px));
+}
+#employee-work .views-menu > .column-options[data-side="above"] {
+  top: auto;
+  bottom: calc(100% + 4px);
+}

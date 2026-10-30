@@ -133,18 +133,20 @@ test('manual batch rows keep caller notes, follow-ups and ownership history acce
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1)).toBe(true);
 });
 
-test('All time survives evidence navigation and exports, then returns to a date range',async({page},info)=>{
+test('All time survives caller history and manual exports, then returns to a date range',async({page},info)=>{
+  await pool.query("insert into callyzer_calls(account_key,source_id,employee_number,caller_email,client_name,occurred_at,duration_seconds,call_type,call_method,call_mode) values('browser-test','all-time-history','91-9876543210','priya@eval.test','History contact',now(),20,'Outgoing','PhoneCall','Voice')");
   await login(page);await page.goto('/dashboard/team');await ready(page);
   let filters=await panel(page);await filters.getByRole('tab',{name:'Dates',exact:true}).click();
   await filters.getByRole('button',{name:'All time',exact:true}).click();await expect(filters.getByLabel('Report from')).toBeDisabled();
   await filters.getByRole('button',{name:'Apply',exact:true}).click();await ready(page);
   expect(new URL(page.url()).searchParams.get('range')).toBe('all');await expect(page.locator('.filter-context')).toContainText('All time');
-  await page.getByRole('link',{name:/^Recorded attempts for priya@eval.test/}).first().click();await ready(page);
+  await page.getByRole('link',{name:'Call history for priya@eval.test',exact:true}).click();await ready(page);
+  await expect(page.getByLabel('Caller call history table')).toContainText('History contact');
   expect(new URL(page.url()).searchParams.get('range')).toBe('all');
-  const href=await page.getByRole('link',{name:'Export these rows'}).getAttribute('href');expect(href).toContain('range=all');
+  const href='/api/team/export?range='+new URL(page.url()).searchParams.get('range')+'&metric=attempts&caller=priya%40eval.test';expect(href).toContain('range=all');
   expect((await page.request.get(href!)).status()).toBe(200);
   await page.screenshot({path:info.outputPath('team-all-time.png'),fullPage:true});
-  await page.getByRole('link',{name:'Close evidence'}).click();await ready(page);
+  await page.getByRole('link',{name:'Close history'}).click();await ready(page);
   filters=await panel(page);await filters.getByRole('tab',{name:'Dates',exact:true}).click();
   await filters.getByRole('button',{name:'This month',exact:true}).click();await expect(filters.getByLabel('Report from')).toBeEnabled();
   await filters.getByRole('button',{name:'Apply',exact:true}).click();await ready(page);

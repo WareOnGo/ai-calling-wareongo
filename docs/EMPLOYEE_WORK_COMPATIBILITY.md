@@ -1,7 +1,8 @@
 # Preserved employee workflow
 
 The selective merge of `707f797` into main keeps the `/dashboard/my` task screen
-from `432fe9f`. The shared CallOnGo menu and navbar use the new design. Admin
+from `432fe9f`. The shared CallOnGo menu and navbar use the new design. The Views
+menu also retains viewport positioning and Escape/outside-click dismissal. Admin
 records, assignment allocation, batches, Callyzer reports, warehouse matching and
 sync features come from the overhaul branch.
 

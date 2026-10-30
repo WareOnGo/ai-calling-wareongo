@@ -87,15 +87,16 @@ test('batch search and member filters preserve metric navigation context',async(
  await page.getByRole('link',{name:/Latest Unavailable/}).click();await settled(page);expect(new URL(page.url()).searchParams.get('outcome')).toBe('Available');await expect(page.locator('.batch-empty')).toContainText('No batch members match');
 });
 
-test('performance caller scope, evidence search and access directory filters work independently',async({adminPage:page})=>{
+test('performance caller scope, manual evidence exports and access directory filters work independently',async({adminPage:page})=>{
  sql("insert into bolna_manual_attempts(id,assignment_id,actor,assignee,occurred_at,disposition,request_hash) values (gen_random_uuid(),1,'priya@eval.test','priya@eval.test','2026-08-02T01:00:00Z','connected','fixture')");
  await page.goto('/dashboard/team?date_from=2026-08-02&date_to=2026-08-02');await expect(page.locator('.filter-context')).toHaveText('2 Aug 26 – 2 Aug 26 IST');await panel(page);await page.getByLabel('Caller',{exact:true}).selectOption('priya@eval.test');await page.getByRole('button',{name:'Apply',exact:true}).click();await settled(page);
- await expect(page.getByLabel('Team metrics table').locator('tbody tr')).toHaveCount(1);await page.getByRole('link',{name:'Recorded attempts for priya@eval.test: 1',exact:true}).first().click();await settled(page);
- const panelIds=await page.locator('.filter-panel').evaluateAll(elements=>elements.map(el=>el.id));expect(new Set(panelIds).size).toBe(2);expect(panelIds.every(Boolean)).toBe(true);
- await page.locator('#team-evidence').getByRole('button',{name:'Toggle filters'}).click();await page.getByRole('dialog',{name:'Filters',exact:true}).getByLabel('Current task state').selectOption('open');await page.getByRole('dialog',{name:'Filters',exact:true}).getByLabel('Reported duration').selectOption('no');await page.getByRole('dialog',{name:'Filters',exact:true}).getByLabel('Work type').selectOption('record');await page.getByRole('dialog',{name:'Filters',exact:true}).getByRole('button',{name:'Apply',exact:true}).click();await settled(page);
- expect(new URL(page.url()).searchParams.get('person')).toBe('priya@eval.test');expect(new URL(page.url()).searchParams.get('metric')).toBe('attempts');
- await page.getByLabel('Search evidence').fill('no such evidence');await page.locator('#team-evidence').getByRole('button',{name:'Apply',exact:true}).click();await settled(page);await expect(page.getByLabel('Metric evidence table')).toContainText('No evidence rows');
- const exportHref=await page.getByRole('link',{name:'Export these rows',exact:true}).getAttribute('href');expect(exportHref).toContain('q=no+such+evidence');expect(exportHref).toContain('has_duration=no');expect(exportHref).toContain('entity_type=record');expect((await page.request.get(exportHref!)).headers()['x-export-row-count']).toBe('0');
+ await expect(page.getByLabel('Team metrics table').locator('tbody tr')).toHaveCount(1);
+ await page.locator('.team-manual-logs > summary').click();
+ await expect(page.getByLabel('Manual call logs table').locator('tbody tr')).toHaveCount(1);
+ await expect(page.getByLabel('Manual call logs table').locator('tbody tr')).toContainText('priya@eval.test');
+ const criteria=new URLSearchParams({date_from:'2026-08-02',date_to:'2026-08-02',person:'priya@eval.test',metric:'attempts',state:'open',has_duration:'no',entity_type:'record'});
+ const matching=await page.request.get('/api/team/export?'+criteria);expect(matching.status()).toBe(200);expect(matching.headers()['x-export-row-count']).toBe('1');
+ criteria.set('q','no such evidence');const empty=await page.request.get('/api/team/export?'+criteria);expect(empty.status()).toBe(200);expect(empty.headers()['x-export-row-count']).toBe('0');
  await page.goto('/dashboard/team/access');await panel(page);await page.getByLabel('Filter by role').selectOption('employee');await page.getByLabel('Filter by access').selectOption('active');await page.getByRole('button',{name:'Apply',exact:true}).click();await expect(page.locator('.people .person')).toHaveCount(2);
  await page.getByLabel('Search team members').fill('Raj');await page.getByRole('button',{name:'Apply',exact:true}).click();await expect(page.locator('.people .person')).toHaveCount(1);await page.getByRole('button',{name:'Clear filters',exact:true}).click();await expect(page.locator('.people .person')).toHaveCount(4);
 });
@@ -163,7 +164,7 @@ for(const width of [1366,390])for(const theme of ['light','dark'])test(`@render 
  await page.goto('/dashboard/assignments?ai_result=Available&added_to_db=yes&wh_id=261');await capture(page,'assignments-applied');
  await page.goto('/dashboard/team');await capture(page,'team-performance');await panel(page);await capture(page,'team-performance-filters');
  await page.goto('/dashboard/team/access');await panel(page);await page.getByLabel('Filter by role').selectOption('employee');await capture(page,'team-access-filters');await page.getByRole('button',{name:'Apply',exact:true}).click();await capture(page,'team-access');
- await page.goto('/dashboard/team?date_from=2026-08-01&date_to=2026-10-31&metric=attempts');await capture(page,'team-evidence');await page.locator('#team-evidence').getByRole('button',{name:'Toggle filters'}).click();await capture(page,'team-evidence-filters');
+ await page.goto('/dashboard/team?date_from=2026-08-01&date_to=2026-10-31&activity_caller=priya%40eval.test');await capture(page,'caller-history');await panel(page);await capture(page,'caller-history-filters');
  await employeePage.goto('/dashboard/my');await capture(employeePage,'my-work');await employeePage.getByRole('button',{name:'Toggle filters'}).click();await capture(employeePage,'my-work-filters');
  expect(errors).toEqual([]);
 });

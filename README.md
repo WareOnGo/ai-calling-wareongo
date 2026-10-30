@@ -16,9 +16,14 @@ This document describes the implementation in this checkout. It does not assert
 that a particular migration, scheduler, or deployment is active in production.
 Those are environment-specific operational facts.
 
+Main includes the admin overhaul, Callyzer and warehouse work while retaining the
+existing employee My Work screen and editing behavior. Menu and navigation updates
+are included. See the [employee compatibility boundary](docs/EMPLOYEE_WORK_COMPATIBILITY.md).
+
 The [Bolna DB Fixes checklist](BOLNA_DB_FIXES_PLAN.md) records the 22-item handoff,
-implementation stages and validation. Apply the consolidated migrations through 008 before running
-this version. Migration 009 adds pagination indexes; see the [loading audit](docs/performance/LOADING_AUDIT.md) for measured improvements and deployment status. The [requirement-by-requirement re-audit](docs/HANDOFF_COMPLETENESS_AUDIT.md)
+implementation stages and validation. Run the migration runner through 018 for a
+fresh environment; follow the [deployment runbook](docs/DEPLOYMENT.md) for the shared
+database. Migration 009 adds pagination indexes; see the [loading audit](docs/performance/LOADING_AUDIT.md) for measured improvements. The [requirement-by-requirement re-audit](docs/HANDOFF_COMPLETENESS_AUDIT.md)
 links each original request to its implementation, tests and remaining limits.
 The [browser interaction audit](docs/BROWSER_UX_AUDIT.md) records additional UI,
 recovery and mobile fixes with Playwright evidence and screenshots.
@@ -532,13 +537,13 @@ shows owners, history, eligibility and caller workloads. Single-caller or
 deterministic round-robin allocation creates a durable manual batch, with a stale
 preview check, transaction rollback and retry-key replay.
 
-Assignees record explicit manual attempts with disposition, event time, optional
+The newer manual-call API records explicit attempts with disposition, event time, optional
 reported duration and follow-up date. Corrections preserve the original event;
 legacy `attempts` counters are not evidence. `last_attempt_at` now reflects the
 latest effective logged event. Human outcomes stay separate from AI verdicts.
 Retryable dispositions stay open unless a caller explicitly chooses Exhausted
 and records a substantive reason; there is no automatic attempt cap.
-Available completion requires a valid warehouse
+Through that API, Available completion requires a valid warehouse
 reference; Unclear requires a closure reason and substantive explanation. An
 append-only assignment audit supports reopen history and team reporting.
 
@@ -546,9 +551,14 @@ The Call Analytics **Legacy Called By** field is labelled, hidden initially even
 for existing column preferences, and read-only. It is not proof of who called.
 Actual caller attribution comes from logged attempts. Call Analytics reports saved
 manual notes, Added status and WH ID as text, with explicit empty states. Edit
-these values in My Work, using the assignment's revision and validation.
-Becoming Done requires a logged attempt. Existing Done edits skip that prerequisite but still validate result, WH ID, notes and closure. Invalid legacy completion data must be repaired or reopened before relevant edits.
-New or changed warehouse references must be positive integers. Unchanged legacy
+these values in My Work, using the assignment's revision and ownership checks.
+My Work retains the original result, notes, Added flag and free-text WH ID fields,
+with Done/reopen and completed-task corrections. It does not require a manual call
+or closure form. Its own-task endpoint preserves newer call-evidence fields.
+
+The separate manual-call API requires a logged attempt when becoming Done; existing
+Done edits skip that prerequisite but still validate result, WH ID, notes and closure.
+Through that API, new or changed warehouse references must be positive integers. Unchanged legacy
 references remain visible, exportable and included in historical reporting, with
 quality flags. Unmatched legacy call-row Added/WH values remain visible separately.
 
@@ -871,6 +881,7 @@ non-admin requests; ordinary session guards return 401.
 | GET | `/api/team/export` | Admin | Date-based metric evidence CSV; the Team page renders summaries directly. |
 | POST | `/api/callyzer/sync` | Worker secret | Resume the bounded Callyzer import; scheduled through pg_cron and pg_net. See [Callyzer setup and coverage](docs/CALLYZER.md). |
 | PATCH | `/api/assignments/[id]` | Assignee or admin | Edit outcome, remarks, state, `added_to_db`, `wh_id`. |
+| PATCH | `/api/my-work/assignments/[id]` | Own assignee only | Preserve employee result, notes, free-text WH ID, Added and Done/reopen edits with revision checks. |
 | DELETE | `/api/assignments/[id]` | Admin | Mark an open assignment dropped; retain history. |
 | GET, POST | `/api/users` | Admin | List or upsert accounts. |
 | POST | `/api/view-mode` | Current database admin | Switch effective admin/employee view. |

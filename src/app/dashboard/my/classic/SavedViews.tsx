@@ -12,6 +12,43 @@ export function SavedViews({ path, applied }: { path: string; applied: Record<st
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   useEffect(() => { try { const stored: unknown = JSON.parse(localStorage.getItem(key) || '[]'); if (Array.isArray(stored)) setViews(stored.filter(v => typeof v?.name === 'string' && typeof v?.query === 'string').slice(0, 20)); } catch { /* Browser storage is optional. */ } }, [key]);
+  // Retain the new menu positioning and keyboard fixes without changing the
+  // employee's saved filters, quick views or task editing controls.
+  useEffect(() => {
+    const element = menu.current;
+    const position = () => {
+      const panel = element?.querySelector<HTMLElement>('.column-options');
+      if (!element?.open || !panel) return;
+      panel.style.removeProperty('--column-menu-offset');
+      const anchor = element.querySelector('summary')!.getBoundingClientRect();
+      const below = innerHeight - anchor.bottom - 12, above = anchor.top - 12;
+      const opensAbove = below < 180 && above > below;
+      panel.dataset.side = opensAbove ? 'above' : 'below';
+      panel.style.setProperty('--column-menu-height', `${Math.max(0, Math.min(360, opensAbove ? above : below))}px`);
+      const rect = panel.getBoundingClientRect(), width = document.documentElement.clientWidth;
+      panel.style.setProperty('--column-menu-offset', `${Math.max(12, Math.min(rect.left, width - rect.width - 12)) - rect.left}px`);
+    };
+    const close = (event: PointerEvent | KeyboardEvent) => {
+      if (!element?.open || (event instanceof KeyboardEvent && event.key !== 'Escape')) return;
+      if (event instanceof KeyboardEvent || !element.contains(event.target as Node)) {
+        const restoreFocus = event instanceof KeyboardEvent && element.contains(document.activeElement);
+        element.open = false;
+        if (restoreFocus) { event.preventDefault(); element.querySelector('summary')?.focus({ preventScroll: true }); }
+      }
+    };
+    element?.addEventListener('toggle', position);
+    window.addEventListener('resize', position);
+    document.addEventListener('scroll', position, true);
+    document.addEventListener('pointerdown', close);
+    document.addEventListener('keydown', close);
+    return () => {
+      element?.removeEventListener('toggle', position);
+      window.removeEventListener('resize', position);
+      document.removeEventListener('scroll', position, true);
+      document.removeEventListener('pointerdown', close);
+      document.removeEventListener('keydown', close);
+    };
+  }, []);
   function persist(next: View[]) {
     try { localStorage.setItem(key, JSON.stringify(next)); setViews(next); return true; }
     catch { notify("Couldn't save this view in your browser. Check your browser storage settings."); return false; }

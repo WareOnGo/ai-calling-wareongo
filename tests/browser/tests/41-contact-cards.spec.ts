@@ -25,7 +25,6 @@ for (const width of [1366, 390]) {
       { page: admin, path: '/dashboard/assignments?q=Raghav', table: 'table.sheet', label: 'assignments' },
       { page: admin, path: '/dashboard/batches/ai/' + batch, table: '.batch-grid table', label: 'ai-batch' },
       { page: admin, path: '/dashboard/batches/manual/legacy', table: '.batch-grid table', label: 'manual-batch' },
-      { page: admin, path: '/dashboard/team?metric=attempts&date_from=2026-01-01&date_to=2099-01-01', table: '.team-evidence-grid table', label: 'team-evidence' },
     ];
     for (const { page, path, table: selector, label } of cases) {
       await page.goto(path);
