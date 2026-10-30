@@ -1,6 +1,6 @@
 # Deployment runbook
 
-For the selective main merge, migrations through 017 (including 009) are already deployed on the shared database. Apply the additive 018 compatibility migration before enabling the quality trigger on any environment. Preserve the current shared trigger settings. See [employee compatibility](EMPLOYEE_WORK_COMPATIBILITY.md).
+For the selective main merge, migrations through 018 (including 009) are deployed on the shared database. Migration 018 was applied on 30 October 2026 at 22:54 IST; all checksums matched and a second migration run was a no-op. Preserve the current shared trigger settings. See the [018 rollout record](../database/reviews/018-employee-workflow-2026-10-30.json) and [employee compatibility](EMPLOYEE_WORK_COMPATIBILITY.md).
 
 For a fresh environment: Local synthetic checks do not certify production migration volume. Verify a restorable backup and rehearse the entire pending sequence on representative staging data.
 
@@ -23,7 +23,7 @@ For a fresh environment: Local synthetic checks do not certify production migrat
 7. Check sign-in/scope, shared-contact ownership filters, assignment/CSV eligibility, the original employee Done/reopen and free-text WH-ID workflow, plus completion validation through the separate manual-call API. Verify both batch pages, final-status cards, UTC-to-IST display, readable intervals, Team evidence and wallet errors. Confirm the provider's timezone convention against a known call.
 8. Monitor webhook errors, backlogs, reconciliation offsets/expired leases, database waits and latency. Reconciliation resumes unchanged snapshots, restarts changed snapshots safely, and yields after 1,000 upserts. Calling reservations remain after partial progress. Verify uncertain provider dispatches before releasing or resending them.
 
-Only place a live test call with an explicitly approved test number. No live call or production write was made in this delivery.
+Only place a live test call with an explicitly approved test number. Synthetic validation and the recorded production smoke checks do not place calls or change production tasks. Applied schema changes are recorded under `database/reviews`.
 
 ## Recovery
 

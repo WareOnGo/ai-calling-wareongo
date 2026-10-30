@@ -435,6 +435,12 @@ rows or manual-call history. The original API keeps the overhaul's completion
 validation. New allocation and dispatch skip registered warehouse contacts;
 reopening a registered warehouse remains a conflict, and existing work stays editable.
 
+018 was deployed on 30 October 2026 at 22:54 IST from tested commit `97ba4df`.
+All 19 ledger entries (baseline and 001–018) matched their source checksums. The
+function definition, preserved permissions, trigger settings, constraints and
+009 indexes were verified after commit; a second migration run made no changes.
+No task data was written. See the [018 rollout record](reviews/018-employee-workflow-2026-10-30.json).
+
 Production currently retains disabled `bolna_assignment_quality_guard` and
 `bolna_assignment_contacts_sync` triggers from the prior app rollback. This merge
 supports that state as well as a fresh database with the triggers enabled.

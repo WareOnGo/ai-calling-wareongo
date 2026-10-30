@@ -1,0 +1,111 @@
+{
+  "checkedAt": "2026-10-30T17:24:15.653Z",
+  "sourceCommit": "97ba4df46af0d2a677942463338df1398a6e8ac6",
+  "migration": "018_employee_workflow_compat.sql",
+  "checksum": "7ee9fef14516af2cbf9910ac3f77ca372dc059466f07edb65f3b30fb4a7ac54e",
+  "appliedAt": "2026-10-30T17:24:14.058Z",
+  "elapsedMs": 2267,
+  "all19LedgerChecksumsMatch": true,
+  "previousLedgerEntriesPreserved": true,
+  "functionMatchesReviewedSource": true,
+  "functionMetadataPreserved": true,
+  "functionBodySha256": "e662873e85a9f3bcff769f1fe0b95c34ad56952bc18f1bfdd5426949d2c47092",
+  "triggersPreserved": true,
+  "triggerStates": [
+    {
+      "table": "bolna_assignment_changes",
+      "name": "bolna_assignment_change_immutable",
+      "enabled": "O"
+    },
+    {
+      "table": "bolna_assignments",
+      "name": "bolna_assignment_audit",
+      "enabled": "O"
+    },
+    {
+      "table": "bolna_assignments",
+      "name": "bolna_assignment_contacts_sync",
+      "enabled": "D"
+    },
+    {
+      "table": "bolna_assignments",
+      "name": "bolna_assignment_initial_audit",
+      "enabled": "O"
+    },
+    {
+      "table": "bolna_assignments",
+      "name": "bolna_assignment_quality_guard",
+      "enabled": "D"
+    },
+    {
+      "table": "bolna_assignments",
+      "name": "bolna_warehouse_assignment_guard",
+      "enabled": "O"
+    },
+    {
+      "table": "bolna_manual_attempts",
+      "name": "bolna_manual_attempt_immutable",
+      "enabled": "O"
+    },
+    {
+      "table": "call_batch_items",
+      "name": "bolna_warehouse_ai_batch_guard",
+      "enabled": "O"
+    }
+  ],
+  "constraintsPreserved": true,
+  "paginationIndexesPreserved": true,
+  "secondRunNoOp": true,
+  "businessRowWrites": false,
+  "beforePending": [
+    "018_employee_workflow_compat.sql"
+  ],
+  "afterPending": [],
+  "validation": {
+    "ci": "https://github.com/WareOnGo/ai-calling-wareongo/actions/runs/41095951679",
+    "unitTestsPassed": 181,
+    "integrationTestsPassed": 424,
+    "sharedSchemaTestsPassed": 22,
+    "browserTestsPassed": 344,
+    "productionDeploymentCommit": "97ba4df46af0d2a677942463338df1398a6e8ac6",
+    "productionDeploymentStatus": "success",
+    "productionSmoke": {
+      "checkedAt": "2026-10-30T17:25:24.705Z",
+      "origin": "https://ai-calling-wareongo.vercel.app",
+      "scope": "Unauthenticated deployment and authorization checks; no signed-in task mutations",
+      "checks": [
+        {
+          "path": "/",
+          "method": "GET",
+          "status": 200,
+          "expected": 200,
+          "passed": true,
+          "title": "CallOnGo \u2014 WareOnGo",
+          "signInPresent": true
+        },
+        {
+          "path": "/dashboard/my",
+          "method": "GET",
+          "status": 307,
+          "expected": 307,
+          "passed": true,
+          "redirect": "/"
+        },
+        {
+          "path": "/api/my-work/assignments/1",
+          "method": "PATCH",
+          "status": 401,
+          "expected": 401,
+          "passed": true
+        },
+        {
+          "path": "/api/team/export",
+          "method": "GET",
+          "status": 403,
+          "expected": 403,
+          "passed": true
+        }
+      ]
+    }
+  }
+}
