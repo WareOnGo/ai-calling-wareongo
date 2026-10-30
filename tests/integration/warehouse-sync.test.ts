@@ -78,6 +78,21 @@ it('gates source reads hourly, and fills new call rows even with an unchanged so
   expect((await query("select next_attempt_at-last_success_at >= interval '59 minutes' hourly from bolna_warehouse_sync_state")).rows[0].hourly).toBe(true);
 });
 
+it.each([
+  {interval:3600,overdue:35,slots:1},
+  {interval:3600,overdue:7235,slots:3},
+  {interval:600,overdue:35,slots:1},
+])('advances the scheduled slot without completion-time drift or catch-up storms: %j',async({interval,overdue,slots})=>{
+  const anchor=(await query(`update bolna_warehouse_sync_state set interval_seconds=$1,
+    next_attempt_at=clock_timestamp()-make_interval(secs=>$2) returning next_attempt_at::text anchor`,[interval,overdue])).rows[0].anchor;
+  expect(await sync()).toMatchObject({status:'succeeded'});
+  const timing=(await query(`select next_attempt_at=$1::timestamptz+make_interval(secs=>$2::int*$3::int) exact_slot,
+    next_attempt_at>clock_timestamp() future_slot,
+    next_attempt_at<=clock_timestamp()+make_interval(secs=>interval_seconds) within_interval
+    from bolna_warehouse_sync_state`,[anchor,interval,slots])).rows[0];
+  expect(timing).toEqual({exact_slot:true,future_slot:true,within_interval:true});
+});
+
 it('retains disappeared associations, flags them, avoids filling from stale evidence and resolves reappearing pairs',async()=>{
   await sync();const c=await call();await due();
   const changed=snapshot([{id:502,contactNumber:'9888888888',alt_phone_number:null}]);

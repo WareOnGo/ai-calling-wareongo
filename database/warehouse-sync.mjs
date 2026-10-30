@@ -128,7 +128,12 @@ export async function applyWarehouseSnapshot(client, token, snapshot) {
   // must roll back all writes even if no replacement worker has claimed yet.
   const updated = await client.query(`update bolna_warehouse_sync_state set
     last_success_at=clock_timestamp(),last_snapshot_at=$2,source_sha256=$3,last_summary=$4::jsonb,
-    next_attempt_at=clock_timestamp()+make_interval(secs=>case when $5 then 0 else interval_seconds end),
+    -- Advance the scheduled slot, not the completion time. Adding an hour to a
+    -- run finishing just after a cron tick would otherwise wait 70 minutes.
+    -- Skip missed slots after downtime instead of replaying empty catch-up runs.
+    next_attempt_at=case when $5 then clock_timestamp() else next_attempt_at+
+      make_interval(secs=>interval_seconds)*(greatest(0,floor(extract(epoch from
+        (clock_timestamp()-next_attempt_at))/interval_seconds)::integer)+1) end,
     initialized=initialized or $6::boolean,
     warehouse_cursor=coalesce($7::int,warehouse_cursor),audit_cursor_at=coalesce($8::timestamp,audit_cursor_at),
     audit_cursor_id=coalesce($9::text,audit_cursor_id),recheck_cursor=coalesce($10::int,recheck_cursor),

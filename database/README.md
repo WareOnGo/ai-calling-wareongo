@@ -95,8 +95,10 @@ the shared production database; unrelated pending migration 009 must remain pend
 
 The existing `enrich-analysis` cron keeps its identity and ten-minute schedule.
 Its wrapper independently queues the existing enrichment endpoint and, when due,
-`POST /api/warehouses/sync`. Warehouse runs are due an hour after the previous
-successful run, so the next cron tick starts them within another ten minutes.
+`POST /api/warehouses/sync`. Successful runs advance the previous scheduled slot
+by the configured interval, skipping missed slots after downtime. This keeps
+the default cadence hourly instead of drifting to 70 minutes by adding an hour
+to completion time. The first due slot is picked up by the next ten-minute tick.
 They run even with no enrichment work or `ENABLE_ENRICHMENT=false`.
 No source database read occurs when an assignment dialog opens or submits.
 
@@ -212,6 +214,14 @@ at 08:30 UTC. No protected-field changes occurred on sync-filled rows; unrelated
 caller status edits and enrichment notes continued during verification. The
 original enrichment function, other cron jobs, trigger configuration and pending
 migration 009 were preserved. See the [rollout report](../docs/warehouse-sync-rollout-2026-10-30.json).
+
+The production review later confirmed the automatic 15:00 IST run advanced from
+WHID 3227 to 3229 and imported three additional associations. An independent
+read-only source comparison found all 3,147 expected pairs present, with no extra
+or missing pairs. The review corrected completion-time schedule drift: the
+patched worker was exercised through pg_net, returned HTTP 200, and saved the
+exact next hourly slot (16:00 IST). All 409 integration tests passed, including
+new cadence and missed-slot regressions. See the [production review](../docs/warehouse-sync-review-2026-10-30.json).
 
 `baseline.sql` contains only Bolna Processing's tables, indexes, constraints,
 generated phone column and analysis view. Source datasets, credentials and other
