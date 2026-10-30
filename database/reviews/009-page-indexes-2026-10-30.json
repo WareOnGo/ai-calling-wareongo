@@ -1,0 +1,365 @@
+{
+  "checkedAt": "2026-10-30T11:00:47.659Z",
+  "schemaRef": "707f7971fa6982b73e502d3ef8cc3ee778b54848",
+  "migration": "009_dashboard_page_indexes.sql",
+  "checksum": "53ec9d7f686e124591c3e4ca98004f4a8022bdeef2cf9c546fc4c15efcb930c7",
+  "appliedAt": "2026-10-30T11:00:46.952Z",
+  "elapsedMs": 27749,
+  "indexes": [
+    {
+      "name": "bolna_assignment_page_order",
+      "valid": true,
+      "ready": true,
+      "live": true,
+      "definition": "CREATE INDEX bolna_assignment_page_order ON public.bolna_assignments USING btree (assigned_at DESC, id DESC)",
+      "bytes": "122880"
+    },
+    {
+      "name": "bolna_raw_page_order",
+      "valid": true,
+      "ready": true,
+      "live": true,
+      "definition": "CREATE INDEX bolna_raw_page_order ON public.raw_records USING btree (area_sqft DESC NULLS LAST, id)",
+      "bytes": "2408448"
+    }
+  ],
+  "all18LedgerChecksumsMatch": true,
+  "previousLedgerEntriesPreserved": true,
+  "triggersPreserved": true,
+  "constraintsPreserved": true,
+  "businessRowWrites": false,
+  "beforePending": [
+    "009_dashboard_page_indexes.sql"
+  ],
+  "afterPending": [],
+  "productionQueryPlans": [
+    {
+      "name": "raw",
+      "usedIndexes": [
+        "bolna_raw_page_order"
+      ],
+      "executionMs": 4.375,
+      "rows": 50
+    },
+    {
+      "name": "assignments",
+      "usedIndexes": [
+        "bolna_assignment_page_order"
+      ],
+      "executionMs": 4,
+      "rows": 50
+    }
+  ],
+  "branchInventory": [
+    {
+      "branch": "backup-before-reword",
+      "sha": "1962466247dfb7dcec8b856f50103ef4428dcc22",
+      "missingMigrations": [
+        "baseline.sql",
+        "001_reliability.sql",
+        "002_retry_events_and_view.sql",
+        "003_multi_agent_and_carpet_area.sql",
+        "004_private_operational_tables.sql",
+        "005_legacy_district_column.sql",
+        "006_handoff_schema.sql",
+        "007_handoff_backfill.sql",
+        "008_handoff_search_indexes.sql",
+        "009_dashboard_page_indexes.sql",
+        "010_ai_ingestion_compat.sql",
+        "011_batch_polling.sql",
+        "012_manual_call_tags.sql",
+        "013_callyzer.sql",
+        "014_warehouse_contacts.sql",
+        "015_warehouse_reassignment_guard.sql",
+        "016_warehouse_sync.sql",
+        "017_warehouse_sync_cursors.sql"
+      ],
+      "changedMigrations": [],
+      "srcTree": "e07773cda17675977af20c66e85f1cd34777a063",
+      "hasIntegrationTests": false
+    },
+    {
+      "branch": "backup-before-squash",
+      "sha": "8134c050487c3eaa4c88e6e2cb1cc9e83249472f",
+      "missingMigrations": [
+        "baseline.sql",
+        "001_reliability.sql",
+        "002_retry_events_and_view.sql",
+        "003_multi_agent_and_carpet_area.sql",
+        "004_private_operational_tables.sql",
+        "005_legacy_district_column.sql",
+        "006_handoff_schema.sql",
+        "007_handoff_backfill.sql",
+        "008_handoff_search_indexes.sql",
+        "009_dashboard_page_indexes.sql",
+        "010_ai_ingestion_compat.sql",
+        "011_batch_polling.sql",
+        "012_manual_call_tags.sql",
+        "013_callyzer.sql",
+        "014_warehouse_contacts.sql",
+        "015_warehouse_reassignment_guard.sql",
+        "016_warehouse_sync.sql",
+        "017_warehouse_sync_cursors.sql"
+      ],
+      "changedMigrations": [],
+      "srcTree": "b8f9db841ac92810b0f157d5b5e60b6e634d739d",
+      "hasIntegrationTests": false
+    },
+    {
+      "branch": "codex/bolna-db-fixes-preserved",
+      "sha": "4eaf25b587e5a811c834f960983f2ac6287feac5",
+      "missingMigrations": [
+        "009_dashboard_page_indexes.sql",
+        "010_ai_ingestion_compat.sql",
+        "011_batch_polling.sql",
+        "012_manual_call_tags.sql",
+        "013_callyzer.sql",
+        "014_warehouse_contacts.sql",
+        "015_warehouse_reassignment_guard.sql",
+        "016_warehouse_sync.sql",
+        "017_warehouse_sync_cursors.sql"
+      ],
+      "changedMigrations": [],
+      "srcTree": "d6affe3b90b6b3507ec7109ffb3123cbf0f5ec98",
+      "hasIntegrationTests": true
+    },
+    {
+      "branch": "codex/bolna-ingestion-compat",
+      "sha": "14f46e97ea34f17e6bf8e9375cbb2055fe896e4a",
+      "missingMigrations": [
+        "006_handoff_schema.sql",
+        "007_handoff_backfill.sql",
+        "008_handoff_search_indexes.sql",
+        "009_dashboard_page_indexes.sql",
+        "012_manual_call_tags.sql",
+        "013_callyzer.sql",
+        "014_warehouse_contacts.sql",
+        "015_warehouse_reassignment_guard.sql",
+        "016_warehouse_sync.sql",
+        "017_warehouse_sync_cursors.sql"
+      ],
+      "changedMigrations": [],
+      "srcTree": "03fa632db9a287b7f173e0839051f4d0cedf7666",
+      "hasIntegrationTests": true
+    },
+    {
+      "branch": "codex/bolna-visual-overhaul",
+      "sha": "707f7971fa6982b73e502d3ef8cc3ee778b54848",
+      "missingMigrations": [],
+      "changedMigrations": [],
+      "srcTree": "19ed98b699cd1ac3b337f392e6e5371a4ed37789",
+      "hasIntegrationTests": true
+    },
+    {
+      "branch": "codex/main-migration-compat-20261030",
+      "sha": "b02793d28d09ec6de4473bf149e4aae1469f0747",
+      "missingMigrations": [
+        "006_handoff_schema.sql",
+        "007_handoff_backfill.sql",
+        "008_handoff_search_indexes.sql",
+        "009_dashboard_page_indexes.sql",
+        "012_manual_call_tags.sql",
+        "013_callyzer.sql",
+        "014_warehouse_contacts.sql",
+        "015_warehouse_reassignment_guard.sql",
+        "016_warehouse_sync.sql",
+        "017_warehouse_sync_cursors.sql"
+      ],
+      "changedMigrations": [],
+      "srcTree": "383064b017cc0277545ce987cdb9268808e907ea",
+      "hasIntegrationTests": true
+    },
+    {
+      "branch": "codex/merge-visual-overhaul-main-20261027",
+      "sha": "c60cb051ae6ce05af04c277d6198c64ce55c2f02",
+      "missingMigrations": [
+        "006_handoff_schema.sql",
+        "007_handoff_backfill.sql",
+        "008_handoff_search_indexes.sql",
+        "009_dashboard_page_indexes.sql",
+        "012_manual_call_tags.sql",
+        "013_callyzer.sql",
+        "014_warehouse_contacts.sql",
+        "015_warehouse_reassignment_guard.sql",
+        "016_warehouse_sync.sql",
+        "017_warehouse_sync_cursors.sql"
+      ],
+      "changedMigrations": [],
+      "srcTree": "03fa632db9a287b7f173e0839051f4d0cedf7666",
+      "hasIntegrationTests": true
+    },
+    {
+      "branch": "main",
+      "sha": "d3dc7d265c85c251a228d954d19941f0d5bb8398",
+      "missingMigrations": [
+        "006_handoff_schema.sql",
+        "007_handoff_backfill.sql",
+        "008_handoff_search_indexes.sql",
+        "009_dashboard_page_indexes.sql",
+        "010_ai_ingestion_compat.sql",
+        "011_batch_polling.sql",
+        "012_manual_call_tags.sql",
+        "013_callyzer.sql",
+        "014_warehouse_contacts.sql",
+        "015_warehouse_reassignment_guard.sql",
+        "016_warehouse_sync.sql",
+        "017_warehouse_sync_cursors.sql"
+      ],
+      "changedMigrations": [],
+      "srcTree": "aa5a7012d817637be3d2ca219db13a008edc9a79",
+      "hasIntegrationTests": true
+    }
+  ],
+  "compatibility": {
+    "main": {
+      "applicationCommit": "b02793d28d09ec6de4473bf149e4aae1469f0747",
+      "sharedSchemaIntegrationPassed": 105
+    },
+    "overhaul": {
+      "commit": "707f7971fa6982b73e502d3ef8cc3ee778b54848",
+      "nativeIntegrationStatus": "passed",
+      "nativeIntegrationPassed": 409,
+      "nativeIntegrationFilesPassed": 21,
+      "sharedSchemaMigrationRunner": "no-op"
+    },
+    "ingestion": {
+      "commit": "14f46e97ea34f17e6bf8e9375cbb2055fe896e4a",
+      "passed": 3,
+      "failed": 5,
+      "issue": "Warehouse guard errors return HTTP 500 instead of the safe conflict response already on main."
+    },
+    "preservedRunner": {
+      "commit": "4eaf25b587e5a811c834f960983f2ac6287feac5",
+      "status": "refused_newer_history",
+      "unknownMigrations": "009-017",
+      "databaseChanged": false,
+      "ledgerPreservedVerified": true
+    }
+  },
+  "sharedProductionTriggerProbes": [
+    {
+      "branch": "overhaul",
+      "with009": {
+        "passed": 2,
+        "failed": 0,
+        "cases": [
+          {
+            "name": "reads the original grids against the shared schema with both pagination indexes",
+            "status": "passed",
+            "failure": []
+          },
+          {
+            "name": "retains the original owner when a warehouse guard blocks reassignment",
+            "status": "passed",
+            "failure": []
+          }
+        ]
+      }
+    },
+    {
+      "branch": "preserved",
+      "with009": {
+        "passed": 2,
+        "failed": 0,
+        "cases": [
+          {
+            "name": "reads the original grids against the shared schema with both pagination indexes",
+            "status": "passed",
+            "failure": []
+          },
+          {
+            "name": "retains the original owner when a warehouse guard blocks reassignment",
+            "status": "passed",
+            "failure": []
+          }
+        ]
+      }
+    },
+    {
+      "branch": "localmain",
+      "with009": {
+        "passed": 2,
+        "failed": 0,
+        "cases": [
+          {
+            "name": "reads the original grids against the shared schema with both pagination indexes",
+            "status": "passed",
+            "failure": []
+          },
+          {
+            "name": "retains the original owner when a warehouse guard blocks reassignment",
+            "status": "passed",
+            "failure": []
+          }
+        ]
+      }
+    },
+    {
+      "branch": "reword",
+      "with009": {
+        "passed": 0,
+        "failed": 2,
+        "cases": [
+          {
+            "name": "reads the original grids against the shared schema with both pagination indexes",
+            "status": "failed",
+            "failure": [
+              "error: column \"assignment_attempts\" does not exist"
+            ]
+          },
+          {
+            "name": "retains the original owner when a warehouse guard blocks reassignment",
+            "status": "failed",
+            "failure": [
+              "AssertionError: expected { state: 'dropped', \u2026(2) } to deeply equal { state: 'open', \u2026(2) }"
+            ]
+          }
+        ]
+      },
+      "without009": {
+        "passed": 0,
+        "failed": 2,
+        "failures": [
+          "error: column \"assignment_attempts\" does not exist",
+          "AssertionError: expected { state: 'dropped', \u2026(2) } to deeply equal { state: 'open', \u2026(2) }"
+        ]
+      }
+    },
+    {
+      "branch": "squash",
+      "with009": {
+        "passed": 1,
+        "failed": 1,
+        "cases": [
+          {
+            "name": "reads the original grids against the shared schema with both pagination indexes",
+            "status": "passed",
+            "failure": []
+          },
+          {
+            "name": "retains the original owner when a warehouse guard blocks reassignment",
+            "status": "failed",
+            "failure": [
+              "AssertionError: expected { state: 'dropped', \u2026(2) } to deeply equal { state: 'open', \u2026(2) }"
+            ]
+          }
+        ]
+      },
+      "without009": {
+        "passed": 1,
+        "failed": 1,
+        "failures": [
+          "AssertionError: expected { state: 'dropped', \u2026(2) } to deeply equal { state: 'open', \u2026(2) }"
+        ]
+      }
+    }
+  ],
+  "scope": {
+    "branchesMerged": false,
+    "otherBranchesChanged": false,
+    "uncommittedUserWorkTested": false,
+    "providerCalls": "mocked/blocked in all local tests",
+    "oldTlsOnlyBranches": "Application SQL tested through the existing global pool seam against local non-TLS PostgreSQL; production connection configuration was not changed."
+  },
+  "auditCompletedAt": "2026-10-30T11:19:18.765491+00:00"
+}

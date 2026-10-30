@@ -140,9 +140,15 @@ and [Bolna batch states](https://www.bolna.ai/docs/api-reference/batches/get_bat
 
 ## Compatibility with the retained shared schema
 
-The production ledger was checked read-only on 30 October 2026. Baseline and
-migrations 001–008 and 010–017 match commit
-`707f7971fa6982b73e502d3ef8cc3ee778b54848`; migration 009 remains pending.
+Migration 009 was deployed separately on 30 October 2026 at 16:30 IST. Baseline
+and all migrations 001–017 match commit
+`707f7971fa6982b73e502d3ef8cc3ee778b54848`. Both pagination indexes are valid and
+ready, and read-only production query plans use them. The rollout preserved all
+earlier ledger entries, constraints and trigger settings and wrote no business
+rows. It did not merge or deploy the overhaul or Callyzer application code.
+Earlier rollout records that leave 009 pending describe the state before this
+deployment. See the [deployment and branch audit](reviews/009-page-indexes-2026-10-30.json).
+
 The Callyzer columns/tables, manual history and warehouse sync tables can remain
 in the database while this branch runs the original dashboard. They do not
 require deploying the overhaul or its Callyzer endpoints.
@@ -169,5 +175,27 @@ The rehearsal creates and removes a separate test database, reads the committed
 migration files into a temporary directory, applies the existing compatibility
 SQL there, and runs main's integration suite plus shared-schema regressions. It
 also verifies that main's migration runner preserves the extra ledger entries
-and leaves 009 pending. It does not load `.env.local`, install production jobs,
+and that both 009 indexes remain valid and ready. It does not load `.env.local`, install production jobs,
 copy feature migrations into this branch, or contact calling providers.
+
+### Other branches checked after 009
+
+The audit used committed branch versions in isolated checkouts and disposable
+databases. Existing working-tree edits were excluded. The overhaul's normal
+integration suite uses its full enforcement settings; separate runtime probes
+use the two disabled legacy triggers matching production.
+
+| Branch/version | Compatibility finding |
+| --- | --- |
+| Production main runtime `b02793d` | All 105 shared-schema integration tests passed with 009 applied. |
+| `codex/bolna-visual-overhaul` at `707f797` | All 409 integration tests passed on its fully migrated schema. Grid reads and guarded reassignment also passed with production's legacy trigger settings, and its migration runner was a no-op. |
+| `codex/bolna-ingestion-compat` at `14f46e9` | Five warehouse-guard API regressions return HTTP 500. It lacks main's `b02793d` error-handling fix. The old merge-helper branch at `c60cb05` has identical application source. |
+| `codex/bolna-db-fixes-preserved` at `4eaf25b` | Grid reads and atomic guarded reassignment passed. Its migration runner rejects the newer 009–017 ledger entries; it must be updated before reuse as a deployment branch. |
+| Local `main` at `d3dc7d2` | Still older than production main: it lacks the later AI ingestion, batch polling and warehouse-error fixes. Grid/reassignment smoke checks passed, but this is not the current production checkout. |
+| `backup-before-reword` at `1962466` | Calls still reference the removed `assignment_attempts` column. A failed guarded reassignment also leaves the old assignment dropped. Both failures reproduce without 009. |
+| `backup-before-squash` at `8134c05` | Reads passed, but a failed guarded reassignment leaves the old assignment dropped. The same failure reproduces without 009. |
+
+The backup branches' reassignment writes predate transaction protection. These
+failures and the older API/runner gaps are not caused by the pagination indexes.
+Keep the backups as historical snapshots; do not deploy them over the current
+shared database. No branch was merged as part of this migration rollout.
