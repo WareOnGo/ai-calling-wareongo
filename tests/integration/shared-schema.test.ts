@@ -2,10 +2,11 @@ import {afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi} fr
 import {randomUUID} from 'node:crypto';
 import {NextRequest} from 'next/server';
 import {getPool, query} from '@/lib/db';
-import {assignEntities, updateAssignment} from '@/lib/assignments';
+import {assignEntities} from '@/lib/assignments';
+import {updateMyWorkAssignment as updateAssignment} from '@/lib/employee-assignments';
 import {upsertUser} from '@/lib/users';
 import {POST as assign} from '@/app/api/assignments/route';
-import {PATCH as patch} from '@/app/api/assignments/[id]/route';
+import {PATCH as patch} from '@/app/api/my-work/assignments/[id]/route';
 import {POST as dispatch} from '@/app/api/raw/dispatch/route';
 
 const admin = {email: 'admin@schema.test', isAdmin: true, name: null};
@@ -15,7 +16,7 @@ vi.mock('@/lib/auth', () => ({getCurrentUser: async () => auth.user, getCurrentA
 const request = (path: string, body: unknown, method = 'POST') => new NextRequest(`http://localhost${path}`, {method, body: JSON.stringify(body)});
 let registered: string, free: string, retainedCall: string;
 
-// Run through tests/rehearse-shared-schema.mjs; native-main CI needs no feature tables.
+// The upgrade rehearsal reproduces production’s retained trigger configuration.
 describe.skipIf(process.env.TEST_SHARED_SCHEMA !== '1')('main on the retained shared schema', () => {
   beforeAll(async () => {
     expect(['127.0.0.1', 'localhost', '[::1]']).toContain(new URL(process.env.TEST_DATABASE_URL!).hostname);
@@ -75,17 +76,20 @@ describe.skipIf(process.env.TEST_SHARED_SCHEMA !== '1')('main on the retained sh
     expect((await query('select disposition,next_due_at::date::text due,closure_reason from bolna_assignments where id=$1', [id])).rows[0]).toEqual({disposition: 'owner_unresponsive', due: '2026-11-01', closure_reason: 'escalated'});
   });
 
-  it.each(['record', 'call'] as const)('returns a clear conflict for guarded %s assignments and keeps the whole selection atomic', async entity => {
+  it.each(['record', 'call'] as const)('skips registered warehouses when allocating %s work without losing existing work', async entity => {
     await registerWarehouse();
     const ids = entity === 'record' ? [free, registered] : [retainedCall];
-    await warehouseConflict(await assign(request('/api/assignments', {entity_type: entity, ids, assignee: caller.email})));
-    expect((await query('select count(*)::int n from bolna_assignments')).rows[0].n).toBe(0);
-    expect((await query('select count(*)::int n from bolna_assignment_changes')).rows[0].n).toBe(0);
+    const response = await assign(request('/api/assignments', {entity_type: entity, ids, assignee: caller.email}));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({assigned: entity === 'record' ? 1 : 0, skippedWarehouse: 1});
+    expect((await query('select entity_id from bolna_assignments')).rows).toEqual(entity === 'record' ? [{entity_id: free}] : []);
   });
 
-  it('keeps the original owner and notes when a guarded reassignment is rejected', async () => {
+  it('keeps the original owner and notes when a guarded reassignment is skipped', async () => {
     const id = await episode(); await registerWarehouse();
-    await warehouseConflict(await assign(request('/api/assignments', {entity_type: 'record', ids: [registered], assignee: admin.email, reassign: true})));
+    const response = await assign(request('/api/assignments', {entity_type: 'record', ids: [registered], assignee: admin.email, reassign: true}));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({assigned: 0, skippedWarehouse: 1});
     expect((await query('select id::text,state,assignee,remarks,revision from bolna_assignments')).rows).toEqual([{id,state: 'open',assignee: caller.email,remarks: 'Keep existing notes',revision: 0}]);
   });
 
@@ -102,9 +106,11 @@ describe.skipIf(process.env.TEST_SHARED_SCHEMA !== '1')('main on the retained sh
     expect(await result.json()).toMatchObject({state: 'done',revision: 1});
   });
 
-  it('rolls back a guarded AI selection before contacting the provider or retaining reservations', async () => {
+  it('rejects an entirely registered AI selection before contacting the provider or retaining reservations', async () => {
     await registerWarehouse();
-    await warehouseConflict(await dispatch(request('/api/raw/dispatch', {ids: [free,registered], intentKey: randomUUID(), confirm: true, routingMode: 'hindi'})));
+    const response = await dispatch(request('/api/raw/dispatch', {ids: [registered], intentKey: randomUUID(), confirm: true, routingMode: 'hindi'}));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({error: expect.stringContaining('warehouses already added')});
     expect(fetch).not.toHaveBeenCalled();
     for (const table of ['bolna_dispatch_requests','call_batches','call_batch_items','bolna_dispatch_reservations']) {
       expect((await query(`select count(*)::int n from ${table}`)).rows[0].n).toBe(0);

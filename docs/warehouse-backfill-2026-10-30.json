@@ -1,0 +1,32 @@
+{
+  "applied": true,
+  "migration": "014_warehouse_contacts.sql",
+  "checksum": "ded3286de77269d6bf40e4abe1d87515bcf207acdd400d03909e9de9cd22c890",
+  "sourceWarehouses": 3052,
+  "associations": 3154,
+  "warehouse_numbers": 2129,
+  "matched_raw_numbers": 988,
+  "matched_raw_records": 2493,
+  "matched_assignments": 362,
+  "matched_assignments_without_single_whid": 29,
+  "assignmentsUpdated": 186,
+  "callsUpdated": 536,
+  "snapshotAt": "2026-10-29 18:23:57.344444+00",
+  "sourceHash": "fc50d2e09629d5c8368d148397ee3f45f5c53c8aba72d9aadebd7bf7bc8b6be8",
+  "assignmentWhidsFilled": 145,
+  "callWhidsFilled": 424,
+  "existingWhidsOverwritten": 0,
+  "auditEventsAdded": 186,
+  "existingTriggerSettingsPreserved": true,
+  "notesOutcomesOwnersStatesAndDatesPreserved": true,
+  "unrelatedPendingMigrationsApplied": false,
+  "appliedAt": "2026-10-29 18:35:17.651471+00",
+  "postCommitVerified": true,
+  "counts": {
+    "associations": 3154,
+    "raw_records": 2493,
+    "raw_numbers": 988,
+    "assignments": 362,
+    "unrelated_migration_009": 0
+  }
+}

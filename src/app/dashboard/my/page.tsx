@@ -1,6 +1,6 @@
 import { requireUser } from "@/lib/auth";
-import { personalAssigners, personalTotals, personalWork } from "@/lib/personal-work";
-import { hasWorkCriteria, parseWorkFilters } from "@/lib/work-filters";
+import { personalAssigners, personalTotals, personalWork } from "@/lib/employee-work";
+import { hasWorkCriteria, parseWorkFilters } from "@/lib/employee-work-filters";
 import { WorkLists } from "./WorkLists";
 
 export const dynamic = "force-dynamic";

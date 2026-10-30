@@ -1,2 +1,2 @@
-import { GridLoading } from "../GridLoading";
-export default function Loading() { return <GridLoading view="my" />; }
+import { WorkLoading } from "./WorkLoading";
+export default function Loading() { return <WorkLoading />; }

@@ -19,7 +19,10 @@ const COLUMNS: { label: string; get: (r: CallRow) => unknown }[] = [
   { label: "Direction", get: (r) => (r.call_type === "inbound" ? "Inbound" : "Outbound") },
   { label: "Number", get: (r) => (r.call_type === "inbound" ? r.from_number : r.to_number) },
   { label: "Owner", get: (r) => r.owner_name },
+  { label: "Source cities", get: (r) => r.source_cities },
   { label: "Area", get: (r) => r.db_area },
+  { label: "Known provider attempts", get: (r) => r.ai_attempt_count },
+  { label: "Confirmed conversations", get: (r) => r.ai_conversation_count },
   { label: "Availability", get: (r) => r.availability },
   { label: "Built-up sqft", get: (r) => r.built_up_area_sqft },
   { label: "Carpet sqft", get: (r) => r.carpet_area_sqft },
@@ -40,10 +43,14 @@ const COLUMNS: { label: string; get: (r: CallRow) => unknown }[] = [
   { label: "Assigned To", get: (r) => r.assigned_to },
   { label: "Human Result", get: (r) => r.assignment_outcome },
   { label: "Human Remarks", get: (r) => r.assignment_remarks },
-  { label: "Call Status", get: (r) => r.call_status },
-  { label: "Called By", get: (r) => r.called_by },
-  { label: "Added to DB", get: (r) => (r.added_to_db ? "yes" : "no") },
-  { label: "WH ID", get: (r) => r.wh_id },
+  { label: "Legacy Call Status", get: (r) => r.call_status },
+  { label: "Legacy Called By", get: (r) => r.called_by },
+  { label: "Added to DB", get: (r) => (r.assignment_added_to_db ? "yes" : "no") },
+  { label: "WH ID", get: (r) => r.assignment_wh_id },
+  { label: "Legacy call Added", get: (r) => r.added_to_db ? "yes" : "no" },
+  { label: "Legacy call WH ID", get: (r) => r.wh_id },
+  { label: "Warehouse DB match", get: (r) => r.warehouse_ids.length ? "yes" : "no" },
+  { label: "Matched warehouse IDs", get: (r) => r.warehouse_ids.join("; ") },
 ];
 
 export const maxDuration = 300;
@@ -52,8 +59,8 @@ export async function GET(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   try {
     const { ids, filters } = await exportInput(req);
-    const spec = callsExportQuery(user, ids ? { ids } : toCallFilters(filters));
-    return await csvResponse(spec, COLUMNS, `bolna-calls-${new Date().toISOString().slice(0, 10)}.csv`);
+    const spec = callsExportQuery(user, ids ? { ids,include_blocked:true } : toCallFilters(filters));
+    return await csvResponse(spec, COLUMNS, `callongo-calls-${new Date().toISOString().slice(0, 10)}.csv`);
   } catch (error) { return apiError(error); }
 }
 export const POST = GET;

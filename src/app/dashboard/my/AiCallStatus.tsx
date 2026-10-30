@@ -1,4 +1,4 @@
-import { resultClass } from "@/lib/display";
+import { resultClass } from "@/lib/employee-display";
 
 export function AiCallStatus({ result, count = 0, loading = false }: { result?: string | null; count?: number; loading?: boolean }) {
   if (loading) return <div className="work-ai"><span className="skeleton" style={{ width: 108, height: 22 }} /><span className="skeleton" style={{ width: 55, height: 12 }} /></div>;

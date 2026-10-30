@@ -9,8 +9,6 @@ import { IconCopy, IconCheck } from "./icons";
 //
 // The icon is shown rather than revealed on hover: this is the main thing anyone
 // does with a phone cell, so hiding it behind hover would be hiding the feature.
-// Grid cells are also `cursor: cell` and clickable for selection, so the button
-// stops propagation to avoid fighting GridInteractivity for the click.
 export function CopyText({
   value, label, display,
 }: {

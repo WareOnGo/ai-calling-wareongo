@@ -1,0 +1,110 @@
+{
+  "volume": {
+    "raw": 50000,
+    "calls": 10000,
+    "assignments": 5000,
+    "manualAttempts": 5000,
+    "aiAttempts": 2000,
+    "callers": 10
+  },
+  "seedMs": 7164,
+  "label": "before",
+  "measurements": {
+    "raw_first": {
+      "ms": [],
+      "jsonBytes": 0,
+      "error": "error: canceling statement due to statement timeout"
+    },
+    "raw_page_400": {
+      "ms": [],
+      "jsonBytes": 0,
+      "error": "error: canceling statement due to statement timeout"
+    },
+    "raw_filters": {
+      "ms": [],
+      "jsonBytes": 0,
+      "error": "error: canceling statement due to statement timeout"
+    },
+    "calls_first": {
+      "ms": [],
+      "jsonBytes": 0,
+      "error": "error: canceling statement due to statement timeout"
+    },
+    "calls_page_200": {
+      "ms": [],
+      "jsonBytes": 0,
+      "error": "error: canceling statement due to statement timeout"
+    },
+    "calls_filters": {
+      "ms": [],
+      "jsonBytes": 0,
+      "error": "error: canceling statement due to statement timeout"
+    },
+    "assignments_page_50": {
+      "ms": [
+        120,
+        99,
+        100,
+        99,
+        99
+      ],
+      "p95": 120,
+      "jsonBytes": 28905
+    },
+    "personal_work": {
+      "ms": [
+        570,
+        552,
+        550,
+        554,
+        546
+      ],
+      "p95": 570,
+      "jsonBytes": 12342
+    },
+    "team_workloads": {
+      "ms": [
+        5,
+        4,
+        4,
+        4,
+        4
+      ],
+      "p95": 5,
+      "jsonBytes": 1181
+    },
+    "preview_250": {
+      "ms": [
+        230,
+        195,
+        198,
+        204,
+        206
+      ],
+      "p95": 230,
+      "jsonBytes": 45397
+    },
+    "all_matching_ids_20000": {
+      "ms": [
+        65,
+        66,
+        64,
+        66,
+        70
+      ],
+      "p95": 70,
+      "jsonBytes": 780043
+    },
+    "ten_concurrent_saves": {
+      "ms": [
+        1104,
+        955,
+        982,
+        954,
+        950
+      ],
+      "p95": 1104,
+      "jsonBytes": 4425
+    }
+  }
+}

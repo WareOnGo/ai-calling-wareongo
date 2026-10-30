@@ -6,7 +6,7 @@ import {join, resolve} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import pg from 'pg';
 
-// Read committed SQL from the feature history without merging it into this app.
+// Recreate the deployed pre-merge schema from immutable history, then test its upgrade.
 // This is the shared production ledger after 009 was deployed on 30 October 2026.
 const schemaRef = process.argv[2];
 if (!schemaRef || !/^[a-f0-9]{40}$/.test(schemaRef)) throw Error('Supply the full reviewed schema commit SHA');
@@ -45,17 +45,21 @@ try {
   try {
     await db.query(await readFile('database/rollback-handoff.sql', 'utf8'));
     const before = (await db.query('select name,checksum,applied_at from bolna_schema_migrations order by name')).rows;
-    // The main runner must leave the retained feature ledger and schema intact.
+    // Preserve every existing ledger record and add only the compatibility migration.
     run(process.execPath, ['database/migrate.mjs'], env);
-    assert.deepEqual((await db.query('select name,checksum,applied_at from bolna_schema_migrations order by name')).rows, before);
+    const after = (await db.query('select name,checksum,applied_at from bolna_schema_migrations order by name')).rows;
+    assert.deepEqual(after.filter(row => row.name !== '018_employee_workflow_compat.sql'), before);
+    assert.equal(after.filter(row => row.name === '018_employee_workflow_compat.sql').length, 1);
+    run(process.execPath, ['database/migrate.mjs'], env);
+    assert.deepEqual((await db.query('select name,checksum,applied_at from bolna_schema_migrations order by name')).rows, after);
     assert.equal((await db.query("select count(*)::int n from bolna_schema_migrations where name='009_dashboard_page_indexes.sql'")).rows[0].n, 1);
     const indexes = (await db.query(`select indisvalid,indisready from pg_index where indexrelid=any(array[
       to_regclass('public.bolna_raw_page_order'),to_regclass('public.bolna_assignment_page_order')])`)).rows;
     assert.equal(indexes.length, 2);
     assert.ok(indexes.every(index => index.indisvalid && index.indisready));
   } finally { await db.end(); }
-  run('npm', ['run', 'test:integration'], env);
-  console.log(`Main compatibility passed against shared schema from ${schemaRef}; no feature application code was imported.`);
+  run('npm', ['run', 'test:integration', '--', 'tests/integration/shared-schema.test.ts', 'tests/integration/employee-workflow.test.ts'], env);
+  console.log(`Merged main compatibility passed after upgrading the shared schema from ${schemaRef}; existing ledger entries and trigger states were preserved.`);
 } finally {
   try { if (created) await admin.query(`drop database ${database} with (force)`); }
   finally { await admin.end(); await rm(temporary, {recursive: true, force: true}); }

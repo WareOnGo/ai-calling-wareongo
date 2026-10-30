@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { IconClipboard } from "../icons";
-import { dateTime } from "@/lib/display";
+import { dateTime } from "@/lib/employee-display";
 
 export function AssignmentBrief({ id, note, assignedBy, name, assignedAt }: { id: string; note: string | null; assignedBy: string; name: string | null; assignedAt: string }) {
   const [expanded, setExpanded] = useState(false);

@@ -1,0 +1,172 @@
+{
+  "reviewedAt": "2026-10-29T18:55:42.682Z",
+  "branch": "codex/bolna-visual-overhaul",
+  "standards": [
+    "AGENTS.md Next.js documentation requirement",
+    "database/README.md immutable forward migrations and verified TLS",
+    "docs/DESIGN_SOP.md shared UI, contrast and mobile checks",
+    "docs/FILTER_AUDIT.md scoped filters, counts, selection and CSV parity"
+  ],
+  "findings": [
+    {
+      "priority": "P1",
+      "status": "fixed, applied and post-commit verified",
+      "issue": "In-place caller changes bypassed the warehouse guard with legacy ownership triggers disabled.",
+      "fix": "Migration 015 includes assignee in the trigger and change detection.",
+      "path": "database/migrations/015_warehouse_reassignment_guard.sql"
+    },
+    {
+      "priority": "P2",
+      "status": "fixed in branch; deployment pending",
+      "issue": "CSV routes omitted the matched warehouse IDs even though the read layer selected them.",
+      "fix": "Raw, call and both batch CSVs export a separate match flag and every matched integer WHID."
+    },
+    {
+      "priority": "P2",
+      "status": "fixed in branch; deployment pending",
+      "issue": "The new phone matches broadened saved Added to DB/onboarding filters without changing the displayed saved values.",
+      "fix": "Dedicated Warehouse DB match filter; saved verification semantics preserved across views, counts, bulk selection and exports."
+    },
+    {
+      "priority": "P1",
+      "status": "open, existing dependencies",
+      "issue": "Production dependency audit reports one critical and two high package findings in next, zod and openai through zod.",
+      "scope": "No exploit demonstrated. Lockfile has sharp 0.35.5; no use-cache functions, Server Actions or next/image usages found in application source. Next version remains in affected ranges. Zod package upgrades include major-version work.",
+      "evidence": "warehouse-review-dependencies-2026-10-30.json"
+    }
+  ],
+  "validation": {
+    "typecheck": "passed",
+    "unitTests": 136,
+    "integrationTests": 379,
+    "productionBrowserTests": 5,
+    "productionBuild": "passed on retry; dependency advisory remains",
+    "diffCheck": "passed",
+    "visualInspection": [
+      "320px light caller dialog",
+      "390px dark AI dialog"
+    ]
+  },
+  "migration": {
+    "migration": "015_warehouse_reassignment_guard.sql",
+    "checksum": "0b9e1c46ebb52262948241c9ce2ae249d39eece5ac16804b9fdccbbb7d63fd8b",
+    "mode": "apply",
+    "fixed": true,
+    "access": [
+      {
+        "relname": "bolna_warehouse_contacts",
+        "relrowsecurity": true,
+        "public_access": false,
+        "api_role_access": false
+      },
+      {
+        "relname": "bolna_warehouse_imports",
+        "relrowsecurity": true,
+        "public_access": false,
+        "api_role_access": false
+      },
+      {
+        "relname": "bolna_warehouse_matches",
+        "relrowsecurity": false,
+        "public_access": false,
+        "api_role_access": false
+      }
+    ],
+    "dataPreserved": true,
+    "existingTriggerSettingsPreserved": true,
+    "unrelated009Unapplied": true,
+    "plans": {
+      "raw_match_count": {
+        "executionMs": 577.758,
+        "rows": 1
+      },
+      "raw_matched_page": {
+        "executionMs": 622.598,
+        "rows": 50
+      }
+    },
+    "checkedAt": "2026-10-29T18:54:54.836Z"
+  },
+  "postCommitVerification": {
+    "migration": "015_warehouse_reassignment_guard.sql",
+    "checksum": "0b9e1c46ebb52262948241c9ce2ae249d39eece5ac16804b9fdccbbb7d63fd8b",
+    "mode": "read-only",
+    "fixed": true,
+    "access": [
+      {
+        "relname": "bolna_warehouse_contacts",
+        "relrowsecurity": true,
+        "public_access": false,
+        "api_role_access": false
+      },
+      {
+        "relname": "bolna_warehouse_imports",
+        "relrowsecurity": true,
+        "public_access": false,
+        "api_role_access": false
+      },
+      {
+        "relname": "bolna_warehouse_matches",
+        "relrowsecurity": false,
+        "public_access": false,
+        "api_role_access": false
+      }
+    ],
+    "dataPreserved": true,
+    "existingTriggerSettingsPreserved": true,
+    "unrelated009Unapplied": true,
+    "plans": {
+      "raw_match_count": {
+        "executionMs": 527.21,
+        "rows": 1
+      },
+      "raw_matched_page": {
+        "executionMs": 582.421,
+        "rows": 50
+      }
+    },
+    "checkedAt": "2026-10-29T18:55:42.682Z"
+  },
+  "sourceNormalizationReview": {
+    "nonemptySourceFields": 3178,
+    "acceptedTokens": 3160,
+    "shortTokensIgnored": 36,
+    "over15DigitTokens": 0,
+    "extensionSuffixesFound": 0,
+    "wordSeparatedNumbersFound": 0
+  },
+  "limitations": [
+    "Warehouse snapshot remains one-time; no rolling refresh.",
+    "Existing assignments and previously queued calls are not canceled by the import.",
+    "Application changes are local to the branch and await deployment.",
+    "This is a scoped review, not certification of all security or accessibility standards."
+  ],
+  "visualFollowup": {
+    "request": "Put matched warehouse IDs in the existing WH ID column and verify clarity.",
+    "changes": [
+      "Shared read-only WH ID value and source annotation in Assignments and AI Calls.",
+      "Matching IDs directly beneath the editable WH ID field in My Work.",
+      "Saved values remain distinct when they differ from phone matches.",
+      "Identical legacy call references are not repeated."
+    ],
+    "typecheck": "passed",
+    "productionBuild": "passed on retry; existing dependency advisories unchanged",
+    "productionBrowserTests": 9,
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "viewports": [
+      1366,
+      390,
+      320
+    ],
+    "screenshots": [
+      "visual-overhaul/warehouse-whid-column.png",
+      "visual-overhaul/warehouse-whid-my-work-390-dark.png",
+      "visual-overhaul/warehouse-whid-assignments-1366-light.png"
+    ],
+    "liveDataChanged": false,
+    "deployment": "pending"
+  }
+}

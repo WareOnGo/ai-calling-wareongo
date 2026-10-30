@@ -6,11 +6,11 @@ import { WorkContext } from "./WorkContext";
 import { AiCallStatus } from "./AiCallStatus";
 import Link from "next/link";
 import { useCallback, useState } from "react";
-import type { WorkItem, WorkPage, WorkTotals } from "@/lib/personal-work";
-import { hasWorkCriteria, workHref, type WorkFilters as Filters } from "@/lib/work-filters";
-import { OutcomeCells } from "../OutcomeCells";
-import { CopyText } from "../CopyText";
-import { RecordDetails } from "../RecordDetails";
+import type { WorkItem, WorkPage, WorkTotals } from "@/lib/employee-work";
+import { hasWorkCriteria, workHref, type WorkFilters as Filters } from "@/lib/employee-work-filters";
+import { OutcomeCells } from "./classic/OutcomeCells";
+import { CopyText } from "./classic/CopyText";
+import { RecordDetails } from "./classic/RecordDetails";
 import { Freshness } from "../DashboardUI";
 import { IconClipboard } from "../icons";
 

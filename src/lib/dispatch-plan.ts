@@ -10,6 +10,8 @@ export type DispatchSummary = {
   heldRegion: number;       // rows held by routing or missing agent configuration
   alreadyQueued: number;    // rows skipped because the number is in a live batch
   skippedNoNumber: number;  // kept rows without a valid normalized phone
+  humanOwned: number;
+  warehouseExists: number;
   callable: QueueSel[];     // final list (deduped, in-category, routable, not-queued, has phone)
   groups: Record<CallLanguage, QueueSel[]>;
 };
@@ -17,14 +19,16 @@ export type DispatchSummary = {
 // Build the final callable batch from candidate rows. Idempotent and pure so it can
 // be unit-tested and reused by the route. `excludeCats` mirrors the modal's toggles;
 // routing uses the available agents and active reservations apply across languages.
-// Filter order: dedup → category → routing → already-queued → valid number.
+// Registered warehouse numbers are always excluded before optional filters.
 export function assembleBatch(rows: QueueSel[], excludeCats: CallCat[] = [],
   options: { mode?: RoutingMode; availableLanguages?: readonly CallLanguage[] } = {}): DispatchSummary {
   const mode = options.mode ?? "auto";
   const available = new Set(options.availableLanguages ?? ["hindi"]);
   const deduped = dedupByNumber(rows);
   const excl = new Set(excludeCats.filter((c): c is CallCat => KNOWN_CATS.includes(c)));
-  const afterCat = deduped.filter((r) => !(r.cat && excl.has(r.cat)));
+  const unregistered=deduped.filter(r=>!r.warehouseIds?.length);
+  const unowned=unregistered.filter(r=>!r.owners?.some(owner=>owner.state==='open'));
+  const afterCat = unowned.filter((r) => !(r.cat && excl.has(r.cat)));
   const routable = afterCat.filter((r) => { const language = routeLanguage(r.state, mode); return language !== null && available.has(language); });
   const notQueued = routable.filter((r) => !r.queued);
   const callable = notQueued.filter((r) => /^\d{10}$/.test(normNum(r.contact)));
@@ -33,7 +37,9 @@ export function assembleBatch(rows: QueueSel[], excludeCats: CallCat[] = [],
   return {
     total: deduped.length,
     excludedCats: [...excl],
-    excludedByCat: deduped.length - afterCat.length,
+    excludedByCat: unowned.length - afterCat.length,
+    humanOwned: unregistered.length - unowned.length,
+    warehouseExists: deduped.length - unregistered.length,
     heldRegion: afterCat.length - routable.length,
     alreadyQueued: routable.length - notQueued.length,
     skippedNoNumber: notQueued.length - callable.length,

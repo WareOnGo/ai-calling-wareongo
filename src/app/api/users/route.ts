@@ -23,7 +23,11 @@ export async function POST(req: NextRequest) {
   const body = await jsonBody(req, z.object({
     email: z.string().trim().email().transform(v => v.toLowerCase()),
     name: z.string().trim().max(200).nullable().optional(), role: z.enum(["admin", "employee"]).optional(), active: z.boolean().optional(),
-  }).strict());
+    callyzer_number: z.string().trim().max(30).nullable().optional(),
+    callyzer_since: z.string().date().nullable().optional(),
+  }).strict().refine(b => (b.callyzer_number === undefined && b.callyzer_since === undefined) ||
+    (!!b.callyzer_number && !!b.callyzer_since) || (b.callyzer_number === null && b.callyzer_since === null),
+  "Supply a Callyzer number and tracking date together, or clear both"));
   const email = body.email;
   // Guard against an admin locking themselves out of the admin pages in one click.
   if (email === admin.email.toLowerCase() && (body.role === "employee" || body.active === false)) {
@@ -35,6 +39,8 @@ export async function POST(req: NextRequest) {
     name: body.name === undefined ? undefined : body.name || null,
     role: body.role ?? undefined,
     active: typeof body?.active === "boolean" ? body.active : undefined,
+    callyzer_number: body.callyzer_number,
+    callyzer_since: body.callyzer_since,
   });
 
   // A row here IS the access grant — no env allowlist to keep in sync any more.

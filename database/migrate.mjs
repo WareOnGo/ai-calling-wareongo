@@ -1,6 +1,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import pg from "pg";
+import {backfillAiEvidence} from "./backfill-ai-evidence.mjs";
 
 // Deliberately does not load .env.local: the operator supplies the target explicitly.
 const connection = process.env.DIRECT_URL || process.env.DATABASE_URL;
@@ -16,15 +17,21 @@ const digest = sql => createHash("sha256").update(sql).digest("hex");
 const owned = ["bolna_call_logs", "bolna_webhook_events", "raw_records", "raw_phones", "raw_phone_numbers", "call_batches", "call_batch_items", "bolna_app_users", "bolna_assignments"];
 await client.connect();
 try {
+  await client.query("set lock_timeout = '2s'");
+  await client.query("set statement_timeout = '30s'");
+  await client.query("select pg_advisory_lock(81620403)");
   await client.query("begin");
   // Fail and roll back promptly instead of queuing behind live dashboard traffic.
   await client.query("set local lock_timeout = '2s'");
   await client.query("set local statement_timeout = '30s'");
   await client.query("set local idle_in_transaction_session_timeout = '30s'");
-  await client.query("select pg_advisory_xact_lock(81620403)");
+
   await client.query(`create table if not exists bolna_schema_migrations (
     name text primary key, checksum text not null, applied_at timestamptz not null default now())`);
   const history = new Map((await client.query("select name, checksum from bolna_schema_migrations")).rows.map(r => [r.name, r.checksum]));
+  const files = (await readdir(new URL("migrations/", base))).filter(n => n.endsWith(".sql")).sort();
+  const unknown=[...history.keys()].filter(name=>name!=="baseline.sql"&&!files.includes(name));
+  if(unknown.length)throw new Error(`Unrecognized migration history: ${unknown.join(', ')}. The unreleased handoff migrations were consolidated; rebuild a disposable development database or prepare an explicit upgrade. Do not remove migration ledger entries.`);
   const baseline = await readFile(new URL("baseline.sql", base), "utf8");
   if (!history.has("baseline.sql")) {
     const present = (await client.query("select tablename from pg_tables where schemaname = 'public' and tablename = any($1::text[])", [owned])).rows;
@@ -39,18 +46,41 @@ try {
     }
     await client.query("insert into bolna_schema_migrations(name, checksum) values ($1, $2)", ["baseline.sql", digest(baseline)]);
   } else if (history.get("baseline.sql") !== digest(baseline)) throw new Error("Baseline checksum changed; add a forward migration instead");
-  const files = (await readdir(new URL("migrations/", base))).filter(n => n.endsWith(".sql")).sort();
+  await client.query("commit");
   for (const file of files) {
     const sql = await readFile(new URL(`migrations/${file}`, base), "utf8"), checksum = digest(sql);
     if (history.has(file)) {
       if (history.get(file) !== checksum) throw new Error(`Applied migration changed: ${file}`);
       continue;
     }
-    await client.query(sql);
+    if (sql.startsWith('-- migrate: nontransactional')) {
+      const indexTimeout=Number(process.env.MIGRATION_INDEX_TIMEOUT_MS||600000);
+      if(!Number.isInteger(indexTimeout)||indexTimeout<1000||indexTimeout>3600000)throw Error('Invalid MIGRATION_INDEX_TIMEOUT_MS');
+      // Concurrent index creation waits for old transactions. Bound the whole
+      // statement, not each lock wait, including invalid-index cleanup.
+      await client.query("set lock_timeout=0");
+      await client.query("select set_config('statement_timeout',$1,false)",[String(indexTimeout)]);
+      try {
+      // A failed online index remains invalid. Drop only such incomplete indexes
+      // belonging to this migration before retrying CREATE INDEX CONCURRENTLY.
+      for(const name of [...sql.matchAll(/CREATE INDEX CONCURRENTLY IF NOT EXISTS ([a-z_]+)/g)].map(m=>m[1])) {
+        const invalid=(await client.query('select not indisvalid invalid from pg_index where indexrelid=to_regclass($1)',[name])).rows[0]?.invalid;
+        if(invalid)await client.query(`drop index concurrently ${name}`);
+      }
+      for(const statement of sql.split(/;\s*(?:\n|$)/).filter(s=>s.trim()))await client.query(statement);
+      await client.query("insert into bolna_schema_migrations(name,checksum) values($1,$2)",[file,checksum]);
+      } finally { await client.query("set lock_timeout='2s'; set statement_timeout='30s'"); }
+      console.log(`Applied ${file}`);continue;
+    }
+    // Schema is already committed and recorded. Only the unfinished recovery
+    // stage repeats, resuming its last committed cursor without reapplying DDL.
+    if(sql.startsWith('-- migrate: ai-backfill'))await backfillAiEvidence(client);
+    await client.query("begin");
+    if(!sql.startsWith('-- migrate: ai-backfill'))await client.query(sql);
     await client.query("insert into bolna_schema_migrations(name, checksum) values ($1, $2)", [file, checksum]);
+    await client.query("commit");
     console.log(`Applied ${file}`);
   }
-  await client.query("commit");
   console.log("Schema is up to date");
 } catch (error) {
   await client.query("rollback");

@@ -1,0 +1,32 @@
+{
+  "applied": true,
+  "repair": "wag-warehouse-contact-parsing-v2",
+  "snapshotAt": "2026-10-30 05:10:50.214497+00",
+  "sourceWarehouses": 3053,
+  "associationsAfter": 3142,
+  "associationsBefore": 3154,
+  "rejectedSourcePairs": 12,
+  "removedAssociations": 12,
+  "affectedExistingContacts": 0,
+  "counts": {
+    "matched_raw_numbers": 988,
+    "matched_raw_records": 2493,
+    "matched_calls": 536,
+    "matched_assignments": 362
+  },
+  "existingAssignmentsCallsNotesFlagsAndWhidsPreserved": true,
+  "existingMatchesPreserved": true,
+  "exampleWarehouseIdsPreserved": 21,
+  "originalMigrationChecksumsVerified": true,
+  "parserChecksum": "d6e6aef4af8a2e4e1ffd4d853fae4c388358bf7be50b12ba56589725fa117b8a",
+  "repairChecksum": "ff4b615bd2d0c8590416af71d7bbefc7f472945e1b2cee4785a844c1ebb0be98",
+  "checkedAt": "2026-10-30T05:12:41.558Z",
+  "archiveVerifiedAgainstOriginalRegistry": true,
+  "validation": {
+    "typecheck": "passed",
+    "unitTestsPassed": 166,
+    "warehouseIntegrationTestsPassed": 15,
+    "rollbackRehearsal": "passed",
+    "postCommitReadOnlyVerification": "passed"
+  }
+}

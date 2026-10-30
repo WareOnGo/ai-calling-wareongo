@@ -1,6 +1,6 @@
 import { IconPencil } from "../icons";
 import Link from "next/link";
-import { hasWorkCriteria, workHref, WORK_SORT_LABELS, type WorkFilters } from "@/lib/work-filters";
+import { hasWorkCriteria, workHref, WORK_SORT_LABELS, type WorkFilters } from "@/lib/employee-work-filters";
 
 export function WorkColumns() {
   return <colgroup>

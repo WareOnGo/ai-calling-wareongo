@@ -1,22 +1,28 @@
 "use client";
 
 import { IconFilter } from "./icons";
-import { useState } from "react";
+import { useFilterPanelId } from "./FilterForm";
 
-// Toggles the `.filters-open` class on the parent <form>, revealing the filters
-// row below the search. `count` shows how many filters are currently active.
-export function FiltersToggle({ count, label = "Filters" }: { count: number; label?: string }) {
-  const [expanded, setExpanded] = useState(false);
+// Open a focused filter panel without moving the results beneath the toolbar.
+export function FiltersToggle({ count, disabled = false }: { count: number; disabled?: boolean }) {
+  const panelId = useFilterPanelId();
   return (
     <button
       type="button"
+      disabled={disabled}
       className={`filters-toggle${count ? " active" : ""}`}
       aria-label="Toggle filters"
-      aria-expanded={expanded}
-      aria-controls="filters-panel"
-      onClick={(e) => { setExpanded(!expanded); e.currentTarget.closest("form")?.classList.toggle("filters-open", !expanded); }}
+      aria-haspopup="dialog"
+      aria-controls={panelId}
+      onClick={event => {
+        const trigger = event.currentTarget;
+        const panel = trigger.closest('form')?.querySelector<HTMLDialogElement>('.filter-panel');
+        if (!panel) return;
+        panel.showModal();
+        panel.addEventListener('close', () => { if (trigger.isConnected) trigger.focus({ preventScroll: true }); }, { once: true });
+      }}
     >
-      <IconFilter size={15} /> {label}
+      <IconFilter size={15} /> Filters
       {count ? <span className="fbadge">{count}</span> : null}
     </button>
   );

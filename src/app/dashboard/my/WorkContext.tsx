@@ -1,4 +1,4 @@
-import type { WorkItem } from "@/lib/personal-work";
+import type { WorkItem } from "@/lib/employee-work";
 
 const labels = { city: "City", area: "Area", rent: "Rent" };
 

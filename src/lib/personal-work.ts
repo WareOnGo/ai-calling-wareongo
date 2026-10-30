@@ -1,21 +1,21 @@
 import { query } from "./db";
 import { listAssignments, matchingAssignmentTotals } from "./assignments";
 import { hasWorkCriteria, type WorkFilters } from "./work-filters";
-import { getRawRecordsByIds } from "./raw";
-import { getCallDetailsByIds } from "./calls";
 import { area, rent } from "./display";
 import type { Viewer } from "./scope";
 
 export type WorkItem = {
+  warehouseIds: number[];
   revision: number; id: string; entityId: string; entity: "record" | "call"; who: string; phone: string | null;
   context: { city: string | null; area: string | null; rent: string | null }; ai: string | null; aiCount: number; brief: string | null;
   assignedBy: string; assignedByName: string | null; assignedAt: string;
+  closureReason:string|null; disposition:string|null; nextDueAt:string|null;
   state: string; outcome: string | null; remarks: string | null; addedToDb: boolean; whId: string | null;
 };
 export type WorkPage = { rows: WorkItem[]; total: number; page: number; pages: number };
 export type WorkTotals = { record: { open: number; done: number }; call: { open: number; done: number } };
 function criteria(filters: WorkFilters) {
-  return { q: filters.q, city: filters.city, assigned_by: filters.assigned_by, outcome: filters.outcome, added_to_db: filters.added_to_db };
+  return { warehouse_match:filters.warehouse_match,has_ai_calls:filters.has_ai_calls,manual_disposition:filters.manual_disposition,completed_from:filters.completed_from,completed_to:filters.completed_to,ai_result:filters.ai_result, wh_id:filters.wh_id, has_notes:filters.has_notes, has_manual_calls:filters.has_manual_calls, date_from:filters.date_from, date_to:filters.date_to, follow_up:filters.follow_up,q: filters.q, city: filters.city, region: filters.region, assigned_by: filters.assigned_by, outcome: filters.outcome, added_to_db: filters.added_to_db };
 }
 export async function personalTotals(email: string, filters: WorkFilters = {}): Promise<WorkTotals> {
   const rows = hasWorkCriteria(filters)
@@ -27,22 +27,22 @@ export async function personalTotals(email: string, filters: WorkFilters = {}): 
 }
 export async function personalWork(user: Viewer, entity: "call" | "record", filters: WorkFilters, page: number): Promise<WorkPage> {
   if (filters.type && filters.type !== entity) return { rows: [], total: 0, page: 1, pages: 1 };
-  const result = await listAssignments(user, { ...criteria(filters), assignee: user.email, entity_type: entity, activeOnly: true, state: filters.view, sort: filters.sort, page, pageSize: 25 });
-  const ids = result.rows.map(r => r.entity_id);
-  const records = entity === 'record' && ids.length ? await getRawRecordsByIds(user, ids) : [];
-  const calls = entity === 'call' && ids.length ? await getCallDetailsByIds(user, ids) : [];
+  // Task cards need a few property facts, not full transcripts, source metadata,
+  // call histories and a second copy of each assignment's AI summary.
+  const result = await listAssignments(user, { ...criteria(filters), assignee: user.email, entity_type: entity, activeOnly: true, state: filters.view, sort: filters.sort, page, pageSize: 25 }, { workContext: true });
   const rows = result.rows.map(a => {
-    const r = records.find(r => r.id === a.entity_id);
-    const c = calls.find(c => c.id === a.entity_id);
+    const context = a.work_context!;
     return {
-      revision: a.revision, id: a.id, entityId: a.entity_id, entity, who: a.subject || c?.raw_owner_name || "Unnamed owner", phone: a.phone,
+      warehouseIds: a.warehouse_ids,
+      revision: a.revision, id: a.id, entityId: a.entity_id, entity, who: a.subject || context.owner_name || "Unnamed owner", phone: a.phone,
       context: {
-        city: r?.city || c?.db_area || c?.raw_city || a.city,
-        area: c?.carpet_area_sqft ? `${area(c.carpet_area_sqft)} carpet` : c?.built_up_area_sqft ? `${area(c.built_up_area_sqft)} built-up` : area(r?.area_sqft || c?.raw_area_sqft || null),
-        rent: rent(r?.rent || c?.expected_rent || null),
+        city: context.city || a.city,
+        area: context.carpet_area_sqft ? `${area(context.carpet_area_sqft)} carpet` : context.built_up_area_sqft ? `${area(context.built_up_area_sqft)} built-up` : area(context.area_sqft),
+        rent: rent(context.rent),
       },
-      ai: r?.last_availability || c?.availability || null, aiCount: Number(r?.call_count || (c ? 1 : 0)), brief: a.note,
+      ai: a.ai_availability, aiCount: entity === 'record' ? a.ai_summary.outbound : a.ai_summary.total, brief: a.note,
       assignedBy: a.assigned_by, assignedByName: a.assigned_by_name, assignedAt: a.assigned_at,
+      closureReason:a.closure_reason,disposition:a.disposition,nextDueAt:a.next_due_at,
       state: a.state, outcome: a.outcome, remarks: a.remarks, addedToDb: a.added_to_db, whId: a.wh_id,
     };
   });

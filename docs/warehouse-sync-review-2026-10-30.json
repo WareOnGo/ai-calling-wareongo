@@ -1,0 +1,172 @@
+{
+  "verifiedAt": "2026-10-30T10:04:50.828Z",
+  "deployment": "dpl_GRXTBV6iQsy36ifHPiAVeW7A9HpZ",
+  "finding": "Completion-based scheduling could turn the hourly interval into a 70-minute cadence.",
+  "correction": "Advance the scheduled slot by whole intervals, skipping overdue slots.",
+  "request": {
+    "queuedAt": "2026-10-30T10:01:57.536Z",
+    "requestId": "66382",
+    "anchor": "2026-10-30 09:30:00+00",
+    "expectedNextAttempt": "2026-10-30 10:30:00+00",
+    "previousNextAttempt": "2026-10-30 10:30:48.233927+00",
+    "previousWarehouseCursor": 3229,
+    "previousLastSuccess": "2026-10-30T09:30:48.233Z"
+  },
+  "state": {
+    "enabled": true,
+    "initialized": true,
+    "warehouse_cursor": 3229,
+    "audit_cursor_at": "2026-10-30 09:16:46.169",
+    "audit_cursor_id": "b9e1da0d-5dc7-4982-b727-d0a693eecc8c",
+    "recheck_cursor": 815,
+    "next_attempt_at": "2026-10-30 10:30:00+00",
+    "last_success_at": "2026-10-30T10:02:08.951Z",
+    "last_summary": {
+      "mode": "incremental",
+      "hasMore": false,
+      "callsFilled": 0,
+      "associations": 268,
+      "auditCursorAt": "2026-10-30 09:16:46.169",
+      "auditCursorId": "b9e1da0d-5dc7-4982-b727-d0a693eecc8c",
+      "recheckCursor": 815,
+      "batchUnchanged": false,
+      "pendingReviews": 0,
+      "reviewsFlagged": 0,
+      "auditEventsRead": 16,
+      "reviewsResolved": 0,
+      "warehouseCursor": 3229,
+      "sourceWarehouses": 266,
+      "assignmentsFilled": 0,
+      "warehousesChecked": 266,
+      "auditReplayLimited": false,
+      "associationsChanged": 0
+    },
+    "consecutive_failures": 0,
+    "last_error_code": null,
+    "lease_until": null,
+    "exact_expected_slot": true
+  },
+  "http": {
+    "id": "66382",
+    "status_code": 200,
+    "timed_out": false,
+    "has_error": false
+  },
+  "workerResult": {
+    "status": "succeeded",
+    "runId": "1fc5a3cb-2635-45d7-b734-98bf5fdf6e89",
+    "mode": "incremental",
+    "sourceWarehouses": 266,
+    "associations": 268,
+    "associationsChanged": 0,
+    "warehousesChecked": 266,
+    "pendingReviews": 0,
+    "reviewsFlagged": 0,
+    "reviewsResolved": 0,
+    "assignmentsFilled": 0,
+    "callsFilled": 0,
+    "batchUnchanged": false,
+    "hasMore": false,
+    "auditEventsRead": 16,
+    "auditReplayLimited": false,
+    "warehouseCursor": 3229,
+    "auditCursorAt": "2026-10-30 09:16:46.169",
+    "auditCursorId": "b9e1da0d-5dc7-4982-b727-d0a693eecc8c",
+    "recheckCursor": 815
+  },
+  "cron": {
+    "jobid": "4",
+    "jobname": "enrich-analysis",
+    "schedule": "*/10 * * * *",
+    "command": "select public.call_enrich_and_warehouse_endpoint();",
+    "active": true
+  },
+  "automaticRun": {
+    "id": "fd8cb47a-a7a6-40dd-9d34-df6872b84f1b",
+    "started_at": "2026-10-30T09:30:40.208Z",
+    "finished_at": "2026-10-30T09:30:48.420Z",
+    "status": "succeeded",
+    "error_code": null,
+    "summary": {
+      "mode": "incremental",
+      "hasMore": false,
+      "callsFilled": 0,
+      "associations": 269,
+      "auditCursorAt": "2026-10-30 09:16:46.169",
+      "auditCursorId": "b9e1da0d-5dc7-4982-b727-d0a693eecc8c",
+      "recheckCursor": 559,
+      "batchUnchanged": false,
+      "pendingReviews": 0,
+      "reviewsFlagged": 0,
+      "auditEventsRead": 17,
+      "reviewsResolved": 0,
+      "warehouseCursor": 3229,
+      "sourceWarehouses": 266,
+      "assignmentsFilled": 0,
+      "warehousesChecked": 266,
+      "auditReplayLimited": false,
+      "associationsChanged": 3
+    }
+  },
+  "automaticHttpResponse": {
+    "id": "66351",
+    "status_code": 200,
+    "timed_out": false,
+    "has_error": false,
+    "created": "2026-10-30T09:30:36.982Z",
+    "runId": "fd8cb47a-a7a6-40dd-9d34-df6872b84f1b",
+    "status": "succeeded",
+    "mode": "incremental",
+    "warehouseCursor": 3229,
+    "sourceWarehouses": 266,
+    "associationsChanged": 3
+  },
+  "sourceComparison": {
+    "sourceWarehouses": 3056,
+    "sourceMaxWhid": 3229,
+    "sourceAssociations": 3147,
+    "callerAssociations": 3147,
+    "missingPairs": 0,
+    "missingWhids": [],
+    "retainedMissingSourcePairs": 0,
+    "retainedUnflaggedPairs": 0,
+    "pendingReviews": 0,
+    "pendingAudits": {
+      "n": 0,
+      "warehouses": 0
+    }
+  },
+  "auth": {
+    "unauthorizedStatus": 401,
+    "authorizedStatus": 200
+  },
+  "protectedAuditChanges": 0,
+  "sourceRole": {
+    "rolname": "callongo_warehouse_reader",
+    "rolsuper": false,
+    "rolcreatedb": false,
+    "rolcreaterole": false,
+    "rolbypassrls": false,
+    "direct_audit_read": false,
+    "writable_tables": 0
+  },
+  "migrationChecks": [
+    {
+      "name": "016_warehouse_sync.sql",
+      "checksum": "f970570020bc84cb2159063dccea809a950c44115025ca022c70f5648bb0469d",
+      "matchesFile": true
+    },
+    {
+      "name": "017_warehouse_sync_cursors.sql",
+      "checksum": "2445f4ba2d385b1329b2d63976d360ee2f4a75cbad9a93d180fdeec736f3e03f",
+      "matchesFile": true
+    }
+  ],
+  "enrichmentFunctionUnchanged": true,
+  "validation": {
+    "integrationTestsPassed": 409,
+    "typecheck": "passed",
+    "productionBuild": "passed"
+  },
+  "coreSha256": "d99c05f0cd9b208444b670cb69cd0b00f8cd2a02f27f90d1a6c4037e79a53c81"
+}

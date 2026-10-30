@@ -1,11 +1,11 @@
 "use client";
 
-import { FilterForm } from "../FilterForm";
-import { FiltersToggle } from "../FiltersToggle";
-import { ApplyButton } from "../ApplyButton";
+import { FilterForm } from "./classic/FilterForm";
+import { FiltersToggle } from "./classic/FiltersToggle";
+import { ApplyButton } from "./classic/ApplyButton";
 import { IconFilter } from "../icons";
 import { OUTCOMES } from "@/lib/scope";
-import { WORK_FILTER_LABELS, WORK_SORT_LABELS, workFilterValue, workHref, type WorkFilters as Filters } from "@/lib/work-filters";
+import { WORK_FILTER_LABELS, WORK_SORT_LABELS, workFilterValue, workHref, type WorkFilters as Filters } from "@/lib/employee-work-filters";
 
 export function WorkFilters({ filters, assigners = [], loading = false }: { filters: Filters; assigners?: { email: string; name: string | null }[]; loading?: boolean }) {
   const moreCount = ["city", "assigned_by", "added_to_db", "sort"].filter(key => filters[key as keyof Filters]).length;

@@ -28,11 +28,11 @@ export default async function Home({
   return (
     <div className="login">
       <div className="card">
-        <h1 style={{ marginTop: 0 }}>Bolna Calls</h1>
+        <h1 style={{ marginTop: 0 }}>CallOnGo</h1>
         <p className="muted" style={{ marginTop: 4, marginBottom: 24 }}>
           WareOnGo voice-AI call dashboard
         </p>
-        <a className="btn" href="/api/auth/google">Sign in with Google</a>
+        <a className="btn btn-primary" href="/api/auth/google">Sign in with Google</a>
       </div>
       {msg && (
         <div className="error-banner">

@@ -1,4 +1,4 @@
-# Bolna Processing
+# CallOnGo
 
 Internal warehouse sourcing and verification application. It brings together a
 master listing dataset, AI phone calls through Bolna, transcript analysis through
@@ -15,6 +15,18 @@ There are two work channels:
 This document describes the implementation in this checkout. It does not assert
 that a particular migration, scheduler, or deployment is active in production.
 Those are environment-specific operational facts.
+
+The [Bolna DB Fixes checklist](BOLNA_DB_FIXES_PLAN.md) records the 22-item handoff,
+implementation stages and validation. Apply the consolidated migrations through 008 before running
+this version. Migration 009 adds pagination indexes; see the [loading audit](docs/performance/LOADING_AUDIT.md) for measured improvements and deployment status. The [requirement-by-requirement re-audit](docs/HANDOFF_COMPLETENESS_AUDIT.md)
+links each original request to its implementation, tests and remaining limits.
+The [browser interaction audit](docs/BROWSER_UX_AUDIT.md) records additional UI,
+recovery and mobile fixes with Playwright evidence and screenshots.
+The [full handoff changelog](BOLNA_DB_FIXES_CHANGELOG.md) and
+[shareable screenshot PDF](BOLNA_DB_FIXES_CHANGELOG.pdf) summarize all implemented
+workflow, database, API, performance, and audit changes, with recorded test results.
+[Team metric definitions](docs/TEAM_METRICS.md) and the
+[AI evidence contract](docs/AI_ATTEMPT_EVIDENCE.md) describe reporting boundaries.
 
 ## Contents
 
@@ -76,7 +88,7 @@ flowchart TD
 
 | Component | Implementation | Design reason |
 |---|---|---|
-| Web application | Next.js 15 App Router, React 19, TypeScript | Keep dashboard rendering and server operations in one deployment. |
+| Web application | Next.js 16.4 App Router, React 19, TypeScript | Keep dashboard rendering and server operations in one deployment. Webpack remains the development/build bundler. |
 | Runtime | Node.js route handlers; Vercel-oriented configuration | Database connections, crypto, and external API calls stay on the server. |
 | Runtime database access | Parameterized SQL through `pg` | Keep explicit control over queue locking, joins, upserts, and filtered exports. |
 | Database | Supabase Postgres | Store listings, call history, workflow, and the processing queue together. |
@@ -138,7 +150,7 @@ internal checkout: `prisma/`, `sql/`, `scripts/`, `rawdata/`, `cleandata/`,
 material. A normal clone can provision the app schema using `database/`. Private
 source-import and historical maintenance scripts still require the internal checkout.
 
-The browser evaluation project is a separate package at `../bolna-eval/` in this
+The browser evaluation project is a separate package at `tests/browser/` in this
 workspace. It is not an application dependency.
 
 ## Data model and ownership
@@ -220,9 +232,9 @@ references, which have no listing FK to repair them.
 
 | Data | Writer | Reason for separation |
 |---|---|---|
-| Call facts and original payload | Processing worker | Trace results back to the execution. |
+| Call facts and accepted provider snapshot | Processing worker | Trace results back to the execution. |
 | Model verdict, extracted fields, inference JSON/version/model | Worker and enrichment endpoints | Recompute analysis independently of employee results. |
-| `m_call_status`, `called_by`, `added_to_db`, `wh_id` on a call | Scoped call PATCH endpoint | Retain call-analytics workflow through reprocessing. |
+| `m_call_status`, `called_by`, `added_to_db`, `wh_id` on a call | Retained legacy metadata | Read-only; current manual work and onboarding are stored on assignments. |
 | Outcome, remarks, `added_to_db`, `wh_id` on an assignment | Assignee or administrator | A manual call has no Bolna log row; its deliverable belongs to its assignment. |
 
 The two `added_to_db`/`wh_id` pairs are independent and are not automatically
@@ -243,26 +255,31 @@ Source: [webhook handler](src/app/api/bolna-webhook/route.ts),
 ### Capture is the durability boundary
 
 `POST /api/bolna-webhook` authenticates, parses JSON, validates the fields the app
-uses, and inserts the original payload. Zod allows additional fields so a new
-provider field does not break ingestion. Telephony duration accepts strings or
-numbers and is normalized to whole seconds later.
+uses, and merges the accepted provider facts. Zod allows additional fields so a
+new provider field does not break ingestion. Optional duration/retry metadata
+accepts number, string and null variants; duration is normalized later.
 
-Only these terminal statuses are captured:
+Identified provider dials are merged into one row per execution/provider-call ID.
+These terminal statuses also retain their latest accepted snapshot in the processing queue:
 
 ```text
 completed, failed, busy, no-answer, canceled, stopped,
 error, balance-low, call-disconnected
 ```
 
-Non-terminal events receive HTTP 200 and are ignored. Invalid JSON receives 400,
+Non-terminal events receive HTTP 200 after the per-dial upsert. Invalid JSON receives 400,
 invalid payloads 422, and failed authentication 401. A database insert failure
 returns 500 so the sender can retry. Capture makes no OpenAI or Bolna API calls.
 
-Duplicate terminal deliveries for the same execution and retry count are ignored.
-A strictly greater `retry_count` replaces the captured payload and resets its
-processing state. Older, out-of-order attempts cannot replace a newer retry.
-Corrections within the same retry count still require explicit operator replay;
-the provider payload does not supply a universally reliable revision ordering.
+Repeated deliveries update the same dial; no separate immutable delivery ledger is kept.
+Identified provider call IDs retain separate attempts. Retry index, provider identity, status
+progression and explicit provider timestamps determine whether a delivery can
+advance the execution projection. Older events cannot rewind it. Sparse newer
+updates retain known attempt metadata and call-log fields for the exact provider
+dial, including facts received while ringing. New provider IDs do not inherit
+another call's speech or duration. Missing dial identity falls back to the incoming
+payload; unknown ordering remains conservative.
+See [the evidence contract](docs/AI_ATTEMPT_EVIDENCE.md).
 
 ### Postgres acts as the job queue
 
@@ -349,9 +366,7 @@ lease. Bump `INFERENCE_VERSION` when changing the prompt or result schema.
 
 `bolna_call_analysis` applies deterministic rules over stored facts:
 
-- `busy` and `no-answer` produce the legacy label `dead number - do not call`
-  and segment `no_reach`. This means the call did not reach the recipient; it
-  does not establish that a number is permanently invalid.
+- `busy` and `no-answer` produce `Unclear` and remain retryable. They never prove that a number is permanently invalid.
 - Connected calls use the model verdict, defaulting to `Unclear` when absent.
 - Other statuses default to `Unclear`. Hangup reason/status then selects
   `followup_hungup`, `followup_silent`, `followup_voicemail`, `followup_retry`, or
@@ -463,19 +478,28 @@ Recent batches; only that child's reservations are released.
 
 `/api/batches/reconcile` polls known provider IDs, including running batches, and
 imports missed execution updates into both call results and attempt history.
-Current Bolna batches finish as `completed`; verified `stopped` batches become
-locally canceled. Completion requires matching contact counts, coverage of every
-target, and finished executions. A disconnected call still awaits its final update.
-Legacy `executed` snapshots additionally require explicit retry exhaustion.
-Recent batches lets
+Current Bolna batches report
+`completed` after their configured retry cycle. Completion requires that provider
+state, matching contact counts, coverage of every target and finished executions.
+Legacy `executed` snapshots still require explicit retry exhaustion. A provider
+`stopped` batch becomes locally canceled only after its target executions have
+finished; no stop or cancel request is sent to Bolna. Recent batches lets
 an admin check provider status or record a verified completion/cancellation note,
 including who released the numbers. That action does not cancel calls remotely.
 Stale in-flight states and legacy failures require reconciliation; a timeout alone
-never frees a phone. Imports commit in pages of 250, up to 1,000 executions per
-invocation. Active batches resume by execution ID and wrap for another sweep;
-finished batches use a snapshot fingerprint so changed results are rechecked before
-completion. Expiring leases fence overlapping workers. Background and visible-page
-polls share a five-minute throttle; manual status checks can run sooner.
+never frees a phone. A disconnected call still awaits its final update. Imports
+commit in pages of 250, up to 1,000 executions per invocation. Active batches resume
+by execution ID and wrap for another sweep; finished batches use a snapshot
+fingerprint so changed results are rechecked before completion. Expiring leases
+fence overlapping workers.
+
+While a batch page is visible, `/api/batches/sync` checks up to three of its active
+batches, sharing a five-minute throttle with background polling, and refreshes the page every
+30 seconds. It pauses during edits, dialogs and background tabs. The existing
+reconciliation cron remains responsible for checks when the page is closed.
+Provider metadata requests time out after 15 seconds; large execution snapshots
+have 45 seconds. Polling yields between batches to fit the request budget.
+Result progress on a card is separate from confirmed batch completion.
 
 Provider contracts: [batch status](https://www.bolna.ai/docs/api-reference/batches/get_batch),
 [batch executions](https://www.bolna.ai/docs/api-reference/batches/executions), and
@@ -491,8 +515,10 @@ Source: [auth](src/lib/auth.ts), [scope](src/lib/scope.ts),
 
 An assignment targets `entity_type = 'record'` for manual calling or `'call'`
 for AI-call follow-up. A partial unique index permits at most one `open`
-assignment per `(entity_type, entity_id)`. Assignment ownership is represented
-without duplicating the same fields on both entity tables.
+assignment per `(entity_type, entity_id)`. Open ownership also spans all normalized
+phones shared by listings and AI executions. Source properties remain distinct.
+Database checks against current contact mappings and serialized allocation prevent two callers from taking
+new overlapping work; existing legacy conflicts remain available for review.
 
 States are `open`, `done`, and `dropped`. Reassignment closes another person's
 open assignment and creates a new one; open work already owned by the target
@@ -501,17 +527,30 @@ reported. Completed rows remain history and do not prevent new assignments.
 
 Bulk assignment accepts explicit IDs or approved filter fields. For filtered
 assignment, the server resolves the set and excludes phone-less raw records.
-The target must be an active account; a request is capped at 20,000 IDs.
+Targets must be active accounts; requests are capped at 20,000 IDs. A preview
+shows owners, history, eligibility and caller workloads. Single-caller or
+deterministic round-robin allocation creates a durable manual batch, with a stale
+preview check, transaction rollback and retry-key replay.
 
-Assignees record outcome, remarks, warehouse reference, and completion. The
-current UI/API no longer records attempt counters; `attempts` and
-`last_attempt_at` remain legacy schema columns. Human outcomes reuse the AI
-vocabulary to support comparison without overwriting the AI verdict.
+Assignees record explicit manual attempts with disposition, event time, optional
+reported duration and follow-up date. Corrections preserve the original event;
+legacy `attempts` counters are not evidence. `last_attempt_at` now reflects the
+latest effective logged event. Human outcomes stay separate from AI verdicts.
+Retryable dispositions stay open unless a caller explicitly chooses Exhausted
+and records a substantive reason; there is no automatic attempt cap.
+Available completion requires a valid warehouse
+reference; Unclear requires a closure reason and substantive explanation. An
+append-only assignment audit supports reopen history and team reporting.
 
-The Call Analytics **Called By** dropdown loads active accounts from
-`bolna_app_users` for both admins and employees, using each account's name or
-email when no name is set. Manage these options in Team; changes appear on the
-next page load. Saved caller names remain visible after a rename or deactivation.
+The Call Analytics **Legacy Called By** field is labelled, hidden initially even
+for existing column preferences, and read-only. It is not proof of who called.
+Actual caller attribution comes from logged attempts. Call Analytics reports saved
+manual notes, Added status and WH ID as text, with explicit empty states. Edit
+these values in My Work, using the assignment's revision and validation.
+Becoming Done requires a logged attempt. Existing Done edits skip that prerequisite but still validate result, WH ID, notes and closure. Invalid legacy completion data must be repaired or reopened before relevant edits.
+New or changed warehouse references must be positive integers. Unchanged legacy
+references remain visible, exportable and included in historical reporting, with
+quality flags. Unmatched legacy call-row Added/WH values remain visible separately.
 
 ### The database grants access
 
@@ -587,10 +626,12 @@ database account remains an admin; the preference cannot grant admin access.
 | `/` | Public | Google sign-in and access errors. |
 | `/dashboard` | Signed-in users | Role-aware navigation and workload counts. |
 | `/dashboard/raw` | Admin | Search listings, export, assign, and prepare calling batches. |
-| `/dashboard/calls` | Signed-in users; scoped for employees | Call results, transcripts, inference, workflow edits. |
+| `/dashboard/calls` | Signed-in users; scoped for employees | Call results, transcripts, inference and saved manual-work reporting. |
 | `/dashboard/my` | Signed-in users, including admins | Own manual-call and AI-review assignments, independently paginated. |
 | `/dashboard/assignments` | Admin | Assignment history and human/AI comparison. |
-| `/dashboard/team` | Admin | Accounts, roles, active access, workload. |
+| `/dashboard/team` | Admin | Employee caller overview: Callyzer activity alongside recorded outcomes, expandable coverage and call history. |
+| `/dashboard/team/access` | Admin | Search members, manage access/roles and optionally link Callyzer employee numbers. |
+| `/dashboard/batches` | Admin | Paginated AI/manual batches, stable membership, metric cards and CSV. |
 
 ### Shared query rules
 
@@ -610,7 +651,12 @@ names cover all matches; the JSON array includes at most 12. Ranking prefers
 unflagged contacts, primary-phone matches, and newer ingestion times. This bounds
 response size and keeps one row per call, but the representative listing does
 not prove which property was discussed. Call source filters search all matched
-sources; fields such as state use the representative match.
+sources. City, state, source, contact type and source-size bounds must match the
+same source listing. Source cities are displayed separately from AI location text.
+Multi-select categories use repeated URL keys: OR within a category, AND between
+categories. Grids, counts, exports and all-matching bulk actions share the filters.
+Call Analytics hides `balance-low` by default; batch diagnostics and explicit
+status/include-blocked filters retain access.
 
 Calls default to 25 rows per page, raw listings and assignment history to 50,
 and personal work to 25 per channel. Filter-option queries have a ten-minute
@@ -625,9 +671,12 @@ Spreadsheet-bound cells neutralize formula prefixes; provider upload CSV remains
 literal so Bolna receives valid phone values. Filter-based assignment/calling
 selection still caps at 20,000 and reports that ceiling.
 
-Raw summaries fetch the latest transcript directly and retain only 20 small recent
-history entries. They count all calls without aggregating every transcript into
-arrays. Stable ID tie-breakers make pagination and deduplication deterministic.
+Grid reads select a bounded page before expanding ownership and carry only
+240-character transcript/note previews. Full transcripts and recent execution
+history load on demand in Details; AI attempt and manual-event timelines paginate
+separately. CSV retains full evidence. Stable ID tie-breakers and page jumps keep
+pagination deterministic. [Performance measurements](docs/performance/README.md)
+document the volume fixture and before/after results.
 
 ### Server rendering with focused client components
 
@@ -807,12 +856,20 @@ non-admin requests; ordinary session guards return 401.
 | GET | `/api/batches` | Admin | Latest 20 batches, errors and received-result counts. |
 | POST | `/api/batches/[id]` | Admin | Check provider status or record a verified resolution. |
 | GET, POST | `/api/batches/reconcile` | Process secret | Reconcile five active provider batches per run. |
+| POST | `/api/batches/sync` | Admin | Reconcile up to three eligible batches from the visible page; accepts at most 25 batch IDs. |
 | GET, POST | `/api/raw/export` | Scoped session | Selected or filtered listing CSV. |
 | GET, POST | `/api/calls/export` | Scoped session | Selected/filtered call CSV. |
-| PATCH | `/api/calls/[id]` | Scoped session | Edit `call_status`, `called_by`, `added_to_db`, `wh_id`. |
+| PATCH | `/api/calls/[id]` | Scoped session | Retired legacy editing channel; returns 409 for in-scope calls. Use assignment controls. |
 | POST | `/api/calls/[id]/enrich` | Scoped session | Manually infer one call. |
 | GET | `/api/details/[entity]/[id]` | Scoped session | Entity detail and up to 50 history rows; entity is `call` or `record`. |
-| POST | `/api/assignments` | Admin | Assign explicit IDs or a filtered entity set. |
+| POST | `/api/assignments/preview` | Admin | Allocation eligibility, history, owners and workloads. |
+| POST | `/api/assignments` | Admin | Preview-checked, idempotent allocation and durable manual batch. |
+| GET, POST | `/api/assignments/[id]/attempts` | Scoped session | Read/log/correct manual attempts with revisions. |
+| GET | `/api/details/[entity]/[id]/ai` | Scoped session | Paginated provider attempts with completeness labels. |
+| GET | `/api/balance` | Admin | Cached provider wallet, explicit stale/unavailable states. |
+| GET | `/api/batches/export`, `/api/batches/[id]/export` | Admin | Complete filtered batch/member CSV. |
+| GET | `/api/team/export` | Admin | Date-based metric evidence CSV; the Team page renders summaries directly. |
+| POST | `/api/callyzer/sync` | Worker secret | Resume the bounded Callyzer import; scheduled through pg_cron and pg_net. See [Callyzer setup and coverage](docs/CALLYZER.md). |
 | PATCH | `/api/assignments/[id]` | Assignee or admin | Edit outcome, remarks, state, `added_to_db`, `wh_id`. |
 | DELETE | `/api/assignments/[id]` | Admin | Mark an open assignment dropped; retain history. |
 | GET, POST | `/api/users` | Admin | List or upsert accounts. |
@@ -833,9 +890,13 @@ as strings by `pg` for bigint columns.
 
 ### Deploy the service
 
-Set the project root to `bolna-processing` when deploying this combined workspace.
+The Git repository contains the app at its root; use `.` as the Vercel project
+root. The `bolna-processing` directory name is only for the surrounding local workspace.
 The application uses `npm run build` and `npm run start`; for Vercel, set variables
 in the project environment configuration.
+
+See [Vercel preview setup](docs/VERCEL_PREVIEW.md) for the review branch, Google
+callback and environment settings.
 
 Provision the schema separately, register the deployed Google callback, and
 configure both Bolna agents' execution webhooks to send to:
@@ -1023,10 +1084,31 @@ ordering/backoff, scoped exports, revision conflicts, geography routing, partial
 batch success, cross-agent reservations and separate carpet/built-up values. CI rebuilds the schema,
 checks replay idempotence, runs unit/integration tests and builds the application.
 
-The separate `../bolna-eval/` browser package is optional legacy tooling. Its old
-schema replay, cookie minting and direct PATCH fixtures must be updated for the
-tracked migrations, expiring token payloads and required revisions before running
-the whole legacy suite. Do not run a build while a dev server shares `.next`.
+The adjacent `tests/browser/` harness now uses tracked migrations, current signed
+sessions and revision-aware fixtures. `tests/run-stage.mjs` pins all URLs and
+provider credentials to the dedicated handoff test container at localhost:55439:
+
+```bash
+npm run test:stage -- database
+npm run test:stage -- integration
+npm run test:stage -- browser
+npm run test:stage -- rehearsal
+npm run test:stage -- performance final
+npm run test:stage -- browser-volume
+npm run test:stage -- build
+npm run test:stage -- browser-volume-production
+npm run test:stage -- browser-production
+```
+
+Start that disposable PostgreSQL instance first. Integration/performance/browser
+fixtures reset app tables; run those suites sequentially. The browser-volume check
+requires the performance fixture without an intervening ordinary test seed. Production
+browser modes require a completed build. `reset-database` destroys and rebuilds only
+the pinned synthetic handoff schema; it is intended for test-fixture recovery, never
+an application migration. Rehearsal creates and drops
+separate disposable databases for fresh, legacy and existing-005 upgrades. CI can
+use its explicitly configured local `TEST_DATABASE_URL` on port 5432. Never point
+these tests at a production tunnel. Do not build while a dev server shares `.next`.
 Tests with mocked providers do not validate live credentials or cron installation.
 
 ## Current limitations
@@ -1037,7 +1119,10 @@ Remaining operational and domain boundaries:
 |---|---|
 | Provider uncertainty | No distributed transaction or provider idempotency guarantee. Unknown creates remain reserved until verified by an admin. |
 | Provider retry metadata | Missing/unknown status or retry exhaustion data prevents automatic release; Recent batches provides audited resolution. |
-| Same-attempt corrections | Identical execution/retry IDs are deduplicated; arbitrary corrected payloads need an explicit replay policy. |
+| Historical attempts | Retained provider IDs establish known attempts; overwritten retries and missing dial timestamps remain unknown. |
+| Team timing and onboarding | Durations are staff-reported, active hours are unknown, and onboarding references are not externally verified. See [metric definitions](docs/TEAM_METRICS.md). |
+| Wallet units | Defaults to provider units; set a currency label only after checking the account contract. |
+| Broader analytics | Global funnel/trends and property-level mismatch aggregates remain the handoff’s v2 scope. |
 | Assignment entity FKs | Polymorphic targets are validated and locked by the service; direct SQL deletions can still orphan history. |
 | CSV throughput | Streams hold a pool connection; long/stalled downloads or host deadlines can abort. Limit is 100,000 rows per export. |
 | Dataset maintenance | Private source cleaners/loaders remain outside the application and need their own validation. |

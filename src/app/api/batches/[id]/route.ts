@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getCurrentAdmin } from "@/lib/auth";
 import { apiError, jsonBody, uuid } from "@/lib/api";
 import { reconcileBatch, resolveBatch } from "@/lib/batch-reconciliation";
-export const maxDuration = 60;
+export const maxDuration = 120;
 const action = z.discriminatedUnion("action", [
   z.object({ action: z.literal("reconcile") }).strict(),
   z.object({ action: z.literal("resolve"), state: z.enum(["completed", "canceled"]),
