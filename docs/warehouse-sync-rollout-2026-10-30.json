@@ -1,0 +1,184 @@
+{
+  "verifiedAt": "2026-10-30T08:32:47.554Z",
+  "deployment": "dpl_4GQJzk5cZnyegRCm8edUeJhFq49h",
+  "workerAuthenticationVerified": true,
+  "httpDelivery": {
+    "id": "66281",
+    "status_code": 200,
+    "timed_out": false,
+    "has_error": false
+  },
+  "incrementalHttpDelivery": {
+    "id": "66286",
+    "status_code": 200,
+    "timed_out": false,
+    "has_error": false
+  },
+  "assignmentDiff": {
+    "concurrentProtectedChanges": 9,
+    "protectedChangesOnFilledRows": 0,
+    "overwrittenWhids": 0,
+    "whidsFilled": 0
+  },
+  "callDiff": {
+    "concurrentProtectedChanges": 17,
+    "protectedChangesOnFilledRows": 0,
+    "overwrittenWhids": 0,
+    "whidsFilled": 3
+  },
+  "syncAuditProtectedChanges": 0,
+  "associationsBefore": 3142,
+  "associationsAfter": 3144,
+  "otherJobsUnchanged": true,
+  "enrichmentFunctionUnchanged": true,
+  "pending009Preserved": true,
+  "state": {
+    "enabled": true,
+    "interval_seconds": 3600,
+    "next_attempt_at": "2026-10-30T09:29:53.953Z",
+    "last_attempt_at": "2026-10-30T08:29:45.820Z",
+    "last_success_at": "2026-10-30T08:29:53.953Z",
+    "last_snapshot_at": "2026-10-30T08:29:47.752Z",
+    "lease_until": null,
+    "consecutive_failures": 0,
+    "last_error_code": null,
+    "last_summary": {
+      "mode": "incremental",
+      "hasMore": false,
+      "callsFilled": 0,
+      "associations": 259,
+      "auditCursorAt": "2026-10-30 07:46:25.386",
+      "auditCursorId": "31eb9576-0f27-445a-bccc-51c4ef9cdc64",
+      "recheckCursor": 258,
+      "batchUnchanged": false,
+      "pendingReviews": 0,
+      "reviewsFlagged": 0,
+      "auditEventsRead": 15,
+      "reviewsResolved": 0,
+      "warehouseCursor": 3227,
+      "sourceWarehouses": 265,
+      "assignmentsFilled": 0,
+      "warehousesChecked": 265,
+      "auditReplayLimited": false,
+      "associationsChanged": 0
+    },
+    "initialized": true,
+    "warehouse_cursor": 3227,
+    "audit_cursor_at": "2026-10-30 07:46:25.386",
+    "audit_cursor_id": "31eb9576-0f27-445a-bccc-51c4ef9cdc64",
+    "recheck_cursor": 258
+  },
+  "recentRuns": [
+    {
+      "id": "e8d33bce-d0e2-4c72-9a8d-31164e6524b1",
+      "started_at": "2026-10-30T08:29:46.007Z",
+      "finished_at": "2026-10-30T08:29:54.140Z",
+      "status": "succeeded",
+      "snapshot_at": "2026-10-30T08:29:47.752Z",
+      "summary": {
+        "mode": "incremental",
+        "hasMore": false,
+        "callsFilled": 0,
+        "associations": 259,
+        "auditCursorAt": "2026-10-30 07:46:25.386",
+        "auditCursorId": "31eb9576-0f27-445a-bccc-51c4ef9cdc64",
+        "recheckCursor": 258,
+        "batchUnchanged": false,
+        "pendingReviews": 0,
+        "reviewsFlagged": 0,
+        "auditEventsRead": 15,
+        "reviewsResolved": 0,
+        "warehouseCursor": 3227,
+        "sourceWarehouses": 265,
+        "assignmentsFilled": 0,
+        "warehousesChecked": 265,
+        "auditReplayLimited": false,
+        "associationsChanged": 0
+      },
+      "error_code": null
+    },
+    {
+      "id": "8a44b855-ca07-4e3b-bcf0-7860dd3b9c70",
+      "started_at": "2026-10-30T08:24:34.937Z",
+      "finished_at": "2026-10-30T08:24:46.032Z",
+      "status": "succeeded",
+      "snapshot_at": "2026-10-30T08:24:36.787Z",
+      "summary": {
+        "mode": "bootstrap",
+        "hasMore": false,
+        "callsFilled": 3,
+        "associations": 3144,
+        "auditCursorAt": "2026-10-30 07:46:25.386",
+        "auditCursorId": "31eb9576-0f27-445a-bccc-51c4ef9cdc64",
+        "recheckCursor": 0,
+        "batchUnchanged": false,
+        "pendingReviews": 0,
+        "reviewsFlagged": 0,
+        "auditEventsRead": 0,
+        "reviewsResolved": 0,
+        "warehouseCursor": 3227,
+        "sourceWarehouses": 3054,
+        "assignmentsFilled": 0,
+        "warehousesChecked": 3054,
+        "auditReplayLimited": false,
+        "associationsChanged": 2
+      },
+      "error_code": null
+    }
+  ],
+  "pendingReviews": 0,
+  "cron": {
+    "jobId": 4,
+    "name": "enrich-analysis",
+    "schedule": "*/10 * * * *",
+    "warehouseIntervalSeconds": 3600,
+    "wrapper": "public.call_enrich_and_warehouse_endpoint",
+    "observedSuccessfulTick": "2026-10-30T08:30:00.263Z"
+  },
+  "sourceAccess": {
+    "role": "callongo_warehouse_reader",
+    "warehouseColumns": [
+      "id",
+      "contactNumber",
+      "alt_phone_number"
+    ],
+    "auditView": "callongo_warehouse_changes",
+    "auditColumns": [
+      "event_id",
+      "changed_at",
+      "warehouse_id"
+    ],
+    "directAuditTableAccess": false,
+    "writeGrants": false,
+    "tlsVerified": true
+  },
+  "rehearsal": {
+    "rollbackVerified": true,
+    "bootstrapApplyMs": 2093,
+    "incrementalApplyMs": 864,
+    "protectedAssignmentChanges": 0,
+    "protectedCallChanges": 0
+  },
+  "validation": {
+    "unitTestsPassed": 175,
+    "integrationTestsPassed": 406,
+    "migrationRehearsals": [
+      "fresh",
+      "legacy",
+      "current",
+      "interrupted",
+      "index_wait"
+    ],
+    "productionBuild": "passed",
+    "deployedRuntimeMatchesWorktree": true,
+    "unrelatedLocalChangesExcluded": true,
+    "existingNextSecurityWarning": true
+  },
+  "checksums": {
+    "database/migrations/016_warehouse_sync.sql": "f970570020bc84cb2159063dccea809a950c44115025ca022c70f5648bb0469d",
+    "database/schedule-warehouse-sync.sql": "96700dc9978efa498cc978f6bf61a866a7def2f4a1537fd774f1fd42baf403bc",
+    "database/warehouse-sync.mjs": "ddf2bbf0e66f6fbde17a4ce98266407b09adea8fe4e7186e973f2c671b990d19",
+    "database/migrations/017_warehouse_sync_cursors.sql": "2445f4ba2d385b1329b2d63976d360ee2f4a75cbad9a93d180fdeec736f3e03f",
+    "database/warehouse-source-audit-view.sql": "e8d18bb300c87245fc30a5e2b63b57b51b340b8665c9d5bb9b640d0804ca7cf3"
+  }
+}

@@ -9,8 +9,9 @@ numbers and retained-phone fallbacks. Existing tasks remain editable; importing
 the snapshot does not close work or change availability, caller notes or owners.
 
 After applying 014, run the one-time data migration with explicit caller and WAG
-connections. It only reads WAG's `Warehouse` table; the dashboard needs no WAG
-credentials at runtime. Use verified TLS and `DATABASE_SSL_CA` as above.
+connections. It only reads WAG's `Warehouse` table; this one-time operation needs no WAG
+credentials at runtime. The periodic worker described below uses a separate read-only role.
+Use verified TLS and `DATABASE_SSL_CA` as above.
 
 ```bash
 # Set DIRECT_URL (caller) and WAREHOUSE_DATABASE_URL (WAG) in the environment.
@@ -83,6 +84,134 @@ leaving 3,142 valid associations. All 988 matched raw numbers, 2,493 matched raw
 listings, 536 matched calls and 362 matched assignments were preserved, along
 with saved notes, flags and WHIDs. See the
 [parsing correction report](../docs/warehouse-parsing-repair-2026-10-30.json).
+
+## Periodic warehouse sync (016–017)
+
+`016_warehouse_sync.sql` creates private sync state, run history and a review queue.
+It starts **disabled**. It does not install a cron job, change the original import,
+or modify previously applied migrations. `017_warehouse_sync_cursors.sql` adds
+warehouse, audit and rotating-review cursors. Apply only these two migrations on
+the shared production database; unrelated pending migration 009 must remain pending.
+
+The existing `enrich-analysis` cron keeps its identity and ten-minute schedule.
+Its wrapper independently queues the existing enrichment endpoint and, when due,
+`POST /api/warehouses/sync`. Warehouse runs are due an hour after the previous
+successful run, so the next cron tick starts them within another ten minutes.
+They run even with no enrichment work or `ENABLE_ENRICHMENT=false`.
+No source database read occurs when an assignment dialog opens or submits.
+
+The first successful run establishes a consistent baseline of WAG's `Warehouse.id`,
+`contactNumber` and `alt_phone_number`, saving the highest warehouse ID and the
+latest relevant audit position. Later runs fetch up to 500 newer warehouses and
+500 newer relevant audit events. The audit cursor is `(createdAt, id)`, preserving
+PostgreSQL's exact timestamp text and precision so equal timestamps and local
+JavaScript timezones cannot skip events. A backlog is due again at the next
+ten-minute cron tick. Cursor advancement commits atomically with the imported data.
+
+Apply `warehouse-source-audit-view.sql` **to WAG**, not the caller database. Its
+private view exposes only the audit event ID, timestamp and affected integer WHID.
+It includes warehouse create/delete events, phone-field updates, legacy updates
+without a reliable field list, and staging approvals. Phone values in WAG's audit
+log are masked, so the worker rereads current phone fields from `Warehouse`.
+It does not copy audit actors, full metadata or masked values into the caller DB.
+
+WAG writes audits asynchronously after responding and may lose failed audit
+writes. Each run replays up to 500 events within the preceding 24 hours of its
+audit cursor, without moving the cursor backward. It also rotates through 250
+older source/previously matched WHIDs to catch direct DB edits, late ID commits,
+and failed audits. This visits roughly 3,250 IDs in 13 successful hourly runs;
+ordinary audited changes and new IDs are still caught by the main cursors.
+The review page includes known IDs missing from WAG, so deletions remain reviewable.
+There is no periodic full-table snapshot after bootstrap. An overlap that exceeds
+the event cap is reported as `auditReplayLimited`; the rotating pass remains the
+fallback for older missed events. Counters and hashes describe each run's batch,
+and `mode` distinguishes bootstrap from incremental runs.
+
+The worker uses `WAREHOUSE_DATABASE_URL`. Provision a
+dedicated login with SELECT on only those columns, schema USAGE, database CONNECT,
+and a SELECT RLS policy for that role, plus SELECT on the restricted audit view.
+Give it no direct audit-table access, role memberships or write grants.
+Set its default transactions read-only; the worker also explicitly opens a
+read-only transaction. Keep this credential server-side in deployment secrets.
+It always verifies TLS; a separate `WAREHOUSE_DATABASE_SSL_CA` is optional.
+
+Matching reuses the corrected parser above and covers the full raw dataset,
+including unassigned records, open/closed assignments, and calls. Every matching
+integer WHID is retained. Only blank saved WHIDs with a single unambiguous,
+currently supported match are filled, subject to existing completion rules.
+Existing WHIDs, caller notes, availability, ownership, completion status and
+`added_to_db` are preserved. Unlike the one-time backfill, this worker **never
+automatically sets the caller's Added flag**. Changed assignment revisions and
+their before/after audit events identify `warehouse-contact-sync` as the actor.
+The fill step runs even with an empty or unchanged incremental batch, covering
+new call rows using the existing associations.
+
+Pairs absent from a warehouse's refreshed phone fields stay in the association table and
+continue to exclude allocations. They enter `bolna_warehouse_sync_reviews` with
+reason `missing_from_source`; no new saved WHID is filled from unresolved evidence.
+A partial batch reviews only its fetched WHIDs, never unrelated associations.
+An empty result is valid for deleted warehouses or no new work. A returning pair
+resolves its review. An operator must explicitly review any
+removal/correction; this worker never deletes associations or rewrites saved IDs.
+
+The caller DB grants a 180-second lease before the WAG read. The worker has a
+120-second request limit. A second invocation skips while leased, and stale
+workers cannot commit after lease expiry or replacement. Applying associations,
+reviews, WHIDs and success metadata is one transaction under the existing
+allocation lock. Source and apply failures preserve the last successful mapping,
+record a sanitized error code and retry on a later cron tick (five-minute retry
+delay). Crashes are recovered after lease expiry. Empty baseline or invalid
+snapshots fail without altering associations or advancing cursors.
+
+Rollout order:
+
+1. Rehearse 016/017 and both bootstrap and incremental apply inside a transaction, then roll back and
+   verify the original migration ledger, saved values, associations and triggers.
+2. Apply 016/017, configure the source role and restricted audit view, and deploy the worker.
+3. Verify unauthorized requests fail and the authenticated status endpoint works.
+   Rehearse source access with the read-only role before enabling the worker.
+4. Use the scheduler installer with explicit caller DB and `PROCESS_SECRET`:
+
+```bash
+node database/schedule-warehouse-sync.mjs                  # validates worker; rolls back
+node database/schedule-warehouse-sync.mjs --apply --enable # attaches existing cron and enables
+```
+
+The installer verifies the Vault `process_secret`, refuses an unexpected existing
+cron command and preserves its schedule/active state. It leaves the original
+`call_enrich_endpoint()` definition intact. Each enqueue has its own exception
+handler; failure in either cannot undo the other's queued HTTP request. The
+warehouse HTTP timeout is 110 seconds. Credentials belong in Authorization
+headers, never query strings or logs.
+
+Authenticated `GET /api/warehouses/sync` reports last success, next attempt,
+lease expiry, saved cursors, sanitized errors, ten recent runs and the pending review count.
+GET never starts a sync. Inspect both `cron.job_run_details` **and** pg_net's
+`net._http_response`/worker run history: cron success alone only proves enqueueing.
+Inspect missing pairs through the private review table; do not export phone
+numbers or secrets in routine operational reports.
+
+To pause warehouse syncing while retaining enrichment and existing associations:
+
+```sql
+UPDATE public.bolna_warehouse_sync_state SET enabled=false WHERE id=1;
+```
+
+To detach the wrapper, use `cron.alter_job` on `enrich-analysis` to restore its
+original command `select public.call_enrich_endpoint();`. Keep the tables and
+history; do not roll back already filled WHIDs or disable allocation guards.
+The interval can be changed with `interval_seconds` (600–86400); set
+`next_attempt_at=clock_timestamp()` to make the next tick due immediately.
+
+Enabled and verified on 30 October 2026 IST. Bootstrap reached WHID 3227 across
+3,054 warehouses, added two associations (3,142 → 3,144), and filled three blank
+call WHIDs. The subsequent live incremental request read 265 warehouses,
+replayed 15 audit events, and made no further data changes. Both pg_net requests
+returned HTTP 200, and the existing enrichment cron succeeded with its wrapper
+at 08:30 UTC. No protected-field changes occurred on sync-filled rows; unrelated
+caller status edits and enrichment notes continued during verification. The
+original enrichment function, other cron jobs, trigger configuration and pending
+migration 009 were preserved. See the [rollout report](../docs/warehouse-sync-rollout-2026-10-30.json).
 
 `baseline.sql` contains only Bolna Processing's tables, indexes, constraints,
 generated phone column and analysis view. Source datasets, credentials and other
