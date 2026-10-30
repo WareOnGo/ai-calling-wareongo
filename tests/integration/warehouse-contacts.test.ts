@@ -11,7 +11,8 @@ import { personalTotals, personalWork } from '@/lib/personal-work';
 import { toRawFilters, toCallFilters } from '@/lib/filters';
 import { assembleBatch } from '@/lib/dispatch-plan';
 import { dispatchBatch } from '@/lib/dispatch-service';
-import { backfillWarehouseContacts } from '../../database/warehouse-contact-backfill.mjs';
+import { IMPORT_NAME, backfillWarehouseContacts } from '../../database/warehouse-contact-backfill.mjs';
+import { PARSING_REPAIR_NAME, repairWarehouseContactParsing } from '../../database/repair-warehouse-contact-parsing.mjs';
 import { seedLegacyAssignments } from './fixtures';
 
 const admin={email:'admin@test.example',isAdmin:true,name:null};
@@ -172,4 +173,70 @@ it('rolls back both associations and existing assignment changes on a failed imp
   expect((await query('select * from bolna_assignments')).rows).toEqual(before);
   expect((await query('select count(*)::int n from bolna_warehouse_contacts')).rows[0].n).toBe(0);
   expect((await query('select count(*)::int n from bolna_warehouse_imports')).rows[0].n).toBe(0);
+});
+
+it('does not match malformed or foreign numbers to Indian contacts sharing their suffix',async()=>{
+  const id=await listing(['1987654321']),foreign=await listing(['2125550199']);
+  await load([
+    {id:501,contactNumber:'9876543210',alt_phone_number:null},
+    {id:502,contactNumber:'+91 98765 4321',alt_phone_number:null},
+    {id:503,contactNumber:'+1 212 555 0199',alt_phone_number:null},
+  ]);
+  expect((await query('select warehouse_id from bolna_warehouse_contacts order by warehouse_id')).rows).toEqual([{warehouse_id:501}]);
+  expect(await previewAssignment(options([id,foreign]))).toMatchObject({eligible:2,warehouseExists:0});
+});
+
+const repairSource = [
+  {id:501,contactNumber:'9876543210',alt_phone_number:null},
+  {id:502,contactNumber:'+91 98765 4321',alt_phone_number:null},
+  {id:503,contactNumber:'+1 212 555 0199',alt_phone_number:null},
+  {id:504,contactNumber:'+91 98765 43210',alt_phone_number:null},
+];
+async function legacyParsingRows(){
+  await query(`insert into bolna_warehouse_contacts(phone_last10,warehouse_id,source_fields,import_name)
+    values('1987654321',502,array['contactNumber'],$1),('2125550199',503,array['contactNumber'],$1)`,[IMPORT_NAME]);
+}
+
+it('repairs only unused malformed associations, archives evidence, and preserves valid multiple IDs and saved work',async()=>{
+  const id=await listing();await assignEntities(options([id]));await load(repairSource);await legacyParsingRows();
+  const before=(await query('select * from bolna_assignments')).rows;
+  const originalImport=(await query('select * from bolna_warehouse_imports where name=$1',[IMPORT_NAME])).rows;
+  const result=await transaction(client=>repairWarehouseContactParsing(client,repairSource,'2026-10-30T00:00:00Z'));
+  expect(result).toMatchObject({removedAssociations:2,associationsBefore:4,associationsAfter:2,affectedExistingContacts:0});
+  expect((await query('select warehouse_id from bolna_warehouse_contacts order by warehouse_id')).rows).toEqual([{warehouse_id:501},{warehouse_id:504}]);
+  expect((await listAssignments(admin,{})).rows[0].warehouse_ids).toEqual([501,504]);
+  expect((await query('select * from bolna_assignments')).rows).toEqual(before);
+  expect((await query('select * from bolna_warehouse_imports where name=$1',[IMPORT_NAME])).rows).toEqual(originalImport);
+  const archived=(await query('select summary from bolna_warehouse_imports where name=$1',[PARSING_REPAIR_NAME])).rows[0].summary;
+  expect(archived.removed_associations).toHaveLength(2);
+  expect(archived.removed_associations[0]).toMatchObject({association:{warehouse_id:502,phone_last10:'1987654321'},source_tokens:[{field:'contactNumber',value:'+91 98765 4321'}]});
+  expect(await transaction(client=>repairWarehouseContactParsing(client,repairSource,'2026-10-31T00:00:00Z'))).toMatchObject({...result,alreadyApplied:true});
+});
+
+it('rolls back both the parsing correction and its audit ledger when interrupted',async()=>{
+  await load(repairSource);await legacyParsingRows();
+  const before=(await query('select * from bolna_warehouse_contacts order by phone_last10,warehouse_id')).rows;
+  await expect(transaction(async client=>{
+    await repairWarehouseContactParsing(client,repairSource,'2026-10-30T00:00:00Z');
+    throw Error('Interrupted parsing repair');
+  })).rejects.toThrow('Interrupted parsing repair');
+  expect((await query('select * from bolna_warehouse_contacts order by phone_last10,warehouse_id')).rows).toEqual(before);
+  expect((await query('select count(*)::int n from bolna_warehouse_imports where name=$1',[PARSING_REPAIR_NAME])).rows[0].n).toBe(0);
+});
+
+it.each(['raw','call','batch'])('refuses automatic parsing repair when a rejected phone already has %s data',async kind=>{
+  await load(repairSource);await legacyParsingRows();
+  if(kind==='raw')await listing(['1987654321']);
+  if(kind==='call')await query("insert into bolna_call_logs(id,call_type,to_number) values($1,'outbound','+911987654321')",[randomUUID()]);
+  if(kind==='batch'){
+    const batch=(await query('insert into call_batches default values returning id')).rows[0].id;
+    // Reproduce a batch prepared before the malformed association was imported.
+    await query("delete from bolna_warehouse_contacts where warehouse_id=502");
+    await query("insert into call_batch_items(batch_id,contact_number) values($1,'+911987654321')",[batch]);
+    await query("insert into bolna_warehouse_contacts values('1987654321',502,array['contactNumber'],$1)",[IMPORT_NAME]);
+  }
+  await expect(transaction(client=>repairWarehouseContactParsing(client,repairSource,'2026-10-30T00:00:00Z')))
+    .rejects.toThrow('Parsing correction affects existing contacts');
+  expect((await query('select count(*)::int n from bolna_warehouse_contacts')).rows[0].n).toBe(4);
+  expect((await query('select count(*)::int n from bolna_warehouse_imports where name=$1',[PARSING_REPAIR_NAME])).rows[0].n).toBe(0);
 });

@@ -2,15 +2,31 @@ import { createHash } from 'node:crypto';
 
 export const IMPORT_NAME = 'wag-warehouse-contacts-v1';
 
+// Match this dashboard's Indian phone keys without guessing missing digits or
+// discarding arbitrary country codes. This validates representation, not ownership.
+export function normalizeWarehousePhone(value) {
+  const token = String(value ?? '').normalize('NFKC')
+    .replace(/[\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]/g, '')
+    .replace(/[\u2010-\u2015\u2212]/g, '-').trim();
+  if (!/^\+?[0-9\s().-]+$/.test(token)) return null;
+  const compact = token.replace(/[\s().-]/g, '');
+  if (/^\+91[0-9]{10}$/.test(compact)) return compact.slice(3);
+  if (/^[0-9]{10}$/.test(compact)) return compact;
+  if (/^0[0-9]{10}$/.test(compact)) return compact.slice(1);
+  if (/^91[0-9]{10}$/.test(compact)) return compact.slice(2);
+  if (/^0091[0-9]{10}$/.test(compact)) return compact.slice(4);
+  return null;
+}
+
 export function warehouseContacts(warehouses) {
   const pairs = new Map();
   for (const warehouse of warehouses) {
     if (!Number.isSafeInteger(warehouse.id) || warehouse.id <= 0) throw new Error('Invalid integer warehouse ID');
     for (const field of ['contactNumber', 'alt_phone_number']) {
-      for (const token of String(warehouse[field] || '').split(/[,;/|\r\n]+/)) {
-        const digits = token.replace(/\D/g, '');
-        if (digits.length < 10 || digits.length > 15) continue;
-        const phone = digits.slice(-10), key = `${phone}:${warehouse.id}`;
+      for (const token of String(warehouse[field] || '').normalize('NFKC').split(/[,;/|\r\n]+/)) {
+        const phone = normalizeWarehousePhone(token);
+        if (!phone) continue;
+        const key = `${phone}:${warehouse.id}`;
         const pair = pairs.get(key) || { phone_last10: phone, warehouse_id: warehouse.id, source_fields: [] };
         if (!pair.source_fields.includes(field)) pair.source_fields.push(field);
         pairs.set(key, pair);

@@ -1,6 +1,11 @@
 import pg from 'pg';
 import { rootCertificates } from 'node:tls';
 import { backfillWarehouseContacts } from './warehouse-contact-backfill.mjs';
+import { repairWarehouseContactParsing } from './repair-warehouse-contact-parsing.mjs';
+
+const args = new Set(process.argv.slice(2));
+if ([...args].some(arg => !['--apply', '--repair-phone-parsing'].includes(arg)))
+  throw new Error('Usage: node database/backfill-warehouse-contacts.mjs [--repair-phone-parsing] [--apply]');
 
 // Explicit connections only; never load a repo's environment implicitly.
 function connection(value) {
@@ -22,9 +27,10 @@ try {
   await caller.connect();
   await caller.query('begin');
   await caller.query("set local lock_timeout='5s'; set local statement_timeout='60s'");
-  const summary=await backfillWarehouseContacts(caller,warehouses,snapshotAt);
-  await caller.query(process.argv.includes('--apply')?'commit':'rollback');
-  console.log(JSON.stringify({applied:process.argv.includes('--apply'),...summary},null,2));
+  const run=args.has('--repair-phone-parsing')?repairWarehouseContactParsing:backfillWarehouseContacts;
+  const summary=await run(caller,warehouses,snapshotAt);
+  await caller.query(args.has('--apply')?'commit':'rollback');
+  console.log(JSON.stringify({applied:args.has('--apply'),...summary},null,2));
 } catch(error) {
   await caller.query('rollback').catch(()=>{});
   // Never emit database URLs or full pg error objects containing credentials.

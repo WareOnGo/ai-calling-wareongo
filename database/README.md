@@ -18,9 +18,12 @@ node database/backfill-warehouse-contacts.mjs          # full transaction, rolle
 node database/backfill-warehouse-contacts.mjs --apply  # commit the one-time import
 ```
 
-The import strips phone formatting/country prefixes, matches the final ten
-digits and splits comma/slash/semicolon/pipe/newline-separated numbers. Every
-warehouse ID is retained in `bolna_warehouse_contacts`; `bolna_warehouse_matches`
+The import accepts ten-digit numbers and the recognized Indian prefixes `+91`,
+`91`, `0` and `0091`, allowing spaces, parentheses, dots, dashes and Unicode
+formatting. It splits comma/slash/semicolon/pipe/newline-separated numbers.
+Malformed lengths, foreign prefixes, extensions and arbitrary leading digits
+are rejected instead of being truncated into a different ten-digit number. All
+warehouse IDs for each accepted number are retained in `bolna_warehouse_contacts`; `bolna_warehouse_matches`
 relates those numbers to raw records and calls. The import fills an empty legacy
 WHID only for a single unambiguous warehouse and marks matched assignments/calls
 as added to DB. Nonempty IDs are preserved. Invalid legacy completion records
@@ -52,6 +55,34 @@ The UI exposes the phone association through **Warehouse DB match** and all
 matched WHIDs. **Added to DB** and **Onboarded** retain their saved verification
 semantics. Raw, call and batch CSVs include separate match and matched-ID columns.
 See the [review report](../docs/warehouse-review-2026-10-30.json).
+
+### Correct legacy phone parsing
+
+The original parser could truncate malformed or foreign phone strings into
+Indian contact keys. The correction uses a fresh read-only WAG snapshot to find
+pairs supported only by that old parsing. It preserves any pair also supported
+by a valid primary or alternate number, including multiple WHIDs for one number.
+
+```bash
+# Same explicit connections as the original backfill. Default is rollback.
+node database/backfill-warehouse-contacts.mjs --repair-phone-parsing
+node database/backfill-warehouse-contacts.mjs --repair-phone-parsing --apply
+```
+
+This repairs only existing associations from `wag-warehouse-contacts-v1`; it does
+not import new warehouses or perform a rolling refresh. Exact removed rows and
+their source tokens are archived transactionally in the private import ledger
+under `wag-warehouse-contact-parsing-v2`. Repeating it is a no-op. No applied SQL
+migration or original import record is changed. If a rejected number already
+appears in raw contacts, call contacts or batch items, the repair refuses to
+proceed automatically so dependent saved fields can be reviewed first.
+
+Applied and independently verified on 30 October 2026 IST after rollback
+rehearsal. Twelve unused malformed associations were archived and removed,
+leaving 3,142 valid associations. All 988 matched raw numbers, 2,493 matched raw
+listings, 536 matched calls and 362 matched assignments were preserved, along
+with saved notes, flags and WHIDs. See the
+[parsing correction report](../docs/warehouse-parsing-repair-2026-10-30.json).
 
 `baseline.sql` contains only Bolna Processing's tables, indexes, constraints,
 generated phone column and analysis view. Source datasets, credentials and other
