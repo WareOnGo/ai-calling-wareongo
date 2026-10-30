@@ -137,3 +137,37 @@ out of logs. To pause only this scheduler, use
 References: [Supabase Cron](https://supabase.com/docs/guides/cron/quickstart),
 [pg_net HTTP timeouts and responses](https://supabase.com/docs/guides/database/extensions/pg_net),
 and [Bolna batch states](https://www.bolna.ai/docs/api-reference/batches/get_batch).
+
+## Compatibility with the retained shared schema
+
+The production ledger was checked read-only on 30 October 2026. Baseline and
+migrations 001–008 and 010–017 match commit
+`707f7971fa6982b73e502d3ef8cc3ee778b54848`; migration 009 remains pending.
+The Callyzer columns/tables, manual history and warehouse sync tables can remain
+in the database while this branch runs the original dashboard. They do not
+require deploying the overhaul or its Callyzer endpoints.
+
+The existing compatibility settings from `rollback-handoff.sql` remain required:
+`bolna_assignment_quality_guard` and `bolna_assignment_contacts_sync` are disabled.
+Assignment audit/history triggers and both warehouse guards remain enabled.
+Do not disable warehouse guards or reapply/roll back migrations to accommodate
+the old app. Existing assignments remain editable and completable. New assignment,
+reassignment, reopening or AI dispatch involving a registered warehouse contact
+returns HTTP 409 with a useful message. A rejected bulk selection rolls back in
+full; remove the affected contacts before retrying. No provider request is made
+for a dispatch rejected by the database guard.
+
+Rehearse this schema separately from the ordinary fresh-main integration tests:
+
+```bash
+# TEST_DATABASE_URL must identify a disposable LOCAL PostgreSQL cluster.
+# The supplied schema commit must already be available in the Git object store.
+node tests/rehearse-shared-schema.mjs 707f7971fa6982b73e502d3ef8cc3ee778b54848
+```
+
+The rehearsal creates and removes a separate test database, reads the committed
+migration files into a temporary directory, applies the existing compatibility
+SQL there, and runs main's integration suite plus shared-schema regressions. It
+also verifies that main's migration runner preserves the extra ledger entries
+and leaves 009 pending. It does not load `.env.local`, install production jobs,
+copy feature migrations into this branch, or contact calling providers.

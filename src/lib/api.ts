@@ -17,6 +17,18 @@ export function apiError(error: unknown): NextResponse {
   if (error && typeof error === "object" && "code" in error && error.code === "23505") {
     return NextResponse.json({ error: "This item has changed or already has an owner. Refresh before trying again." }, { status: 409 });
   }
+  // Shared-schema migrations 014/015 also guard writes from this older app.
+  // Recognize only their known code; never expose arbitrary SQL error details.
+  if (error && typeof error === "object" && "code" in error && error.code === "23514"
+    && "detail" in error && typeof error.detail === "string") {
+    let detail: unknown;
+    try { detail = JSON.parse(error.detail); } catch { /* Keep unknown errors private. */ }
+    if (detail && typeof detail === "object" && "code" in detail && detail.code === "WAREHOUSE_ALREADY_ADDED") {
+      return NextResponse.json({ code: "WAREHOUSE_ALREADY_ADDED",
+        error: "One or more selected contacts already have a warehouse in the database. They cannot be assigned, reopened, or queued for AI calls. Remove them from the selection and retry.",
+      }, { status: 409 });
+    }
+  }
   console.error("[api] request failed", error);
   return NextResponse.json({ error: "Request failed. Please retry." }, { status: 500 });
 }
