@@ -13,17 +13,19 @@ import { SelectFilter } from "../FilterFields";
 const WORK_KEYS = ["assignee", "assigned_by", "batch", "updated"];
 const LOCATION_KEYS = ["city", "region"];
 
-export function BoardFilters({ applied, options, isAdmin }: { applied: SearchValues; options: BoardFilterOptions; isAdmin: boolean }) {
+export function BoardFilters({ applied, options, isAdmin, action = BOARD_PATH, search = true }: {
+  applied: SearchValues; options: BoardFilterOptions; isAdmin: boolean; action?: string; search?: boolean;
+}) {
   const people = (list: { email: string; name: string | null }[]) => list.map(person => ({ value: person.email, label: person.name || person.email }));
   const batches = [{ value: "none", label: "No batch" }, ...options.batches.map(batch => ({
     value: batch.id, label: `${shortDate(batch.createdAt)} · ${batch.creatorName || batch.createdBy} · ${batch.tasks} ${batch.tasks === 1 ? "task" : "tasks"}`,
   }))];
   const names = new Map([...people(options.assignees), ...people(options.assigners), ...batches].map(choice => [choice.value, choice.label]));
   const formatValue = (key: string, value: string) => key === "updated" ? UPDATED_WINDOWS[value as keyof typeof UPDATED_WINDOWS] ?? value : names.get(value) ?? value;
-  return <FilterForm key={JSON.stringify(applied)} action={BOARD_PATH} applied={applied} className="board-filters" labels={BOARD_FILTER_LABELS} formatValue={formatValue}>
-    <div className="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+  return <FilterForm key={JSON.stringify(applied)} action={action} applied={applied} className="board-filters" labels={BOARD_FILTER_LABELS} formatValue={formatValue}>
+    {search && <div className="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
       <input type="search" name="q" defaultValue={firstValue(applied.q) || ""} aria-label="Search the board" placeholder="Search names, phones, notes…" />
-    </div>
+    </div>}
     <FiltersToggle count={countFilters(applied, [...WORK_KEYS, ...LOCATION_KEYS])} />
     <ApplyButton />
     <FilterPanel groups={[

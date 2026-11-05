@@ -47,8 +47,9 @@ const TASK_FROM = `from bolna_assignments a
  * the listing/call joins in TASK_FROM. Open work shows in every column; finished
  * work only in the stages that end a task. Employees only ever see their own work.
  */
-export function boardWhere(viewer: Viewer, f: BoardFilters, params: unknown[]): { task: string; context: string } {
-  const task = ["a.state <> 'dropped'", `(a.state = 'open' or a.stage in (${TERMINAL_SQL}))`];
+export function boardWhere(viewer: Viewer, f: BoardFilters, params: unknown[], { includeFinished = false } = {}): { task: string; context: string } {
+  // The funnel counts finished work in every stage; the board shows it only where it ends.
+  const task = ["a.state <> 'dropped'", ...(includeFinished ? [] : [`(a.state = 'open' or a.stage in (${TERMINAL_SQL}))`])];
   if (!viewer.isAdmin) { params.push(viewer.email.toLowerCase()); task.push(`a.assignee = $${params.length}`); }
   else if (f.assignee?.length) { params.push(f.assignee); task.push(`a.assignee = any($${params.length}::text[])`); }
   if (f.assigned_by?.length) { params.push(f.assigned_by); task.push(`lower(a.assigned_by) = any($${params.length}::text[])`); }
@@ -71,19 +72,12 @@ export function boardWhere(viewer: Viewer, f: BoardFilters, params: unknown[]): 
   return { task: task.join(" and "), context: context.join(" and ") };
 }
 
-/**
- * The complete board statement; exported so plans can be inspected with the exact SQL.
- * "board" returns a page of cards per column; "proposals" returns cards proposed for Junk.
- */
-export function boardQuery(viewer: Viewer, filters: BoardFilters, limits: Record<string, number>, mode: "board" | "proposals" = "board") {
-  const params: unknown[] = [];
-  const { task, context } = boardWhere(viewer, filters, params);
-  // Column limits only apply to the board; the proposals statement binds no limit.
-  if (mode === "board") params.push(JSON.stringify(limits));
-  const limitParam = `$${params.length}`;
-  // Latest task first, so a card shows its most recently worked listing.
-  const latest = (expression: string) => `(array_agg(${expression} order by t.updated_at desc, t.id desc) filter (where nullif(trim(${expression}), '') is not null))[1]`;
-  const sql = `with tasks as materialized (
+// Latest task first, so a card shows its most recently worked listing.
+const latest = (expression: string) => `(array_agg(${expression} order by t.updated_at desc, t.id desc) filter (where nullif(trim(${expression}), '') is not null))[1]`;
+
+/** `tasks` and `cards` CTEs, shared by the board and the funnel so both group cards the same way. */
+export function cardsCte({ task, context }: { task: string; context: string }) {
+  return `with tasks as materialized (
       select a.id, a.revision, a.entity_type, a.entity_id, a.assignee, a.assigned_by, a.assigned_at, a.batch_id, a.state, a.stage,
              a.outcome, a.remarks, a.note, a.wh_id, a.added_to_db, a.disposition, a.next_due_at, a.updated_at,
              ${ASSIGNMENT_SUBJECT} as subject, ${ASSIGNMENT_CITY} as city, ${ASSIGNMENT_REGION} as region, ${ASSIGNMENT_PHONE} as phone,
@@ -104,7 +98,30 @@ export function boardQuery(viewer: Viewer, filters: BoardFilters, limits: Record
              array_agg(t.id) as ids, min(t.phone_key) as phone_key
         from tasks t
        group by t.assignee, coalesce(t.phone_key, t.entity_type || ':' || t.entity_id)
-    ), ranked as (
+    )`;
+}
+
+/**
+ * Warehouse IDs for a card row: its phone's WAG warehouses plus valid IDs saved on its
+ * tasks. A card is one phone, so read by primary key rather than through the
+ * all-listings bolna_warehouse_matches view, which cannot use a join key.
+ */
+export const cardWarehouseIds = (row: string) => `array(select v from (
+    select w.warehouse_id::text as v from bolna_warehouse_contacts w where w.phone_last10 = ${row}.phone_key
+    union select trim(wt.wh_id) from bolna_assignments wt where wt.id = any(${row}.ids) and bolna_valid_warehouse(wt.wh_id)
+  ) ids order by length(v), v)`;
+
+/**
+ * The complete board statement; exported so plans can be inspected with the exact SQL.
+ * "board" returns a page of cards per column; "proposals" returns cards proposed for Junk.
+ */
+export function boardQuery(viewer: Viewer, filters: BoardFilters, limits: Record<string, number>, mode: "board" | "proposals" = "board") {
+  const params: unknown[] = [];
+  const where = boardWhere(viewer, filters, params);
+  // Column limits only apply to the board; the proposals statement binds no limit.
+  if (mode === "board") params.push(JSON.stringify(limits));
+  const limitParam = `$${params.length}`;
+  const sql = `${cardsCte(where)}, ranked as (
       -- Five strikes propose Junk, unless the card is finished or the caller set a future follow-up.
       select c.*, coalesce(c.next_due_at < now(), false) and not c.closed as overdue, s.strikes,
              s.strikes >= ${STRIKE_LIMIT} and c.stage <> 'junk' and not c.closed and coalesce(c.next_due_at <= now(), true) as proposed,
@@ -119,13 +136,7 @@ export function boardQuery(viewer: Viewer, filters: BoardFilters, limits: Record
     )
     select r.stage, r.stage_total::int as total, r.assignee, u.name as assignee_name, r.card_key as key, r.name, r.phone, r.city, r.region,
            r.tasks, r.next_due_at::text as next_due_at, r.overdue, r.updated_at::text as updated_at, r.closed,
-           r.strikes, r.proposed, count(*) over () as matching,
-           -- A card is one phone: read its warehouses by primary key, not through the
-           -- all-listings bolna_warehouse_matches view, which cannot use a join key.
-           array(select v from (
-             select w.warehouse_id::text as v from bolna_warehouse_contacts w where w.phone_last10 = r.phone_key
-             union select trim(wt.wh_id) from bolna_assignments wt where wt.id = any(r.ids) and bolna_valid_warehouse(wt.wh_id)
-           ) ids order by length(v), v) as warehouse_ids
+           r.strikes, r.proposed, count(*) over () as matching, ${cardWarehouseIds("r")} as warehouse_ids
       from ranked r left join bolna_app_users u on u.email = r.assignee
      ${mode === "board"
        ? `where r.rn <= coalesce((${limitParam}::jsonb ->> r.stage)::int, ${BOARD_PAGE_SIZE})

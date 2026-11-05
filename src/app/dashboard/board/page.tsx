@@ -2,8 +2,7 @@ import { requireUser } from "@/lib/auth";
 import type { SearchValues } from "@/lib/filter-values";
 import { boardFilterOptions, loadBoard, loadJunkProposals } from "@/lib/board";
 import { boardSearchValues, parseBoardFilters, parseColumnLimits } from "@/lib/board-filters";
-import { RecordsHeader } from "../RecordsHeader";
-import { Freshness } from "../DashboardUI";
+import { BoardHeader } from "./BoardHeader";
 import { BoardFilters } from "./BoardFilters";
 import { BoardView } from "./BoardView";
 
@@ -17,8 +16,7 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
   const limits = parseColumnLimits(params);
   const [board, options, proposals] = await Promise.all([loadBoard(user, filters, limits), boardFilterOptions(user), loadJunkProposals(user, filters)]);
   return <>
-    <RecordsHeader title="Board" status={<span className="board-summary">{board.total} {board.total === 1 ? "card" : "cards"}</span>}
-      actions={<Freshness updatedAt={new Date().toISOString()} />} />
+    <BoardHeader view="board" isAdmin={user.isAdmin} status={<span className="board-summary">{board.total} {board.total === 1 ? "card" : "cards"}</span>} />
     <BoardFilters applied={boardSearchValues(filters)} options={options} isAdmin={user.isAdmin} />
     <BoardView board={board} proposals={proposals} filters={filters} limits={limits} isAdmin={user.isAdmin} />
   </>;

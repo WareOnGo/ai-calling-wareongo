@@ -33,6 +33,12 @@ describe("board query scope", () => {
     expect(task).toContain("a.state = 'open' or a.stage in ('rejected','warehouse_created','junk')");
   });
 
+  it("can include finished work in every stage for the funnel, still without dropped work", () => {
+    const { task } = boardWhere(admin, {}, [], { includeFinished: true });
+    expect(task).toContain("a.state <> 'dropped'");
+    expect(task).not.toContain("a.stage in");
+  });
+
   it("matches work without a batch when the no-batch choice is selected", () => {
     const params: unknown[] = [];
     expect(boardWhere(admin, { batch: ["none"] }, params).task).toContain("a.batch_id is null");
