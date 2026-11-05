@@ -55,6 +55,8 @@ export const movableTasks = <T extends { state: string }>(tasks: T[]): T[] =>
 
 /** Unanswered call outcomes: each IST day with one counts as a strike. */
 export const STRIKE_DISPOSITIONS = ["no_answer", "busy", "switched_off", "owner_unresponsive"] as const;
+/** Strikes that propose a card for Junk. A person still confirms the move. */
+export const STRIKE_LIMIT = 5;
 
 export class MoveError extends Error {
   constructor(public code: string, public field: "reason" | "wh_id" | "stage", message: string) { super(message); }

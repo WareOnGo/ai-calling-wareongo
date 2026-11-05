@@ -5,7 +5,7 @@ import { query } from "./db";
 import type { Viewer } from "./scope";
 import { CONTACT_PHONES_SQL } from "./assignment-contacts";
 import { ASSIGNMENT_CITY, ASSIGNMENT_PHONE, ASSIGNMENT_PHONE_JOIN, ASSIGNMENT_REGION, ASSIGNMENT_SOURCE_JOIN, ASSIGNMENT_SUBJECT } from "./assignment-context";
-import { STAGE_SLUGS, TERMINAL_STAGES, type Stage } from "./board-stages";
+import { STAGE_SLUGS, STRIKE_DISPOSITIONS, STRIKE_LIMIT, TERMINAL_STAGES, type Stage } from "./board-stages";
 import { BOARD_MAX_CARDS, BOARD_PAGE_SIZE, type BoardFilters, type ColumnLimits } from "./board-filters";
 
 export type BoardTask = {
@@ -18,6 +18,8 @@ export type BoardCard = {
   key: string; stage: Stage; assignee: string; assigneeName: string | null; name: string | null; phone: string | null;
   city: string | null; region: string | null; tasks: BoardTask[]; warehouseIds: string[];
   nextDueAt: string | null; overdue: boolean; updatedAt: string; closed: boolean;
+  /** IST days with an unanswered call on any of the card's tasks. */
+  strikes: number; proposedJunk: boolean;
 };
 export type BoardColumn = { stage: Stage; total: number; limit: number; cards: BoardCard[] };
 export type Board = { columns: BoardColumn[]; total: number };
@@ -31,6 +33,7 @@ const INTERVALS = { "24h": "24 hours", "7d": "7 days", "30d": "30 days" } as con
 // Stage slugs are source-code constants, never request values.
 const TERMINAL_SQL = TERMINAL_STAGES.map(stage => `'${stage}'`).join(",");
 const STAGE_ORDER_SQL = `array[${STAGE_SLUGS.map(stage => `'${stage}'`).join(",")}]`;
+const STRIKES_SQL = `array[${STRIKE_DISPOSITIONS.map(value => `'${value}'`).join(",")}]`;
 const escapeLike = (value: string) => value.replace(/[\\%_]/g, "\\$&");
 
 // `a` is the assignment; `r`, `cl`, `work_source` and `rphone` follow assignment-context.ts.
@@ -68,11 +71,15 @@ export function boardWhere(viewer: Viewer, f: BoardFilters, params: unknown[]): 
   return { task: task.join(" and "), context: context.join(" and ") };
 }
 
-/** The complete board statement; exported so plans can be inspected with the exact SQL. */
-export function boardQuery(viewer: Viewer, filters: BoardFilters, limits: Record<string, number>) {
+/**
+ * The complete board statement; exported so plans can be inspected with the exact SQL.
+ * "board" returns a page of cards per column; "proposals" returns cards proposed for Junk.
+ */
+export function boardQuery(viewer: Viewer, filters: BoardFilters, limits: Record<string, number>, mode: "board" | "proposals" = "board") {
   const params: unknown[] = [];
   const { task, context } = boardWhere(viewer, filters, params);
-  params.push(JSON.stringify(limits));
+  // Column limits only apply to the board; the proposals statement binds no limit.
+  if (mode === "board") params.push(JSON.stringify(limits));
   const limitParam = `$${params.length}`;
   // Latest task first, so a card shows its most recently worked listing.
   const latest = (expression: string) => `(array_agg(${expression} order by t.updated_at desc, t.id desc) filter (where nullif(trim(${expression}), '') is not null))[1]`;
@@ -98,14 +105,21 @@ export function boardQuery(viewer: Viewer, filters: BoardFilters, limits: Record
         from tasks t
        group by t.assignee, coalesce(t.phone_key, t.entity_type || ':' || t.entity_id)
     ), ranked as (
-      select c.*, coalesce(c.next_due_at < now(), false) and not c.closed as overdue,
+      -- Five strikes propose Junk, unless the card is finished or the caller set a future follow-up.
+      select c.*, coalesce(c.next_due_at < now(), false) and not c.closed as overdue, s.strikes,
+             s.strikes >= ${STRIKE_LIMIT} and c.stage <> 'junk' and not c.closed and coalesce(c.next_due_at <= now(), true) as proposed,
              count(*) over (partition by c.stage) as stage_total,
              row_number() over (partition by c.stage order by coalesce(c.next_due_at < now(), false) and not c.closed desc,
                c.next_due_at asc nulls last, c.updated_at desc, c.assignee, c.card_key) as rn
         from cards c
+        cross join lateral (
+          select count(distinct (e.occurred_at at time zone 'Asia/Kolkata')::date)::int as strikes
+            from bolna_effective_manual_attempts e where e.assignment_id = any(c.ids) and e.disposition = any(${STRIKES_SQL})
+        ) s
     )
     select r.stage, r.stage_total::int as total, r.assignee, u.name as assignee_name, r.card_key as key, r.name, r.phone, r.city, r.region,
            r.tasks, r.next_due_at::text as next_due_at, r.overdue, r.updated_at::text as updated_at, r.closed,
+           r.strikes, r.proposed, count(*) over () as matching,
            -- A card is one phone: read its warehouses by primary key, not through the
            -- all-listings bolna_warehouse_matches view, which cannot use a join key.
            array(select v from (
@@ -113,16 +127,26 @@ export function boardQuery(viewer: Viewer, filters: BoardFilters, limits: Record
              union select trim(wt.wh_id) from bolna_assignments wt where wt.id = any(r.ids) and bolna_valid_warehouse(wt.wh_id)
            ) ids order by length(v), v) as warehouse_ids
       from ranked r left join bolna_app_users u on u.email = r.assignee
-     where r.rn <= coalesce((${limitParam}::jsonb ->> r.stage)::int, ${BOARD_PAGE_SIZE})
-     order by array_position(${STAGE_ORDER_SQL}, r.stage), r.rn`;
+     ${mode === "board"
+       ? `where r.rn <= coalesce((${limitParam}::jsonb ->> r.stage)::int, ${BOARD_PAGE_SIZE})
+          order by array_position(${STAGE_ORDER_SQL}, r.stage), r.rn`
+       : `where r.proposed order by r.strikes desc, r.updated_at asc, r.assignee, r.card_key limit ${PROPOSAL_LIMIT}`}`;
   return { sql, params };
 }
 
 type CardRow = {
   stage: Stage; total: number; key: string; assignee: string; assignee_name: string | null; name: string | null; phone: string | null;
   city: string | null; region: string | null; tasks: BoardTask[]; next_due_at: string | null; overdue: boolean;
-  updated_at: string; closed: boolean; warehouse_ids: string[];
+  updated_at: string; closed: boolean; warehouse_ids: string[]; strikes: number; proposed: boolean; matching: string;
 };
+const PROPOSAL_LIMIT = 200;
+
+const toCard = (row: CardRow): BoardCard => ({
+  key: row.key, stage: row.stage, assignee: row.assignee, assigneeName: row.assignee_name, name: row.name, phone: row.phone,
+  city: row.city, region: row.region, tasks: row.tasks, warehouseIds: row.warehouse_ids,
+  nextDueAt: row.next_due_at, overdue: row.overdue, updatedAt: row.updated_at, closed: row.closed,
+  strikes: row.strikes, proposedJunk: row.proposed,
+});
 
 export async function loadBoard(viewer: Viewer, filters: BoardFilters, limits: ColumnLimits = {}): Promise<Board> {
   const effective = Object.fromEntries(STAGE_SLUGS.map(stage => [stage, Math.max(1, Math.min(BOARD_MAX_CARDS, Math.floor(limits[stage] ?? BOARD_PAGE_SIZE)))]));
@@ -132,14 +156,17 @@ export async function loadBoard(viewer: Viewer, filters: BoardFilters, limits: C
     const cards = rows.filter(row => row.stage === stage);
     return {
       stage, total: cards[0]?.total ?? 0, limit: effective[stage],
-      cards: cards.map(row => ({
-        key: row.key, stage, assignee: row.assignee, assigneeName: row.assignee_name, name: row.name, phone: row.phone,
-        city: row.city, region: row.region, tasks: row.tasks, warehouseIds: row.warehouse_ids,
-        nextDueAt: row.next_due_at, overdue: row.overdue, updatedAt: row.updated_at, closed: row.closed,
-      })),
+      cards: cards.map(toCard),
     };
   });
   return { columns, total: columns.reduce((sum, column) => sum + column.total, 0) };
+}
+
+/** Cards with five strikes awaiting a decision, across every column; nothing moves until someone confirms. */
+export async function loadJunkProposals(viewer: Viewer, filters: BoardFilters): Promise<{ total: number; cards: BoardCard[] }> {
+  const { sql, params } = boardQuery(viewer, filters, {}, "proposals");
+  const rows = (await query<CardRow>(sql, params)).rows;
+  return { total: Number(rows[0]?.matching ?? 0), cards: rows.map(toCard) };
 }
 
 /** Choices come from the viewer's own visible work, so nobody sees another caller's cities or batches. */

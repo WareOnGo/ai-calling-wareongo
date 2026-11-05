@@ -2,7 +2,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { BoardCard, BoardTask } from "@/lib/board";
 import type { TimelineEvent } from "@/lib/board-timeline";
-import { JUNK_REASONS, REJECTION_REASONS, STAGES, stageInfo, type Stage } from "@/lib/board-stages";
+import { JUNK_REASONS, REJECTION_REASONS, STAGES, STRIKE_LIMIT, stageInfo, type Stage } from "@/lib/board-stages";
 import { dateTime, shortDate } from "@/lib/display";
 import { useDashboardUI } from "../DashboardUI";
 import { requestJson, RequestError } from "../requests";
@@ -24,15 +24,16 @@ export function BoardPanel({ card, onClose, request }: { card: BoardCard; onClos
   const [form, setForm] = useState<FormStage | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [note, setNote] = useState("");
   const stage = stageInfo(card.stage);
   const tasks = [...card.tasks].sort((a, b) => (a.entity === b.entity ? 0 : a.entity === "record" ? -1 : 1) || Number(a.id) - Number(b.id));
   const openTasks = tasks.filter(task => task.state === "open");
   const version = card.tasks.map(task => `${task.id}:${task.revision}`).join(",");
 
-  useEffect(() => { heading.current?.focus(); setForm(request?.stage ?? null); setError(""); }, [card.key, request?.token, request?.stage]);
+  useEffect(() => { heading.current?.focus(); setForm(request?.stage ?? null); setError(""); setNote(""); }, [card.key, request?.token, request?.stage]);
 
   async function run(action: () => Promise<unknown>) {
-    setBusy(true); setError("");
+    setBusy(true); setError(""); setNote("");
     try { await action(); setForm(null); refresh(); }
     catch (failure) {
       setError(failure instanceof Error ? failure.message : "Couldn't save the change. Try again.");
@@ -52,7 +53,8 @@ export function BoardPanel({ card, onClose, request }: { card: BoardCard; onClos
       <div className="board-panel-identity">
         <h2 id={titleId} ref={heading} tabIndex={-1}>{card.name?.trim() || "Unnamed owner"}</h2>
         <div className="board-panel-phone">{card.phone ? <CopyText value={card.phone} label="phone number" /> : <span className="muted">No phone number</span>}</div>
-        <p className="board-panel-meta">{[card.city, card.region, card.assigneeName || card.assignee, card.closed ? "Closed" : null].filter(Boolean).join(" · ")}</p>
+        <p className="board-panel-meta">{[card.city, card.region, card.assigneeName || card.assignee, card.closed ? "Closed" : null,
+          card.strikes ? `${card.strikes} of ${STRIKE_LIMIT} strikes` : null].filter(Boolean).join(" · ")}</p>
       </div>
       <button type="button" className="modal-close" aria-label="Close lead" onClick={onClose}>×</button>
     </header>
@@ -67,6 +69,13 @@ export function BoardPanel({ card, onClose, request }: { card: BoardCard; onClos
       </div>
       {form && <MoveForm key={form} stage={form} card={card} busy={busy} onCancel={() => setForm(null)} onMove={extra => move(form, extra)} />}
       {error && <p className="board-panel-error" role="alert">{error}</p>}
+      {openTasks.length > 0 && <div className="board-panel-calls">
+        <button type="button" className="btn secondary" disabled={busy} onClick={() => run(async () => {
+          const result = await send("/api/board/no-answer", "POST", { tasks: refsOf(card.tasks) }) as { logged: number; strikes: number };
+          setNote(result.logged ? `Logged. ${result.strikes} of ${STRIKE_LIMIT} strikes.` : "Already counted today. Strikes count days, not calls.");
+        })}>Log a no-answer call</button>
+        <p className="board-panel-note" role="status">{note}</p>
+      </div>}
 
       {openTasks.length > 0 && <FollowUp key={`${card.key}:${version}`} card={card} busy={busy}
         onSave={day => run(() => send("/api/board/follow-up", "POST", { tasks: refsOf(openTasks), next_due_at: day ? followUpAt(day) : null }))} />}

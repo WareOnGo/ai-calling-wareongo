@@ -2,12 +2,13 @@
 import { useCallback, useId, useState, type DragEvent } from "react";
 import type { Board, BoardCard, BoardColumn } from "@/lib/board";
 import { BOARD_PAGE_SIZE, boardHref, type BoardFilters, type ColumnLimits } from "@/lib/board-filters";
-import { stageInfo, type Stage } from "@/lib/board-stages";
+import { STRIKE_LIMIT, stageInfo, type Stage } from "@/lib/board-stages";
 import { shortDate } from "@/lib/display";
 import { useDashboardUI } from "../DashboardUI";
 import { RequestError } from "../requests";
 import { BoardPanel } from "./BoardPanel";
 import { NEEDS_INPUT, requestMove, type InputStage } from "./board-requests";
+import { JunkDigest } from "./JunkReview";
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
 // Admins see several callers' cards for one phone, so the caller is part of the identity.
@@ -17,7 +18,9 @@ const DRAG_TYPE = "application/x-callongo-card";
 type Drag = { onStart: (card: BoardCard) => void; onEnd: () => void; onOver: (stage: Stage) => void; onDrop: (stage: Stage, event: DragEvent) => void;
   dragging: string | null; target: Stage | null; moving: string | null };
 
-export function BoardView({ board, filters, limits, isAdmin }: { board: Board; filters: BoardFilters; limits: ColumnLimits; isAdmin: boolean }) {
+export function BoardView({ board, proposals, filters, limits, isAdmin }: {
+  board: Board; proposals: { total: number; cards: BoardCard[] }; filters: BoardFilters; limits: ColumnLimits; isAdmin: boolean;
+}) {
   const { refresh, notify } = useDashboardUI();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [request, setRequest] = useState<{ stage: InputStage; token: number } | null>(null);
@@ -57,6 +60,7 @@ export function BoardView({ board, filters, limits, isAdmin }: { board: Board; f
   };
 
   return <>
+    <JunkDigest total={proposals.total} cards={proposals.cards} isAdmin={isAdmin} />
     <nav className="board-strip" aria-label="Cards per stage">{board.columns.map(column => {
       const stage = stageInfo(column.stage);
       return <a key={column.stage} className="board-strip-item" data-stage={column.stage} data-code={stage.code} href={`#board-${column.stage}`}
@@ -122,10 +126,23 @@ function Card({ card, isAdmin, selected, moving, onSelect, onDragStart, onDragEn
     </span>
     <span className="board-card-phone">{card.phone || "No phone number"}</span>
     {meta && <span className="board-card-meta">{meta}</span>}
+    {card.strikes > 0 && <Strikes count={card.strikes} proposed={card.proposedJunk} />}
     {(followUp || card.warehouseIds.length > 0 || isAdmin) && <span className="board-card-foot">
       {followUp && <span className={`board-followup${card.overdue ? " overdue" : ""}`}>{card.overdue ? "Overdue · " : "Follow up "}{shortDate(card.nextDueAt)}</span>}
       {card.warehouseIds.length > 0 && <span className="board-wh" title={`Warehouse IDs: ${card.warehouseIds.join(", ")}`}>{plural(card.warehouseIds.length, "warehouse")}</span>}
       {isAdmin && <span className="board-card-assignee" title={card.assignee}>{card.assigneeName || card.assignee}</span>}
     </span>}
   </button>;
+}
+
+/** Strike dots up to the limit; the written count carries the meaning, not the dots' color. */
+function Strikes({ count, proposed }: { count: number; proposed: boolean }) {
+  const label = count >= STRIKE_LIMIT ? `${count} strikes` : `${count} of ${STRIKE_LIMIT} strikes`;
+  return <span className="board-card-strikes">
+    <span className={`board-strikes${count >= STRIKE_LIMIT - 1 ? " warn" : ""}`} role="img" aria-label={label} title={label}>
+      {Array.from({ length: STRIKE_LIMIT }, (_, index) => <span key={index} className={index < count ? "on" : undefined} />)}
+      <span className="board-strikes-count" aria-hidden="true">{Math.min(count, 99)}/{STRIKE_LIMIT}</span>
+    </span>
+    {proposed && <span className="board-proposed">Proposed for Junk</span>}
+  </span>;
 }

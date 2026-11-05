@@ -106,6 +106,29 @@ export async function updateTaskNotes(viewer: Viewer, id: string, input: { revis
   });
 }
 
+/**
+ * Records another unanswered call on each open task of a card. Strikes count IST
+ * days, so a task already called today is skipped and `logged` says how many counted.
+ */
+export async function logNoAnswer(viewer: Viewer, input: { tasks: TaskRef[] }) {
+  return transaction(async client => {
+    await startBoardWrite(client, viewer);
+    const tasks = (await lockTasks(client, viewer, input.tasks)).filter(task => task.state === "open");
+    if (!tasks.length) throw new ApiError(422, "Finished work takes no more calls. Move the card to an open stage first.", "TASK_FINISHED");
+    let logged = 0;
+    for (const task of tasks) {
+      if (await calledToday(client, task.id)) continue;
+      await client.query("update bolna_assignments set disposition = 'no_answer', last_attempt_at = now(), revision = revision + 1 where id = $1", [task.id]);
+      await recordNoAnswer(client, viewer, task);
+      logged++;
+    }
+    const strikes = (await client.query<{ strikes: number }>(`select count(distinct (occurred_at at time zone 'Asia/Kolkata')::date)::int as strikes
+      from bolna_effective_manual_attempts where assignment_id = any($1::bigint[]) and disposition = any($2::text[])`,
+      [input.tasks.map(task => task.id), STRIKE_DISPOSITIONS])).rows[0].strikes;
+    return { logged, strikes };
+  });
+}
+
 /** Follow-ups apply to the card's open tasks; finished tasks keep none. */
 export async function setFollowUp(viewer: Viewer, input: { tasks: TaskRef[]; nextDueAt: string | null }) {
   return transaction(async client => {

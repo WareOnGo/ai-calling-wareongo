@@ -62,6 +62,30 @@ a.board-strip-item:hover { background: var(--hover); text-decoration: none; }
 .board-wh { color: var(--fill-green-tx); background: var(--fill-green-bg); border-color: var(--fill-green-border); }
 .board-card-assignee { margin-left: auto; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
 
+/* Strikes: dots plus a written count. Amber from four, so five is not a surprise. */
+.board-card-strikes { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 2px; }
+.board-strikes { display: inline-flex; align-items: center; gap: 3px; font-size: var(--text-caption); color: var(--muted); }
+.board-strikes > span:not(.board-strikes-count) { width: 7px; height: 7px; border-radius: 50%; border: 1px solid var(--border-strong); box-sizing: border-box; }
+.board-strikes > span.on { background: var(--text); border-color: var(--text); }
+.board-strikes.warn > span.on { background: var(--fill-yel-tx); border-color: var(--fill-yel-tx); }
+.board-strikes-count { margin-left: 4px; font-variant-numeric: tabular-nums; }
+.board-proposed, .board-digest { color: var(--fill-red-tx); background: var(--fill-red-bg); border: 1px solid var(--fill-red-border); }
+.board-proposed { padding: 1px 8px; border-radius: var(--radius-pill); font-size: var(--text-caption); font-weight: 600; }
+.board-digest { flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-4);
+  margin: var(--space-3) var(--page-gutter) 0; padding: var(--space-2) var(--space-3); border-radius: var(--radius-input); }
+.board-digest p { margin: 0; font-size: var(--text-support); font-weight: 500; }
+.board-review { display: grid; gap: var(--space-3); }
+.board-review-intro { margin: 0; font-size: var(--text-support); color: var(--muted); }
+.board-proposals { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.board-proposal { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--space-3);
+  padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-input); }
+.board-proposal-lead { display: grid; gap: 2px; min-width: 0; font-size: var(--text-support); color: var(--text); }
+.board-proposal-lead strong { color: var(--heading); }
+.board-proposal-strikes { font-size: var(--text-caption); font-weight: 600; color: var(--fill-red-tx); }
+.board-proposal-actions { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-2); }
+.board-panel-calls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
+.board-panel-note { margin: 0; font-size: var(--text-support); color: var(--text); }
+
 /* Lead panel: beside the board on wide screens, over it on narrow ones. Non-modal,
    so another card can be opened without closing it first. */
 .board-body { flex: 1; min-height: 0; display: flex; }
