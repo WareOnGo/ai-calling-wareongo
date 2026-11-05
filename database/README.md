@@ -456,3 +456,88 @@ The rehearsal upgrades a fresh copy of the deployed 001–017 schema to 018, ver
 that previous ledger rows and both 009 indexes are unchanged, runs the employee
 and shared-schema regressions, and drops its temporary database. CI runs this in
 addition to the complete fresh-schema integration suite.
+
+## Caller board stages (019)
+
+`019_caller_board_stages.sql` adds `bolna_assignments.stage` and
+`bolna_assignments.updated_at` for the caller board (the board itself and its plan,
+`docs/CALLER_BOARD.md`, are on the `codex/bolna-visual-overhaul` branch).
+Stages are `inbound` (1), `rnr` (2A), `rejected` (2B), `awaiting_details` (2C),
+`details_collected` (3), `warehouse_created` (4) and `junk` (5). New tasks start
+in `inbound`; a `bolna_assignment_touch` trigger sets `updated_at` on every real
+change. It sorts after `bolna_assignment_quality_guard`, so 018's classic-edit
+exception still compares an unchanged `updated_at`.
+
+The migration backfills every existing task with `bolna_infer_stage(outcome,
+wh_id, added_to_db, remarks)`. Production callers record work only in the result
+dropdown and free-text remarks, so those drive the mapping; a valid WHID or the
+Added flag wins, then agent/broker/repeated/duplicate remarks stay in Inbound,
+then wrong/invalid numbers go to Junk, then the result and remark keywords decide.
+`updated_at` is backfilled from the latest audit event, call attempt, completion
+or assignment time. State, results, remarks, ownership and warehouse fields are
+not changed. The backfill writes one audit row per task with actor `stage-backfill`
+(stage `null` → inferred stage), so it is distinguishable from real stage moves.
+
+Rehearsed on 5 November 2026 on a disposable PostgreSQL 16 database: 20 fixtures
+covering every mapping branch, audit attribution, defaults, the stage check, the
+touch trigger, and 018's classic completion path with the quality guard enabled.
+A read-only dry run of the same inference SQL against production produced:
+
+| Stage | Open | Done |
+| --- | ---: | ---: |
+| 1 Inbound | 485 | 212 |
+| 2A RnR | 340 | 204 |
+| 2B Rejected | 14 | 1,038 |
+| 2C Awaiting details | 131 | 106 |
+| 3 Details collected | 59 | 226 |
+| 4 Warehouse ID | 23 | 359 |
+| 5 Junk | 6 | 125 |
+
+019 was applied to production on 5 November 2026 at 19:22 IST from commit `d8ca1b3`
+with `database/migrate.mjs` over the session pooler, after a read-only pre-flight
+showed the 19 existing ledger entries matching their source checksums and 019 as
+the only pending file. Verified after commit: 20 ledger entries with 019's checksum;
+both columns NOT NULL with their defaults and no null `updated_at`; the stage check
+validated; the board index valid; all prior trigger enable states unchanged
+(`bolna_assignment_contacts_sync` and `bolna_assignment_quality_guard` still
+disabled) and `bolna_assignment_touch` enabled; 3,433 `stage-backfill` audit rows,
+one per task, none changing any field other than `stage` and `updated_at` and none
+changing `revision`. A second runner pass made no changes. Open tasks after the
+backfill: 484 Inbound, 339 RnR, 14 Rejected, 131 Awaiting details, 59 Details
+collected, 25 Warehouse ID, 6 Junk (two more reached Warehouse ID between the dry
+run and the apply).
+
+To reverse before any board writes depend on it:
+
+```sql
+DROP TRIGGER bolna_assignment_touch ON bolna_assignments;
+DROP FUNCTION bolna_touch_assignment();
+DROP INDEX bolna_assignments_board_idx;
+ALTER TABLE bolna_assignments DROP COLUMN stage, DROP COLUMN updated_at;
+DROP FUNCTION bolna_infer_stage(text, text, boolean, text);
+DELETE FROM bolna_schema_migrations WHERE name = '019_caller_board_stages.sql';
+```
+
+The backfill's `stage-backfill` audit rows remain as history.
+
+## Caller board workflow (020)
+
+`020_caller_board_workflow.sql` lets the caller board finish tasks under My Work's
+completion contract, without a logged call or closure form. It replaces
+`bolna_enforce_assignment_quality()` with 018's body plus a transaction-local
+`bolna.employee_workflow = 'board'` mode. The board sets that mode, and the
+`bolna.actor`, only after authenticating the user, who must own the task or be an
+active admin. A board write may change the stage, result, warehouse fields, notes,
+completion, closure, follow-up date, `outcome_attempt_id` and the attempt fields
+set when it logs a no-answer call; anything else falls through to the normal guard.
+018's classic mode is unchanged. Trigger enable states are unchanged, so production,
+where the guard is disabled, behaves as before.
+
+Moving a card into RnR records one `no_answer` manual attempt per task per IST day.
+These are ordinary manual attempts: they appear in Team's recorded calls and in the
+card timeline.
+
+Rehearsed on the disposable stage database and covered, with the guard enabled, by
+the board's integration tests on the `codex/bolna-visual-overhaul` branch. On main,
+the employee workflow and shared-schema tests check that classic My Work is unchanged.
+Not yet applied to production.
