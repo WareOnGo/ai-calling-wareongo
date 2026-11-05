@@ -2,23 +2,22 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { BoardCard, BoardTask } from "@/lib/board";
 import type { TimelineEvent } from "@/lib/board-timeline";
-import { JUNK_REASONS, REJECTION_REASONS, STAGES, movableTasks, stageInfo, type Stage } from "@/lib/board-stages";
+import { JUNK_REASONS, REJECTION_REASONS, STAGES, stageInfo, type Stage } from "@/lib/board-stages";
 import { dateTime, shortDate } from "@/lib/display";
 import { useDashboardUI } from "../DashboardUI";
 import { requestJson, RequestError } from "../requests";
+import { NEEDS_INPUT, requestMove, sendJson as send, taskRefs as refsOf, type InputStage } from "./board-requests";
 import { CopyText } from "../CopyText";
 import { RecordDetails } from "../RecordDetails";
 
-type FormStage = "rejected" | "junk" | "warehouse_created";
-const NEEDS_FORM: readonly Stage[] = ["rejected", "junk", "warehouse_created"];
-const send = (url: string, method: string, body: unknown) =>
-  requestJson(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-const refsOf = (tasks: BoardTask[]) => tasks.map(task => ({ id: task.id, revision: task.revision }));
+type FormStage = InputStage;
+const NEEDS_FORM = NEEDS_INPUT;
 // The date picker chooses a day; follow-ups are due at 10:00 IST that day.
 const followUpAt = (day: string) => `${day}T10:00:00+05:30`;
 const istDay = (value: string | null) => value ? new Date(value).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }) : "";
 
-export function BoardPanel({ card, onClose }: { card: BoardCard; onClose: () => void }) {
+/** `request` opens the panel at a stage's input step, e.g. after a card is dropped on Junk. */
+export function BoardPanel({ card, onClose, request }: { card: BoardCard; onClose: () => void; request?: { stage: InputStage; token: number } | null }) {
   const { refresh } = useDashboardUI();
   const titleId = useId();
   const heading = useRef<HTMLHeadingElement>(null);
@@ -30,7 +29,7 @@ export function BoardPanel({ card, onClose }: { card: BoardCard; onClose: () => 
   const openTasks = tasks.filter(task => task.state === "open");
   const version = card.tasks.map(task => `${task.id}:${task.revision}`).join(",");
 
-  useEffect(() => { heading.current?.focus(); setForm(null); setError(""); }, [card.key]);
+  useEffect(() => { heading.current?.focus(); setForm(request?.stage ?? null); setError(""); }, [card.key, request?.token, request?.stage]);
 
   async function run(action: () => Promise<unknown>) {
     setBusy(true); setError("");
@@ -41,8 +40,7 @@ export function BoardPanel({ card, onClose }: { card: BoardCard; onClose: () => 
       if (failure instanceof RequestError && failure.code === "ASSIGNMENT_CONFLICT") refresh();
     } finally { setBusy(false); }
   }
-  const move = (target: Stage, extra: { reason?: string | null; wh_id?: string | null } = {}) =>
-    run(() => send("/api/board/move", "POST", { tasks: refsOf(movableTasks(card.tasks)), stage: target, ...extra }));
+  const move = (target: Stage, extra: { reason?: string | null; wh_id?: string | null } = {}) => run(() => requestMove(card, target, extra));
   const choose = (target: Stage) => {
     if (target === card.stage && !NEEDS_FORM.includes(target)) return;
     if (NEEDS_FORM.includes(target)) { setForm(target as FormStage); setError(""); } else void move(target);
