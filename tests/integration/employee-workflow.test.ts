@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { NextRequest } from 'next/server';
 import { query, getPool, transaction } from '@/lib/db';
 import { assignEntities } from '@/lib/assignments';
-import { PATCH } from '@/app/api/my-work/assignments/[id]/route';
+import { GET, PATCH } from '@/app/api/my-work/assignments/[id]/route';
 import { PATCH as manualPatch } from '@/app/api/assignments/[id]/route';
 
 const caller = { email: 'caller@employee.test', name: null, isAdmin: false };
@@ -14,6 +14,7 @@ vi.mock('@/lib/auth', () => ({ getCurrentUser: async () => auth.user, getCurrent
 let id: string, recordId: string, callId: string;
 const request = (body: unknown) => new NextRequest('http://localhost/api/my-work/assignments', { method: 'PATCH', body: JSON.stringify(body) });
 const patch = (body: unknown) => PATCH(request(body), { params: Promise.resolve({ id }) });
+const latest = (assignmentId = id) => GET(new NextRequest('http://localhost/api/my-work/assignments'), {params:Promise.resolve({id:assignmentId})});
 const row = async () => (await query('select * from bolna_assignments where id=$1', [id])).rows[0];
 
 beforeAll(() => {
@@ -34,6 +35,33 @@ beforeEach(async () => {
 afterAll(async () => { await getPool().end(); });
 
 describe('preserved employee task workflow', () => {
+  it('returns the latest editable fields and version for conflict review without caching', async () => {
+    expect((await patch({revision:0,remarks:'Saved elsewhere',wh_id:'3271'})).status).toBe(200);
+    const stale=await patch({revision:0,remarks:'My draft'});
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({code:'ASSIGNMENT_CONFLICT'});
+    const response=await latest();
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(await response.json()).toEqual({id,revision:1,state:'open',outcome:null,remarks:'Saved elsewhere',wh_id:'3271',added_to_db:false});
+    expect((await patch({revision:1,remarks:'My draft'})).status).toBe(200);
+    expect(await row()).toMatchObject({revision:2,remarks:'My draft',wh_id:'3271'});
+    expect((await patch({revision:1,remarks:'Raced review'})).status).toBe(409);
+  });
+
+  it('scopes conflict reads to the current owner, including admin My Work, and hides unavailable rows', async () => {
+    auth.user=null; expect((await latest()).status).toBe(401);
+    for (const user of [other,admin]) { auth.user=user; expect((await latest()).status).toBe(404); }
+    auth.user=caller;
+    expect((await latest('0')).status).toBe(400);
+    expect((await latest('9223372036854775808')).status).toBe(400);
+    expect((await latest('999999')).status).toBe(404);
+    await query("update bolna_assignments set state='dropped',revision=revision+1 where id=$1",[id]);
+    expect((await latest()).status).toBe(404);
+    const response=await patch({revision:0,remarks:'Keep draft'});
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({code:'ASSIGNMENT_CONFLICT'});
+  });
+
   it('saves result, notes, DB flag and free-text WH ID, completes and reopens without a call form', async () => {
     expect((await patch({ revision: 0, outcome: 'Available', remarks: 'Existing employee notes', added_to_db: true, wh_id: 'WH-123' })).status).toBe(200);
     expect((await patch({ revision: 1, state: 'done' })).status).toBe(200);

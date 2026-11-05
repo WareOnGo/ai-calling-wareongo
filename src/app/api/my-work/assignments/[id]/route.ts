@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
-import { updateMyWorkAssignment } from "@/lib/employee-assignments";
+import { getMyWorkAssignment, updateMyWorkAssignment } from "@/lib/employee-assignments";
 import { jsonBody, apiError, bigintId, nullableText, revision } from "@/lib/api";
 
 export const runtime = "nodejs";
@@ -11,6 +11,16 @@ const patchSchema = z.object({
   remarks: nullableText.optional(), state: z.enum(["open", "done"]).optional(),
   added_to_db: z.boolean().optional(), wh_id: nullableText.optional(), revision,
 }).strict().refine(v => Object.keys(v).length > 1, "No editable fields provided");
+
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  try {
+    const row = await getMyWorkAssignment(bigintId.parse((await params).id), user);
+    if (!row) return NextResponse.json({ error: "This assignment is no longer available to you." }, { status: 404 });
+    return NextResponse.json(row, { headers: { "Cache-Control": "no-store" } });
+  } catch (error) { return apiError(error); }
+}
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();

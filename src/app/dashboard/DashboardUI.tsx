@@ -6,7 +6,7 @@ import { Dialog } from "./Dialog";
 import { Dialog as EmployeeDialog } from "./my/classic/Dialog";
 import { WalletBalanceProvider } from "./WalletBalance";
 
-type Save = { dirty: boolean; status: string; label: string; retry: () => void; discard: () => void };
+type Save = { dirty: boolean; status: string; label: string; retry: () => void; discard: () => void; review?: boolean };
 type UI = {
   pending: boolean;
   transitioning: boolean;
@@ -61,7 +61,7 @@ export function DashboardUI({ children, header, userEmail, isAdmin }: { children
   }, [router, canLeave]);
   const reportSave = useCallback((id: string, save: Save | null) => {
     const previous = saves.current.get(id);
-    if (previous && save && previous.status === save.status && previous.dirty === save.dirty) return;
+    if (previous && save && previous.status === save.status && previous.dirty === save.dirty && previous.review === save.review) return;
     if (!previous && !save) return;
     if (save) saves.current.set(id, save); else saves.current.delete(id);
     setSaveList([...saves.current.entries()]);
@@ -92,6 +92,7 @@ export function DashboardUI({ children, header, userEmail, isAdmin }: { children
   }, [hasDrafts, navigate]);
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
   const failed = saveList.filter(([, s]) => s.status === "error");
+  const review = saveList.find(([, s]) => s.dirty && s.review)?.[1];
   const saving = saveList.some(([, s]) => s.status === "saving");
   const dirty = saveList.filter(([, s]) => s.dirty);
   const context = useMemo(() => ({ pending, transitioning, navigate, refresh, notify, reportSave, hasDrafts, isAdmin, viewStorageKey: `dashboard-views:${userEmail}` }), [pending, transitioning, navigate, refresh, notify, reportSave, hasDrafts, isAdmin, userEmail]);
@@ -100,10 +101,10 @@ export function DashboardUI({ children, header, userEmail, isAdmin }: { children
     {transitioning && <div className={`navigation-progress${employeeWork ? " employee-work-status" : ""}`} role="status"><span />Updating results…</div>}
     {(saveList.length > 0 || pathname === "/dashboard/my") && <div className={`${employeeWork ? "employee-work-status " : ""}sheet-save-status${failed.length ? " has-error" : ""}${!failed.length && !saving && !dirty.length ? " is-idle" : ""}`} role="status" aria-live="polite">
       {!saveList.length ? "Edits save automatically" : failed.length ? <>{failed.length} {failed.length === 1 ? "row hasn't" : "rows haven't"} saved. Your drafts are still here.
-        <button type="button" onClick={() => failed.forEach(([, s]) => s.retry())}>Retry</button>
+        <button type="button" onClick={() => review ? review.retry() : failed.forEach(([, s]) => s.retry())}>{review ? "Review changes" : "Retry"}</button>
         <button type="button" onClick={() => document.getElementById(`save-${failed[0][0]}`)?.scrollIntoView({ block: "center", inline: "nearest" })}>Show change</button>
         <button type="button" disabled={saving} onClick={() => setDiscardOpen(true)}>Discard unsaved changes…</button>
-      </> : saving ? "Saving changes…" : dirty.length ? <>Unsaved changes<button type="button" onClick={() => dirty.forEach(([, s]) => s.retry())}>Save changes</button><button type="button" onClick={() => setDiscardOpen(true)}>Discard…</button></> : "All changes saved"}
+      </> : saving ? "Saving changes…" : dirty.length ? <>Unsaved changes<button type="button" onClick={() => review ? review.retry() : dirty.forEach(([, s]) => s.retry())}>{review ? "Review changes" : "Save changes"}</button><button type="button" onClick={() => setDiscardOpen(true)}>Discard…</button></> : "All changes saved"}
     </div>}
     <div id={employeeWork ? "employee-work" : undefined} className="dashboard-content dash-main" aria-busy={pending} data-hydrated={hydrated} data-page={pathname}>{children}</div>
     <div className={`notification-region${employeeWork ? " employee-work-notification" : ""}`} role="status" aria-live="polite">{message && <div className="snackbar">{message}<button type="button" onClick={() => setMessage("")} aria-label="Dismiss notification">×</button></div>}</div>

@@ -1,12 +1,18 @@
 // Preserves the employee task editing contract from main before the visual overhaul.
 // The admin/manual-call workflows continue to use assignments.updateAssignment.
 import { ApiError } from "./api";
-import { transaction } from "./db";
+import { query, transaction } from "./db";
 import type { CurrentUser } from "./auth";
 import { contactTargets, type EntityType, type Outcome, type AssignmentState } from "./scope";
 
 export type AssignmentPatch = { outcome?: Outcome | null; remarks?: string | null; addedToDb?: boolean; whId?: string | null; state?: AssignmentState; revision: number };
 type AssignmentRow = { revision: number; id: string; state: string; outcome: string | null; remarks: string | null; added_to_db: boolean; wh_id: string | null };
+
+export async function getMyWorkAssignment(id: string, user: CurrentUser): Promise<AssignmentRow | null> {
+  const result = await query<AssignmentRow>(`select revision,id,state,outcome,remarks,added_to_db,wh_id
+    from bolna_assignments where id=$1 and assignee=$2 and state<>'dropped'`, [id, user.email.toLowerCase()]);
+  return result.rows[0] ?? null;
+}
 
 export async function updateMyWorkAssignment(
   id: string,
@@ -49,7 +55,7 @@ export async function updateMyWorkAssignment(
           where id=$1 and revision=$2 and state<>'dropped' and assignee=$3 for update`,
         [id, patch.revision, user.email.toLowerCase()],
       )).rows[0];
-      if (!current) throw new ApiError(409, "Assignment changed or is no longer editable. Refresh to review the latest version.");
+      if (!current) throw new ApiError(409, "This assignment changed or is no longer editable. Review your changes before saving.", "ASSIGNMENT_CONFLICT");
       if (current.state !== "open") {
         const owner = await client.query(`select 1 from (${contactTargets('$1::text', '$2::uuid')}) contacts
           join bolna_assignments a using(entity_type,entity_id)
@@ -61,6 +67,6 @@ export async function updateMyWorkAssignment(
     }
     return client.query<AssignmentRow>(sql, vals);
   });
-  if (!res.rowCount) throw new ApiError(409, "Assignment changed or is no longer editable. Refresh to review the latest version.");
+  if (!res.rowCount) throw new ApiError(409, "This assignment changed or is no longer editable. Review your changes before saving.", "ASSIGNMENT_CONFLICT");
   return res.rows[0] ?? null;
 }

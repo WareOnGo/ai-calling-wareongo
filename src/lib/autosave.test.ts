@@ -95,4 +95,97 @@ describe("confirmed autosave state", () => {
     expect(send).toHaveBeenLastCalledWith({notes:'original'});
     expect(save.getSnapshot().dirty).toBe(false);
   });
+
+  it('rebases only local edits and rolled-back intent onto the reviewed version', async () => {
+    const send = vi.fn().mockRejectedValueOnce(Object.assign(new Error('Changed'), {code:'ASSIGNMENT_CONFLICT'})).mockResolvedValue(undefined);
+    const save = new Autosave(initial, send, ['added']);
+    save.set('notes','My draft'); save.set('added',true); await save.flush();
+    expect(save.getSnapshot()).toMatchObject({code:'ASSIGNMENT_CONFLICT',values:{added:false}});
+    save.rebase({...initial,state:'done',notes:'Other editor'},true);
+    expect(save.getSnapshot()).toMatchObject({status:'dirty',code:undefined,error:'',values:{notes:'My draft',added:true,state:'done'}});
+    await save.flush();
+    expect(send).toHaveBeenLastCalledWith({notes:'My draft',added:true});
+    expect(save.getSnapshot().dirty).toBe(false);
+  });
+
+  it.each([true,false])('accepts a lost-response result without another write (keep draft: %s)', async keepDraft => {
+    const send = vi.fn().mockRejectedValue(new Error('Response lost'));
+    const save = new Autosave(initial, send);
+    save.set('notes','Already saved'); await save.flush();
+    save.rebase({...initial,notes:'Already saved'},keepDraft);
+    await save.flush();
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(save.getSnapshot()).toMatchObject({status:'saved',dirty:false,error:''});
+    expect(save.getDraft()).toEqual({});
+  });
+
+  it('uses latest values as the baseline for later saves and discards', async () => {
+    const send = vi.fn().mockRejectedValue(new Error('Changed'));
+    const save = new Autosave(initial,send);
+    save.set('notes','Draft'); await save.flush();
+    save.rebase({...initial,notes:'Latest',added:true},false);
+    expect(save.getSnapshot()).toMatchObject({dirty:false,values:{notes:'Latest',added:true}});
+    save.set('notes','Next edit'); save.discard();
+    expect(save.getSnapshot().values.notes).toBe('Latest');
+    expect(save.getDraft()).toEqual({});
+  });
+
+  it('keeps a newer edit made during the failed request when reviewing', async () => {
+    const gate=deferred();
+    const save=new Autosave(initial,()=>gate.promise);
+    save.set('notes','First'); const finish=save.flush();
+    save.set('notes','Newer draft'); gate.reject(new Error('Changed')); await finish;
+    save.rebase({...initial,notes:'Other editor'},true);
+    expect(save.getDraft()).toEqual({notes:'Newer draft'});
+  });
+
+  it('does not rebase an in-flight save', async () => {
+    const gate=deferred(); const save=new Autosave(initial,()=>gate.promise);
+    save.set('notes','Saving'); const finish=save.flush();
+    save.rebase({...initial,notes:'Other editor'},false);
+    expect(save.getSnapshot()).toMatchObject({status:'saving',values:{notes:'Saving'}});
+    gate.resolve(); await finish;
+    expect(save.getSnapshot()).toMatchObject({status:'saved',values:{notes:'Saving'}});
+  });
+
+  it('adopts confirmed server fields while retaining newer local edits during a save', async () => {
+    let finish!: (value: typeof initial) => void;
+    const response = new Promise<typeof initial>(resolve => { finish=resolve; });
+    const save=new Autosave(initial,()=>response);
+    save.set('notes','First'); const saving=save.flush();
+    save.set('notes','Newer');
+    finish({...initial,notes:'First',added:true}); await saving;
+    expect(save.getSnapshot()).toMatchObject({status:'dirty',values:{notes:'Newer',added:true}});
+    expect(save.getBaseline()).toEqual({...initial,notes:'First',added:true});
+    expect(save.getDraft()).toEqual({notes:'Newer'});
+  });
+
+  it('keeps a failed checkbox intent when another field returns confirmed server values', async () => {
+    const send=vi.fn().mockRejectedValueOnce(new Error('Offline')).mockResolvedValue({...initial,notes:'Saved'});
+    const save=new Autosave(initial,send,['added']);
+    save.set('added',true); await save.flush();
+    save.set('notes','Saved'); await save.flush();
+    expect(save.getSnapshot()).toMatchObject({status:'error',values:{added:false,notes:'Saved'}});
+    expect(save.getDraft()).toEqual({added:true});
+  });
+
+  it('stops queued saves on conflict and rolls back their controls without losing newer intent', async () => {
+    const gate=deferred(); const send=vi.fn().mockReturnValue(gate.promise);
+    const save=new Autosave(initial,send,['added','state']);
+    save.set('notes','First'); const saving=save.flush();
+    save.set('notes','Newer'); save.set('state','done',true); save.set('added',true,true);
+    gate.reject(Object.assign(new Error('Review required'),{code:'ASSIGNMENT_CONFLICT'})); await saving;
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(save.getSnapshot()).toMatchObject({status:'error',values:{notes:'Newer',state:'open',added:false}});
+    expect(save.getDraft()).toEqual({notes:'Newer',state:'done',added:true});
+  });
+
+  it('keeps an undo to the original value when a recovery write may already have succeeded', async () => {
+    const gate=deferred(); const save=new Autosave(initial,()=>gate.promise);
+    save.set('notes','Sent value'); const saving=save.flush();
+    save.set('notes','original',true);
+    gate.reject(Object.assign(new Error('Review newer draft'),{code:'ASSIGNMENT_CONFLICT'})); await saving;
+    expect(save.getSnapshot()).toMatchObject({status:'error',dirty:true,values:{notes:'original'}});
+    expect(save.getDraft()).toEqual({notes:'original'});
+  });
 });
