@@ -16,6 +16,8 @@ Within a row, identify the subject first. Use the shared `ContactCard` in a sing
 | AI Calls | Contact → AI result and evidence → assigned caller, manual result and notes → onboarding |
 | Assignments | Contact → assignee and status → AI/manual results and follow-up notes → actions |
 | My Work | Contact and property → AI context → manual result and notes → onboarding and completion |
+| Caller board | Stage column and count → card: owner, phone, city and tasks → strikes, follow-up and warehouse IDs → panel: stage, notes, follow-up and timeline |
+| Board funnel | KPIs → caller → leads by stage → leads, conversion and warehouse IDs |
 | Batch members | Contact and location → ownership → state, result and attempts |
 | Queue review | Ready count and skipped reasons → language → optional contact/outcome review → explicit confirmation |
 | Team metrics | Caller → attempts, connection and duration → availability and onboarding |

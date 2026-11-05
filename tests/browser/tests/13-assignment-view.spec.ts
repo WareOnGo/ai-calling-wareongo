@@ -80,7 +80,7 @@ test('admin employee view scopes pages and APIs and survives a reload', async ({
   await expect(page).toHaveURL(/dashboard\/my$/);
   if(await page.locator('.account-menu').getAttribute('open')===null)await page.locator('.account-menu > summary').click();
   await expect(page.getByRole('button', {name: 'Employee view', exact: true})).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('.topnav a')).toHaveCount(1);
+  await expect(page.locator('.topnav a')).toHaveCount(2);
   await expect(page.locator('[data-loading-view]')).toHaveCount(0);
   await expect(page.locator('.title-sub')).toContainText('1 still to do');
   await expect(page.locator('tbody:visible')).toHaveCount(1);
@@ -103,7 +103,7 @@ test('admin employee view scopes pages and APIs and survives a reload', async ({
   if(await page.locator('.account-menu').getAttribute('open')===null)await page.locator('.account-menu > summary').click();
   await page.getByRole('button', {name: 'Admin view', exact: true}).click();
   await expect(page).toHaveURL(/dashboard$/);
-  await expect(page.locator('.topnav a')).toHaveCount(6);
+  await expect(page.locator('.topnav a')).toHaveCount(7);
   expect((await page.request.get('/api/users')).status()).toBe(200);
   expect(errors).toEqual([]);
 });
@@ -113,7 +113,7 @@ test('employees cannot enable admin mode with the endpoint or a forged view cook
   await page.context().addCookies([{name: 'bp_view', value: 'admin', url:BASE_URL}]);
   await page.goto('/dashboard');
   await expect(page.locator('.view-mode')).toHaveCount(0);
-  await expect(page.locator('.topnav a')).toHaveCount(1);
+  await expect(page.locator('.topnav a')).toHaveCount(2);
   expect((await page.request.get('/api/users')).status()).toBe(403);
 });
 
