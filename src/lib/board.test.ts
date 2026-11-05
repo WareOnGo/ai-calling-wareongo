@@ -60,6 +60,16 @@ describe("board query scope", () => {
     expect(params).toContain("50\\%\\_off");
   });
 
+  it("binds the work type and uses fixed follow-up predicates", () => {
+    const params: unknown[] = [];
+    const { task } = boardWhere(admin, { type: "record", follow_up: "overdue" }, params);
+    expect(task).toContain("a.entity_type = $1");
+    expect(params).toEqual(["record"]);
+    expect(task).toContain("a.next_due_at < now()");
+    expect(boardWhere(admin, { follow_up: "upcoming" }, []).task).toContain("a.next_due_at >= now()");
+    expect(boardWhere(admin, { follow_up: "none" }, []).task).toContain("a.next_due_at is null");
+  });
+
   it("uses fixed intervals for the last-updated window", () => {
     const params: unknown[] = [];
     boardWhere(admin, { updated: "24h" }, params);

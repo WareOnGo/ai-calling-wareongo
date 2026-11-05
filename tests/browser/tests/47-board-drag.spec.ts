@@ -24,7 +24,7 @@ test('dropping on a stage that needs input opens the panel at that step without 
   const panel = page.getByRole('complementary');
   await expect(panel.getByRole('heading', { level: 2 })).toHaveText('Raghav Sharma');
   await expect(panel.getByRole('group', { name: 'Why is this lead junk?' })).toBeVisible();
-  await expect(panel.getByRole('button', { name: '5 Junk' })).toHaveAttribute('aria-expanded', 'true');
+  await expect(panel.getByRole('combobox', { name: 'Stage' })).toHaveValue('junk');
   await expect(column(page, '1').locator('.board-card')).toContainText('Raghav Sharma');
   await panel.getByRole('radio', { name: 'No response after repeated tries' }).check();
   await panel.getByRole('button', { name: 'Move to Junk' }).click();

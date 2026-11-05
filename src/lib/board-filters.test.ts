@@ -20,6 +20,11 @@ describe("board filters", () => {
     expect(parseBoardFilters({ batch: [batch.toUpperCase(), "none", "B-0142", "drop table"] }, employee)).toEqual({ batch: [batch, "none"] });
   });
 
+  it("filters by work type and follow-up state like My Work's quick filters", () => {
+    expect(parseBoardFilters({ type: "call", follow_up: "overdue" }, employee)).toEqual({ type: "call", follow_up: "overdue" });
+    expect(parseBoardFilters({ type: "listing", follow_up: "soon" }, employee)).toEqual({});
+  });
+
   it("accepts only the documented last-updated windows", () => {
     expect(parseBoardFilters({ updated: "7d" }, employee)).toEqual({ updated: "7d" });
     expect(parseBoardFilters({ updated: "2y" }, employee)).toEqual({});

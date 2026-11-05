@@ -142,6 +142,38 @@ describe("caller board read model", () => {
     expect(await inbound({ q: "50%_" })).toEqual([]);
   });
 
+  it("gives each task the facts My Work shows: area, rent, AI result and count, assigner and logged calls", async () => {
+    const record = await listing("9811600078", { owner: "Facts Yard", city: "Hoskote" });
+    await query("update raw_records set area_sqft=12000, metadata='{\"rent\":\"45000\"}' where id=$1", [record]);
+    const phone = (await query("select phone_id from raw_phone_numbers where phone_last10='9811600078'")).rows[0].phone_id;
+    await query(`insert into bolna_call_logs(id,phone_id,to_number,status,llm_availability,call_created_at) values
+      (gen_random_uuid(),$1,'+919811600078','completed','Unavailable',now()-interval '2 days'),
+      (gen_random_uuid(),$1,'+919811600078','completed','Available',now()-interval '1 day'),
+      (gen_random_uuid(),$1,'+919811600078','balance-low',null,now())`, [phone]);
+    const id = await task(record, { stage: "rnr" });
+    await query(`insert into bolna_manual_attempts(id,assignment_id,actor,assignee,occurred_at,disposition,request_hash)
+      values (gen_random_uuid(),$1,$2,$2,now(),'no_answer','fixture')`, [id, caller.email]);
+    await query("update bolna_assignments set last_attempt_at=now(), disposition='no_answer' where id=$1", [id]);
+    const [details] = column(await loadBoard(caller, {}), "rnr").cards[0].tasks;
+    expect(details).toMatchObject({
+      listingArea: "12000", carpetArea: null, builtUpArea: null, rent: "45000",
+      aiResult: "Available", aiCount: 2, assignedByName: "Board Admin", manualCalls: 1, disposition: "no_answer",
+    });
+    expect(details.lastAttemptAt).not.toBeNull();
+  });
+
+  it("filters by work type and follow-up state", async () => {
+    await task(await listing("9811600075", { owner: "Overdue Yard" }), { stage: "rnr", nextDue: hoursAgo(3) });
+    await task(await listing("9811600076", { owner: "Upcoming Yard" }), { stage: "rnr", nextDue: hoursAgo(-30) });
+    await task(await listing("9811600077", { owner: "Unscheduled Yard" }), { stage: "rnr" });
+    const rnr = async (filters: Parameters<typeof loadBoard>[1]) => names(column(await loadBoard(caller, filters), "rnr").cards);
+    expect(await rnr({ follow_up: "overdue" })).toEqual(["Overdue Yard"]);
+    expect(await rnr({ follow_up: "upcoming" })).toEqual(["Upcoming Yard"]);
+    expect(await rnr({ follow_up: "none" })).toEqual(["Unscheduled Yard"]);
+    expect(await rnr({ type: "record" })).toHaveLength(3);
+    expect(await rnr({ type: "call" })).toEqual([]);
+  });
+
   it("collects every warehouse ID matched to the card's phone or saved on its tasks", async () => {
     await task(await listing("9811600081", { owner: "Joshi Warehousing" }), { stage: "warehouse_created", state: "done", whId: "77", added: true, outcome: "Available" });
     await query("insert into bolna_warehouse_imports(name,snapshot_at,source_sha256,summary) values ('board-test',now(),'fixture','{}')");

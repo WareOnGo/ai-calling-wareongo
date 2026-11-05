@@ -62,13 +62,6 @@ export function BoardView({ board, proposals, filters, limits }: {
 
   return <>
     <JunkDigest total={proposals.total} cards={proposals.cards} />
-    <nav className="board-strip" aria-label="Cards per stage">{board.columns.map(column => {
-      const stage = stageInfo(column.stage);
-      return <a key={column.stage} className="board-strip-item" data-stage={column.stage} data-code={stage.code} href={`#board-${column.stage}`}
-        onClick={event => { event.preventDefault(); document.getElementById(`board-${column.stage}`)?.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" }); }}>
-        <span className="board-code">{stage.code}</span><span className="board-strip-label">{stage.short}</span><span className="board-strip-count">{column.total}</span>
-      </a>;
-    })}</nav>
     <div className={`board-body${selected ? " has-panel" : ""}${dragging ? " is-dragging" : ""}`}>
       <div className="board-scroller" role="region" aria-label="Board columns" tabIndex={0}>
         <div className="board-columns">{board.columns.map(column => <Column key={column.stage} column={column} filters={filters} limits={limits}

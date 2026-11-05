@@ -9,7 +9,12 @@ const sql = (statement: string) => execFileSync('podman', ['exec', '-i', CONTAIN
 const column = (page: any, code: string) => page.locator(`.board-column[data-code="${code}"]`);
 const cardButton = (page: any, name: string) => page.locator('.board-columns .board-card').filter({ hasText: name });
 const panel = (page: any) => page.getByRole('complementary');
-const stageButton = (page: any, name: string) => panel(page).getByRole('group', { name: 'Move to stage' }).getByRole('button', { name });
+const stage = (page: any) => panel(page).getByRole('combobox', { name: 'Stage' });
+/** Choose a stage in the dropdown, then confirm: a dropdown alone never moves a card. */
+const moveTo = async (page: any, value: string, short: string) => {
+  await stage(page).selectOption(value);
+  await panel(page).getByRole('button', { name: `Move to ${short}` }).click();
+};
 
 test('opening a card shows the lead, its tasks, the current stage and its timeline', async ({ employeePage: page, shot }) => {
   await page.goto('/dashboard/board');
@@ -17,7 +22,8 @@ test('opening a card shows the lead, its tasks, the current stage and its timeli
   await expect(panel(page).getByRole('heading', { level: 2 })).toHaveText('Raghav Sharma');
   await expect(panel(page)).toContainText('+919811100001');
   await expect(cardButton(page, 'Raghav Sharma')).toHaveAttribute('aria-expanded', 'true');
-  await expect(stageButton(page, '1 Inbound')).toHaveAttribute('aria-pressed', 'true');
+  await expect(stage(page)).toHaveValue('inbound');
+  await expect(panel(page).getByRole('button', { name: /Move to/ })).toHaveCount(0);
   await expect(panel(page).locator('.board-task')).toHaveCount(2);
   await expect(panel(page).locator('.board-task h4')).toHaveText(['Listing', 'AI follow-up']);
   await expect(panel(page).getByText('verify area + rent')).toBeVisible();
@@ -25,40 +31,71 @@ test('opening a card shows the lead, its tasks, the current stage and its timeli
   await shot(page, 'board-panel-open');
 });
 
+test('each task shows everything My Work shows for it', async ({ employeePage: page }) => {
+  await page.goto('/dashboard/board');
+  await cardButton(page, 'Raghav Sharma').click();
+  const [listing, followUp] = [panel(page).locator('.board-task').first(), panel(page).locator('.board-task').last()];
+  // Property facts, assigner, AI status and the manual work fields, as in My Work's row.
+  await expect(listing.locator('.work-context')).toContainText('Rajkot');
+  await expect(listing.locator('.work-context')).toContainText('12,000 sqft');
+  await expect(listing.locator('.work-context')).toContainText('₹45,000');
+  await expect(listing.locator('.work-assigned-meta')).toContainText('Assigned by Eval Admin');
+  await expect(listing.locator('.work-ai-status')).toHaveText('AI: Unclear');
+  await expect(listing.locator('.work-ai-count')).toHaveText('2 AI calls');
+  await expect(followUp.locator('.work-ai-status')).toHaveText('AI: Available');
+  await expect(followUp.locator('.work-context')).toContainText('12,000 sqft built-up');
+  const facts = listing.locator('.board-task-facts');
+  await expect(facts).toContainText('Result');
+  await expect(facts).toContainText('Not called yet');
+  await expect(facts).toContainText('In DB?');
+  await expect(facts).toContainText('Not yet');
+  await expect(facts).toContainText('WH ID');
+  await expect(facts).toContainText('Finished?');
+  await expect(facts).toContainText('Open');
+  await expect(listing.locator('.board-task-manual')).toContainText('No manual calls logged');
+  // AI and manual call history open the record straight on their tabs.
+  await listing.getByRole('button', { name: 'AI calls for this listing' }).click();
+  await expect(page.getByRole('dialog').getByRole('tab', { name: 'AI activity' })).toHaveAttribute('aria-selected', 'true');
+  await page.getByRole('dialog').getByRole('button', { name: 'Close' }).first().click();
+  await listing.getByRole('button', { name: 'Manual calls for this listing' }).click();
+  await expect(page.getByRole('dialog').getByRole('tab', { name: 'Manual activity' })).toHaveAttribute('aria-selected', 'true');
+});
+
 test('moving a card to an open stage updates the board, the panel and the timeline', async ({ employeePage: page }) => {
   await page.goto('/dashboard/board');
   await cardButton(page, 'Raghav Sharma').click();
-  await stageButton(page, '2C Awaiting').click();
+  await moveTo(page, 'awaiting_details', 'Awaiting');
   await expect(column(page, '2C').locator('.board-card')).toContainText('Raghav Sharma');
   await expect(column(page, '1').locator('.board-card')).toHaveCount(0);
-  await expect(stageButton(page, '2C Awaiting')).toHaveAttribute('aria-pressed', 'true');
+  await expect(stage(page)).toHaveValue('awaiting_details');
   await expect(panel(page).locator('.board-timeline li').first()).toContainText('Moved to 2C Available, details awaited');
 });
 
 test('moving to RnR records the unanswered call', async ({ employeePage: page }) => {
   await page.goto('/dashboard/board');
   await cardButton(page, 'Raghav Sharma').click();
-  await stageButton(page, '2A RnR').click();
+  await moveTo(page, 'rnr', 'RnR');
   await expect(column(page, '2A').locator('.board-card')).toContainText('Raghav Sharma');
   await expect(panel(page).locator('.board-timeline')).toContainText('No answer / RNR');
+  await expect(panel(page).locator('.board-task-manual').first()).toContainText('1 manual call');
 });
 
 test('Junk needs a reason before the card moves', async ({ employeePage: page }) => {
   await page.goto('/dashboard/board');
   await cardButton(page, 'Raghav Sharma').click();
-  await stageButton(page, '5 Junk').click();
+  await stage(page).selectOption('junk');
   const confirm = panel(page).getByRole('button', { name: 'Move to Junk' });
   await expect(confirm).toBeDisabled();
   await panel(page).getByRole('radio', { name: 'Wrong or invalid number' }).check();
   await confirm.click();
   await expect(column(page, '5').locator('.board-card')).toContainText('Closed');
-  await expect(stageButton(page, '5 Junk')).toHaveAttribute('aria-pressed', 'true');
+  await expect(stage(page)).toHaveValue('junk');
 });
 
 test('stage 4 asks which warehouse ID the lead created and rejects malformed IDs', async ({ employeePage: page }) => {
   await page.goto('/dashboard/board');
   await cardButton(page, 'Raghav Sharma').click();
-  await stageButton(page, '4 Warehouse').click();
+  await stage(page).selectOption('warehouse_created');
   const id = panel(page).getByRole('textbox', { name: 'Warehouse ID' });
   await id.fill('WH-12');
   await panel(page).getByRole('button', { name: 'Move to Warehouse' }).click();
@@ -106,7 +143,7 @@ test('a card changed elsewhere reports the conflict instead of overwriting it', 
   await page.goto('/dashboard/board');
   await cardButton(page, 'Raghav Sharma').click();
   sql(`update bolna_assignments set remarks='changed elsewhere', revision=revision+1 where id=1`);
-  await stageButton(page, '3 Details').click();
+  await moveTo(page, 'details_collected', 'Details');
   await expect(panel(page).getByRole('alert')).toHaveText(/changed/);
   await expect(column(page, '3').locator('.board-card')).toHaveCount(0);
 });
@@ -117,7 +154,7 @@ for (const theme of ['light', 'dark'] as const) {
     await page.goto('/dashboard/board');
     if (theme === 'dark') { await page.locator('.theme-toggle').click(); await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark'); }
     await cardButton(page, 'Raghav Sharma').click();
-    await stageButton(page, '5 Junk').click();
+    await stage(page).selectOption('junk');
     expect(await unreadableText(page, '.dashboard-content')).toEqual([]);
     await shot(page, `board-panel-1366-${theme}`);
     await page.setViewportSize({ width: 390, height: 844 });

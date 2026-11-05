@@ -13,6 +13,9 @@ export type BoardTask = {
   outcome: string | null; remarks: string | null; note: string | null; whId: string | null; addedToDb: boolean;
   disposition: string | null; nextDueAt: string | null; batchId: string | null; assignedBy: string; assignedAt: string;
   name: string | null; city: string | null;
+  /** The facts My Work shows for the task. */
+  listingArea: string | null; carpetArea: string | null; builtUpArea: string | null; rent: string | null;
+  aiResult: string | null; aiCount: number; assignedByName: string | null; manualCalls: number; lastAttemptAt: string | null;
 };
 export type BoardCard = {
   key: string; stage: Stage; assignee: string; assigneeName: string | null; name: string | null; phone: string | null;
@@ -35,6 +38,7 @@ const TERMINAL_SQL = TERMINAL_STAGES.map(stage => `'${stage}'`).join(",");
 const STAGE_ORDER_SQL = `array[${STAGE_SLUGS.map(stage => `'${stage}'`).join(",")}]`;
 const STRIKES_SQL = `array[${STRIKE_DISPOSITIONS.map(value => `'${value}'`).join(",")}]`;
 const escapeLike = (value: string) => value.replace(/[\\%_]/g, "\\$&");
+const FOLLOW_UP_SQL = { overdue: "a.next_due_at < now()", upcoming: "a.next_due_at >= now()", none: "a.next_due_at is null" } as const;
 
 // `a` is the assignment; `r`, `cl`, `work_source` and `rphone` follow assignment-context.ts.
 const TASK_FROM = `from bolna_assignments a
@@ -66,6 +70,8 @@ export function boardWhere(viewer: Viewer, f: BoardFilters, params: unknown[], {
     task.push(`(${terms.join(" or ")})`);
   }
   if (f.updated) { params.push(INTERVALS[f.updated]); task.push(`a.updated_at >= now() - $${params.length}::interval`); }
+  if (f.type) { params.push(f.type); task.push(`a.entity_type = $${params.length}`); }
+  if (f.follow_up) task.push(FOLLOW_UP_SQL[f.follow_up]);
   const context: string[] = [];
   if (f.city?.length) { params.push(f.city.map(city => city.trim().toLowerCase())); context.push(`lower(trim(${ASSIGNMENT_CITY})) = any($${params.length}::text[])`); }
   if (f.region?.length) { params.push(f.region.map(region => region.trim().toLowerCase())); context.push(`lower(trim(${ASSIGNMENT_REGION})) = any($${params.length}::text[])`); }
@@ -108,6 +114,30 @@ export function cardsCte({ task, context }: { task: string; context: string }) {
 }
 
 /**
+ * What My Work shows for each task, keyed by task ID, computed only for returned cards.
+ * AI result and count follow My Work: a listing's latest AI call (and all of them) across
+ * its phones, excluding balance-blocked calls; an AI follow-up is its own call.
+ */
+const taskDetails = (row: string) => `(select json_object_agg(da.id::text, json_build_object(
+      'listingArea', coalesce(dr.area_sqft::text, dsource.area_sqft::text), 'carpetArea', dcl.carpet_area_sqft, 'builtUpArea', dcl.built_up_area_sqft,
+      'rent', case when da.entity_type = 'record' then dr.metadata->>'rent' else dcl.expected_rent end,
+      'aiResult', case when da.entity_type = 'call' then bolna_availability(dcl.status, dcl.llm_availability) else dai.result end,
+      'aiCount', case when da.entity_type = 'call' then 1 else dai.calls end,
+      'assignedByName', dby.name, 'lastAttemptAt', da.last_attempt_at,
+      'manualCalls', (select count(*)::int from bolna_effective_manual_attempts e where e.assignment_id = da.id)))
+    from bolna_assignments da
+    left join raw_records dr on da.entity_type = 'record' and dr.id = da.entity_id
+    left join bolna_call_logs dcl on da.entity_type = 'call' and dcl.id = da.entity_id
+    left join lateral (select source.area_sqft from raw_phones rp join raw_records source on source.id = rp.master_id where rp.phone_id = dcl.phone_id
+      order by (source.contact_type is null) desc, rp.is_primary desc, source.ingested_at desc, source.id limit 1) dsource on true
+    left join lateral (select count(*)::int as calls,
+        (array_agg(bolna_availability(cl2.status, cl2.llm_availability) order by cl2.call_created_at desc nulls last, cl2.id desc))[1] as result
+      from raw_phones rp2 join bolna_call_logs cl2 on cl2.phone_id = rp2.phone_id
+      where rp2.master_id = dr.id and cl2.status is distinct from 'balance-low') dai on true
+    left join bolna_app_users dby on dby.email = da.assigned_by
+   where da.id = any(${row}.ids))`;
+
+/**
  * Warehouse IDs for a card row: its phone's WAG warehouses plus valid IDs saved on its
  * tasks. A card is one phone, so read by primary key rather than through the
  * all-listings bolna_warehouse_matches view, which cannot use a join key.
@@ -142,7 +172,7 @@ export function boardQuery(viewer: Viewer, filters: BoardFilters, limits: Record
     )
     select r.stage, r.stage_total::int as total, r.assignee, u.name as assignee_name, r.card_key as key, r.name, r.phone, r.city, r.region,
            r.tasks, r.next_due_at::text as next_due_at, r.overdue, r.updated_at::text as updated_at, r.closed,
-           r.strikes, r.proposed, count(*) over () as matching, ${cardWarehouseIds("r")} as warehouse_ids
+           r.strikes, r.proposed, count(*) over () as matching, ${cardWarehouseIds("r")} as warehouse_ids, ${taskDetails("r")} as task_details
       from ranked r left join bolna_app_users u on u.email = r.assignee
      ${mode === "board"
        ? `where r.rn <= coalesce((${limitParam}::jsonb ->> r.stage)::int, ${BOARD_PAGE_SIZE})
@@ -155,12 +185,13 @@ type CardRow = {
   stage: Stage; total: number; key: string; assignee: string; assignee_name: string | null; name: string | null; phone: string | null;
   city: string | null; region: string | null; tasks: BoardTask[]; next_due_at: string | null; overdue: boolean;
   updated_at: string; closed: boolean; warehouse_ids: string[]; strikes: number; proposed: boolean; matching: string;
+  task_details: Record<string, Partial<BoardTask>> | null;
 };
 const PROPOSAL_LIMIT = 200;
 
 const toCard = (row: CardRow): BoardCard => ({
   key: row.key, stage: row.stage, assignee: row.assignee, assigneeName: row.assignee_name, name: row.name, phone: row.phone,
-  city: row.city, region: row.region, tasks: row.tasks, warehouseIds: row.warehouse_ids,
+  city: row.city, region: row.region, tasks: row.tasks.map(task => ({ ...task, ...row.task_details?.[task.id] })), warehouseIds: row.warehouse_ids,
   nextDueAt: row.next_due_at, overdue: row.overdue, updatedAt: row.updated_at, closed: row.closed,
   strikes: row.strikes, proposedJunk: row.proposed,
 });

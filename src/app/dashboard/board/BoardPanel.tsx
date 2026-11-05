@@ -3,15 +3,17 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { BoardCard, BoardTask } from "@/lib/board";
 import type { TimelineEvent } from "@/lib/board-timeline";
 import { JUNK_REASONS, REJECTION_REASONS, STAGES, STRIKE_LIMIT, stageInfo, type Stage } from "@/lib/board-stages";
-import { dateTime, shortDate } from "@/lib/display";
+import { dateTime } from "@/lib/display";
+import { area, rent, resultClass } from "@/lib/employee-display";
+import { dispositionLabel } from "@/lib/manual-dispositions";
 import { useDashboardUI } from "../DashboardUI";
 import { requestJson, RequestError } from "../requests";
-import { NEEDS_INPUT, requestMove, sendJson as send, taskRefs as refsOf, type InputStage } from "./board-requests";
+import { requestMove, sendJson as send, taskRefs as refsOf, type InputStage } from "./board-requests";
 import { CopyText } from "../CopyText";
 import { RecordDetails } from "../RecordDetails";
-
-type FormStage = InputStage;
-const NEEDS_FORM = NEEDS_INPUT;
+import { AiCallStatus } from "../my/AiCallStatus";
+import { AssignmentBrief } from "../my/AssignmentBrief";
+import { WorkContext } from "../my/WorkContext";
 // The date picker chooses a day; follow-ups are due at 10:00 IST that day.
 const followUpAt = (day: string) => `${day}T10:00:00+05:30`;
 const istDay = (value: string | null) => value ? new Date(value).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }) : "";
@@ -21,34 +23,35 @@ export function BoardPanel({ card, onClose, request }: { card: BoardCard; onClos
   const { refresh } = useDashboardUI();
   const titleId = useId();
   const heading = useRef<HTMLHeadingElement>(null);
-  const [form, setForm] = useState<FormStage | null>(null);
+  // The stage chosen in the dropdown; a move happens only when it is confirmed.
+  const [target, setTarget] = useState<Stage>(request?.stage ?? card.stage);
+  // After a confirmed move, until the refreshed card arrives with its new stage.
+  const [moved, setMoved] = useState<Stage | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
-  const stage = stageInfo(card.stage);
+  const current = moved ?? card.stage;
   const tasks = [...card.tasks].sort((a, b) => (a.entity === b.entity ? 0 : a.entity === "record" ? -1 : 1) || Number(a.id) - Number(b.id));
   const openTasks = tasks.filter(task => task.state === "open");
   const version = card.tasks.map(task => `${task.id}:${task.revision}`).join(",");
 
-  useEffect(() => { heading.current?.focus(); setForm(request?.stage ?? null); setError(""); setNote(""); }, [card.key, request?.token, request?.stage]);
+  useEffect(() => { heading.current?.focus(); setError(""); setNote(""); }, [card.key]);
+  useEffect(() => { setTarget(request?.stage ?? card.stage); setMoved(null); }, [card.key, card.stage, request?.token, request?.stage]);
 
   async function run(action: () => Promise<unknown>) {
     setBusy(true); setError(""); setNote("");
-    try { await action(); setForm(null); refresh(); }
+    try { await action(); refresh(); }
     catch (failure) {
       setError(failure instanceof Error ? failure.message : "Couldn't save the change. Try again.");
       // A conflict means newer data exists; reload it so the next attempt uses it.
       if (failure instanceof RequestError && failure.code === "ASSIGNMENT_CONFLICT") refresh();
     } finally { setBusy(false); }
   }
-  const move = (target: Stage, extra: { reason?: string | null; wh_id?: string | null } = {}) => run(() => requestMove(card, target, extra));
-  const choose = (target: Stage) => {
-    if (target === card.stage && !NEEDS_FORM.includes(target)) return;
-    if (NEEDS_FORM.includes(target)) { setForm(target as FormStage); setError(""); } else void move(target);
-  };
+  const move = (stage: Stage, extra: { reason?: string | null; wh_id?: string | null } = {}) =>
+    run(async () => { await requestMove(card, stage, extra); setMoved(stage); });
 
   return <aside id="board-panel" className="board-panel" aria-labelledby={titleId} aria-busy={busy}
-    onKeyDown={event => { if (event.key !== "Escape") return; event.stopPropagation(); if (form) setForm(null); else onClose(); }}>
+    onKeyDown={event => { if (event.key !== "Escape") return; event.stopPropagation(); if (target !== current) setTarget(current); else onClose(); }}>
     <header className="board-panel-head">
       <div className="board-panel-identity">
         <h2 id={titleId} ref={heading} tabIndex={-1}>{card.name?.trim() || "Unnamed owner"}</h2>
@@ -60,14 +63,16 @@ export function BoardPanel({ card, onClose, request }: { card: BoardCard; onClos
     </header>
 
     <div className="board-panel-body">
-      <div role="group" aria-label="Move to stage" className="board-stage-buttons" title={`Current stage: ${stage.code} ${stage.label}`}>
-        {STAGES.map(option => <button key={option.slug} type="button" data-stage={option.slug} className="board-stage-button"
-          aria-pressed={option.slug === card.stage} aria-expanded={NEEDS_FORM.includes(option.slug) ? form === option.slug : undefined}
-          disabled={busy} onClick={() => choose(option.slug)}>
-          <span className="board-code">{option.code}</span> {option.short}
-        </button>)}
+      {/* Choosing a stage never moves the card by itself: arrow keys change a closed
+          select, so the move waits for an explicit confirmation. */}
+      <div className="board-stage-picker" data-stage={target}>
+        <label className="board-field"><span>Stage</span>
+          <select aria-label="Stage" value={target} disabled={busy} onChange={event => { setTarget(event.target.value as Stage); setError(""); }}>
+            {STAGES.map(option => <option key={option.slug} value={option.slug}>{option.code} {option.label}</option>)}
+          </select>
+        </label>
+        {target !== current && <MoveForm key={target} stage={target} card={card} busy={busy} onCancel={() => setTarget(current)} onMove={extra => move(target, extra)} />}
       </div>
-      {form && <MoveForm key={form} stage={form} card={card} busy={busy} onCancel={() => setForm(null)} onMove={extra => move(form, extra)} />}
       {error && <p className="board-panel-error" role="alert">{error}</p>}
       {openTasks.length > 0 && <div className="board-panel-calls">
         <button type="button" className="btn secondary" disabled={busy} onClick={() => run(async () => {
@@ -82,7 +87,7 @@ export function BoardPanel({ card, onClose, request }: { card: BoardCard; onClos
 
       <section className="board-panel-section" aria-labelledby={`${titleId}-tasks`}>
         <h3 id={`${titleId}-tasks`}>Tasks on this number</h3>
-        {tasks.map(task => <TaskNotes key={task.id} task={task} onSaved={refresh} />)}
+        {tasks.map(task => <TaskSection key={task.id} task={task} onSaved={refresh} />)}
       </section>
 
       <Timeline taskIds={card.tasks.map(task => task.id)} version={version} labelledBy={`${titleId}-timeline`} />
@@ -91,7 +96,7 @@ export function BoardPanel({ card, onClose, request }: { card: BoardCard; onClos
 }
 
 function MoveForm({ stage, card, busy, onCancel, onMove }: {
-  stage: FormStage; card: BoardCard; busy: boolean; onCancel: () => void; onMove: (extra: { reason?: string | null; wh_id?: string | null }) => void;
+  stage: Stage; card: BoardCard; busy: boolean; onCancel: () => void; onMove: (extra: { reason?: string | null; wh_id?: string | null }) => void;
 }) {
   const reasons = stage === "junk" ? JUNK_REASONS : stage === "rejected" ? REJECTION_REASONS : null;
   const [reason, setReason] = useState("");
@@ -131,7 +136,15 @@ function FollowUp({ card, busy, onSave }: { card: BoardCard; busy: boolean; onSa
   </form>;
 }
 
-function TaskNotes({ task, onSaved }: { task: BoardTask; onSaved: () => void }) {
+const KIND: Record<BoardTask["entity"], { title: string; noun: string }> = {
+  record: { title: "Listing", noun: "listing" }, call: { title: "AI follow-up", noun: "AI follow-up" },
+};
+// The same area wording as My Work: carpet, then built-up, then the listing's own area.
+const areaText = (task: BoardTask) => task.carpetArea ? `${area(task.carpetArea)} carpet`
+  : task.builtUpArea ? `${area(task.builtUpArea)} built-up` : area(task.listingArea);
+
+/** Everything My Work shows for a task, with its notes editable here. */
+function TaskSection({ task, onSaved }: { task: BoardTask; onSaved: () => void }) {
   const saved = task.remarks ?? "";
   const [notes, setNotes] = useState(saved);
   const [status, setStatus] = useState("");
@@ -143,18 +156,34 @@ function TaskNotes({ task, onSaved }: { task: BoardTask; onSaved: () => void }) 
     if (notes === baseline.current) setNotes(saved);
     baseline.current = saved;
   }, [saved]); // Only a new saved value should replace the field; typing must not.
-  const kind = task.entity === "record" ? "Listing" : "AI follow-up";
+  const kind = KIND[task.entity];
   async function save() {
     setSaving(true); setStatus("");
     try { await send(`/api/board/tasks/${task.id}`, "PATCH", { revision: task.revision, remarks: notes }); setStatus("Saved"); onSaved(); }
     catch (failure) { setStatus(failure instanceof Error ? failure.message : "Couldn't save notes."); }
     finally { setSaving(false); }
   }
-  return <section className="board-task">
-    <div className="board-task-head"><h4>{kind}</h4><RecordDetails id={task.entityId} entity={task.entity} label="Full record" className="btn-row" ariaLabel={`Full record for this ${kind.toLowerCase()}`} /></div>
-    <p className="board-task-meta">{[task.name, task.city, `Assigned ${shortDate(task.assignedAt)}`, task.state === "done" ? "Finished" : null].filter(Boolean).join(" · ")}</p>
-    {task.note && <p className="board-task-brief"><span>Assigner&apos;s note</span>{task.note}</p>}
-    <label className="board-field-label" htmlFor={notesId}>Notes</label>
+  const details = (label: string, section: "Overview" | "AI activity" | "Manual activity") =>
+    <RecordDetails id={task.entityId} entity={task.entity} label={label} initialSection={section} className="btn-row" ariaLabel={`${label} for this ${kind.noun}`} />;
+  return <section className="board-task" aria-label={kind.title}>
+    <div className="board-task-head"><h4>{kind.title}</h4>{details("Details", "Overview")}</div>
+    {task.name && <p className="board-task-meta">{task.name}</p>}
+    <WorkContext context={{ city: task.city, area: areaText(task), rent: rent(task.rent) }} />
+    <AssignmentBrief id={task.id} note={task.note} assignedBy={task.assignedBy} name={task.assignedByName} assignedAt={task.assignedAt} />
+    <div className="board-task-calls">
+      <div className="board-task-ai"><AiCallStatus result={task.aiResult} count={task.aiCount} />{task.aiCount > 0 && details("AI calls", "AI activity")}</div>
+      <div className="board-task-manual">
+        <span>{task.manualCalls ? `${task.manualCalls} manual ${task.manualCalls === 1 ? "call" : "calls"} · last: ${dispositionLabel(task.disposition)}${task.lastAttemptAt ? `, ${dateTime(task.lastAttemptAt)}` : ""}` : "No manual calls logged"}</span>
+        {details("Manual calls", "Manual activity")}
+      </div>
+    </div>
+    <dl className="board-task-facts">
+      <div><dt>Result</dt><dd><span className={`pill ${task.outcome ? `pill-${resultClass(task.outcome)}` : "pill-none"}`}>{task.outcome || "Not called yet"}</span></dd></div>
+      <div><dt>In DB?</dt><dd>{task.addedToDb ? "Added" : "Not yet"}</dd></div>
+      <div><dt>WH ID</dt><dd>{task.whId?.trim() || "—"}</dd></div>
+      <div><dt>Finished?</dt><dd>{task.state === "done" ? "Done" : "Open"}</dd></div>
+    </dl>
+    <label className="board-field-label" htmlFor={notesId}>Your notes</label>
     <textarea id={notesId} className="board-notes" rows={2} value={notes} placeholder="What did the owner say?" onChange={event => { setNotes(event.target.value); setStatus(""); }} />
     <div className="board-move-actions">
       <span role="status" className="board-task-status">{status}</span>

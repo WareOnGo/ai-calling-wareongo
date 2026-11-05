@@ -9,6 +9,9 @@ const sql = (statement: string) => execFileSync('podman', ['exec', '-i', CONTAIN
 const board = (page: any) => page.locator('.board-columns');
 const column = (page: any, code: string) => page.locator(`.board-column[data-code="${code}"]`);
 const card = (page: any, name: string) => board(page).locator('.board-card').filter({ hasText: name });
+// As on My Work: two quick filters, the rest behind "More filters".
+const QUICK_FILTERS = ['Work type', 'Follow-up'];
+const MORE_FILTERS = ['City', 'State', 'Assigned by', 'Assignment batch', 'Last updated'];
 const STAGE_HEADINGS = ['1 Inbound', '2A RnR', '2B Unavailable / rejected', '2C Available, details awaited', '3 Details collected', '4 Warehouse ID created', '5 Junk'];
 
 test('callers see their own work grouped by phone in seven stage columns', async ({ employeePage: page, shot }) => {
@@ -20,11 +23,16 @@ test('callers see their own work grouped by phone in seven stage columns', async
   await expect(card(page, 'Raghav Sharma')).toContainText('2 tasks');
   await expect(card(page, 'Raghav Sharma')).toContainText('+919811100001');
   for (const hidden of ['Suresh Kumar', 'Meera Nair', 'Latha Menon']) await expect(card(page, hidden)).toHaveCount(0);
-  await expect(page.locator('.board-strip [data-code="1"]')).toContainText('1');
+  // My Work-style filter dropdowns sit in the toolbar where the count strip used to be.
+  await expect(page.locator('.board-strip')).toHaveCount(0);
+  for (const name of QUICK_FILTERS) await expect(page.getByRole('combobox', { name, exact: true })).toBeVisible();
+  for (const name of MORE_FILTERS) await expect(page.getByRole('combobox', { name, exact: true })).toBeHidden();
+  await page.getByRole('button', { name: 'More filters' }).click();
+  await expect(page.getByRole('button', { name: 'More filters' })).toHaveAttribute('aria-expanded', 'true');
+  for (const name of MORE_FILTERS) await expect(page.getByRole('combobox', { name, exact: true })).toBeVisible();
   await expect(page.locator('.board-summary')).toHaveText('1 card');
   await expect(page.getByRole('link', { name: 'Board', exact: true })).toHaveAttribute('aria-current', 'page');
-  await page.getByRole('button', { name: 'Toggle filters' }).click();
-  await expect(page.getByRole('group', { name: 'Assigned to' })).toHaveCount(0);
+  await expect(page.getByRole('combobox', { name: 'Assigned to' })).toHaveCount(0);
   await shot(page, 'caller-board-employee');
 });
 
@@ -54,9 +62,7 @@ test('the board is personal like My Work, for admins too', async ({ adminPage: p
   await page.goto('/dashboard/board');
   await expect(page.locator('.board-summary')).toHaveText('0 cards');
   for (const others of ['Suresh Kumar', 'Raghav Sharma']) await expect(card(page, others)).toHaveCount(0);
-  await page.getByRole('button', { name: 'Toggle filters' }).click();
-  await expect(page.getByRole('group', { name: 'Assigned to' })).toHaveCount(0);
-  await page.keyboard.press('Escape');
+  await expect(page.getByRole('combobox', { name: 'Assigned to' })).toHaveCount(0);
   // An assignee filter in the URL cannot widen the view either.
   ownTask('admin@eval.test', 'rnr');
   await page.goto('/dashboard/board?assignee=raj%40eval.test');
@@ -91,9 +97,34 @@ test('search and filters narrow every column and can be cleared', async ({ emplo
   await expect(column(page, '1').locator('.board-empty')).toHaveText('No cards');
   await page.getByRole('button', { name: 'Clear filters' }).click();
   await expect(page.locator('.board-summary')).toHaveText('2 cards');
-  await page.goto('/dashboard/board?city=Delhi');
+  await page.getByRole('button', { name: 'More filters' }).click();
+  await page.getByRole('combobox', { name: 'City', exact: true }).selectOption('Delhi');
+  await page.getByRole('button', { name: 'Apply' }).first().click();
+  await expect(page).toHaveURL(/city=Delhi/);
   await expect(page.locator('.board-summary')).toHaveText('1 card');
   await expect(page.getByRole('button', { name: 'Remove City filter: Delhi' })).toBeVisible();
+  // An active "more" filter keeps its section open, and a quick filter keeps it applied.
+  await expect(page.getByRole('combobox', { name: 'City', exact: true })).toBeVisible();
+  await page.getByRole('combobox', { name: 'Work type' }).selectOption('record');
+  await page.getByRole('button', { name: 'Apply' }).first().click();
+  await expect(page).toHaveURL(/city=Delhi/);
+  await expect(page).toHaveURL(/type=record/);
+});
+
+test('work type and follow-up dropdowns narrow the board like My Work', async ({ employeePage: page }) => {
+  sql(`update bolna_assignments set next_due_at=now()-interval '1 hour' where id=5`);
+  await page.goto('/dashboard/board');
+  await page.getByRole('combobox', { name: 'Work type' }).selectOption('call');
+  await page.getByRole('button', { name: 'Apply' }).first().click();
+  await expect(page).toHaveURL(/type=call/);
+  // Raghav's card keeps only its AI follow-up task.
+  await expect(card(page, 'Raghav Sharma')).not.toContainText('2 tasks');
+  await page.goto('/dashboard/board?follow_up=none');
+  await expect(page.locator('.board-summary')).toHaveText('1 card');
+  await expect(card(page, 'Raghav Sharma')).not.toContainText('Overdue');
+  await page.goto('/dashboard/board?follow_up=overdue');
+  await expect(card(page, 'Raghav Sharma')).toContainText('Overdue');
+  await expect(page.getByRole('button', { name: 'Remove Follow-up filter: overdue' })).toHaveText(/Follow-up: Overdue/);
 });
 
 for (const theme of ['light', 'dark'] as const) {
