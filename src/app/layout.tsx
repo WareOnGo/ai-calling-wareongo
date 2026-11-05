@@ -8,6 +8,7 @@ import "./queue.css";
 import "./chrome.css";
 import "./batches.css";
 import "./team.css";
+import "./board.css";
 import "./dashboard/my/employee-work.css";
 
 const inter = localFont({

@@ -4,13 +4,13 @@
 import type { Outcome } from "./scope";
 
 export const STAGES = [
-  { slug: "inbound", code: "1", label: "Inbound", hint: "New or not yet worked", terminal: false },
-  { slug: "rnr", code: "2A", label: "RnR", hint: "Rang, no response", terminal: false },
-  { slug: "rejected", code: "2B", label: "Unavailable / rejected", hint: "Owner said no or is unavailable", terminal: true },
-  { slug: "awaiting_details", code: "2C", label: "Available, details awaited", hint: "Confirmed available; chase details", terminal: false },
-  { slug: "details_collected", code: "3", label: "Details collected", hint: "Size, rent and specs captured", terminal: false },
-  { slug: "warehouse_created", code: "4", label: "Warehouse ID created", hint: "Listed in the warehouse DB", terminal: true },
-  { slug: "junk", code: "5", label: "Junk", hint: "Wrong number or no response after repeated tries", terminal: true },
+  { slug: "inbound", short: "Inbound", code: "1", label: "Inbound", hint: "New or not yet worked", terminal: false },
+  { slug: "rnr", short: "RnR", code: "2A", label: "RnR", hint: "Rang, no response", terminal: false },
+  { slug: "rejected", short: "Rejected", code: "2B", label: "Unavailable / rejected", hint: "Owner said no or is unavailable", terminal: true },
+  { slug: "awaiting_details", short: "Awaiting", code: "2C", label: "Available, details awaited", hint: "Confirmed available; chase details", terminal: false },
+  { slug: "details_collected", short: "Details", code: "3", label: "Details collected", hint: "Size, rent and specs captured", terminal: false },
+  { slug: "warehouse_created", short: "Warehouse", code: "4", label: "Warehouse ID created", hint: "Listed in the warehouse DB", terminal: true },
+  { slug: "junk", short: "Junk", code: "5", label: "Junk", hint: "Wrong number or no response after repeated tries", terminal: true },
 ] as const;
 
 export type Stage = (typeof STAGES)[number]["slug"];

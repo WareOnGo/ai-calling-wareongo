@@ -59,6 +59,17 @@ describe("caller board read model", () => {
     expect(gowda).toMatchObject({ phone: "+919811600001", city: "Hoskote", assignee: caller.email, closed: false });
   });
 
+  it("keeps one card per phone when its tasks are in different stages, placed by the latest open task", async () => {
+    await task(await listing("9811600003", { owner: "Split Phone" }), { stage: "inbound", updated: hoursAgo(5) });
+    await task(await listing("9811600003", { owner: "Split Phone" }), { stage: "rnr", updated: hoursAgo(1) });
+    await task(await listing("9811600003", { owner: "Split Phone" }), { stage: "rejected", state: "done", updated: hoursAgo(0) });
+    const board = await loadBoard(caller, {});
+    expect(board.total).toBe(1);
+    const card = column(board, "rnr").cards[0];
+    expect(card).toMatchObject({ name: "Split Phone", stage: "rnr", closed: false });
+    expect(card.tasks.map(t => t.state).sort()).toEqual(["done", "open", "open"]);
+  });
+
   it("shows open work in every column but finished work only in 2B, 4 and 5, and never dropped work", async () => {
     await task(await listing("9811600011", { owner: "Open Details" }), { stage: "details_collected", outcome: "Available" });
     await task(await listing("9811600012", { owner: "Done Details" }), { stage: "details_collected", state: "done", outcome: "Available" });

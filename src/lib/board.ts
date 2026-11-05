@@ -1,4 +1,4 @@
-// Caller board read model: one card per caller, phone and stage, with a page of
+// Caller board read model: one card per caller and phone, with a page of
 // cards per column and a total for each column. Every read applies the viewer's
 // scope here, as the grid readers do (see scope.ts).
 import { query } from "./db";
@@ -84,7 +84,10 @@ export function boardQuery(viewer: Viewer, filters: BoardFilters, limits: Record
         ${TASK_FROM}
        where ${task}${context ? ` and ${context}` : ""}
     ), cards as (
-      select t.assignee, t.stage, coalesce(t.phone_key, t.entity_type || ':' || t.entity_id) as card_key,
+      -- One card per caller and phone. It sits in the stage of its most recently
+      -- worked open task; a card with only finished tasks uses its latest task.
+      select t.assignee, coalesce(t.phone_key, t.entity_type || ':' || t.entity_id) as card_key,
+             (array_agg(t.stage order by t.state = 'open' desc, t.updated_at desc, t.id desc))[1] as stage,
              json_agg(json_build_object('id', t.id::text, 'revision', t.revision, 'entity', t.entity_type, 'entityId', t.entity_id::text,
                'state', t.state, 'outcome', t.outcome, 'remarks', t.remarks, 'note', t.note, 'whId', t.wh_id, 'addedToDb', t.added_to_db,
                'disposition', t.disposition, 'nextDueAt', t.next_due_at, 'batchId', t.batch_id::text, 'assignedBy', t.assigned_by,
@@ -93,7 +96,7 @@ export function boardQuery(viewer: Viewer, filters: BoardFilters, limits: Record
              min(t.next_due_at) as next_due_at, max(t.updated_at) as updated_at, bool_and(t.state = 'done') as closed,
              array_agg(t.id) as ids, min(t.phone_key) as phone_key
         from tasks t
-       group by t.assignee, t.stage, coalesce(t.phone_key, t.entity_type || ':' || t.entity_id)
+       group by t.assignee, coalesce(t.phone_key, t.entity_type || ':' || t.entity_id)
     ), ranked as (
       select c.*, coalesce(c.next_due_at < now(), false) and not c.closed as overdue,
              count(*) over (partition by c.stage) as stage_total,
