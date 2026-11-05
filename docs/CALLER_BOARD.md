@@ -2,7 +2,7 @@
 
 The caller board replaces My Work with a seven-stage Kanban for callers, plus a
 per-caller funnel for admins. Status as of 5 November 2026: scope agreed,
-migration 019 written and rehearsed, nothing deployed.
+migration 019 applied to production; board UI not started.
 
 Sources: [PRD and interaction spec](https://claude.ai/artifact/UWzEVdSFT5GBVkB9Cn3pZk)
 and [prototype](https://claude.ai/artifact/5uDWaaY3rnp4LpK5DFW9n4) (board and admin funnel).
@@ -79,7 +79,7 @@ enforce ownership and completion rules itself.
 
 - [x] **0. Scope and branch.** Decisions above; branch fast-forwarded to `main`.
 - [x] **1. Migration 019** (`database/migrations/019_caller_board_stages.sql`): `stage`, `updated_at`, touch trigger, board index, backfill. Rehearsed locally; see `database/README.md`.
-- [ ] **1b. Apply 019 to production.** `npm run db:migrate` applies only 019. Needs explicit go-ahead.
+- [x] **1b. Apply 019 to production.** Applied 5 November 2026, 19:22 IST, and verified; see `database/README.md`.
 - [ ] **2. Board read layer** (`src/lib/board.ts`). Tasks per stage for the viewer through `assignmentScope` (callers see their own, admins see all with an assignee filter). Group by phone. Per-column paging ("load more", 50 cards). Stage counts for the strip. Filters: city, state, assigned by, assignment batch, last updated (24 h / 7 d / 30 d), assignee (admins only).
 - [ ] **3. Board UI.** Built at a new route during development, then swapped in for `/dashboard/my`. Columns with code and color, count strip, cards (owner, city, phone, warehouse badge with ID count from `warehouseIds`, follow-up date with an overdue state, assignee).
 - [ ] **4. Drawer and stage moves.** One write endpoint with a revision check. Writing `stage` is audited by the existing trigger. 2B/4/5 set `state='done'` and `completed_at`; moving out of them reopens the task after an app-side ownership check. Junk requires a reason (stored in `disposition`). Drawer shows the timeline (stage changes and remark edits from the audit table, AI calls, manual calls; Callyzer for admins), remarks, follow-up date and stage buttons. Board completions need a quality-guard exception like 018's for databases where the guard is enabled (migration 020).

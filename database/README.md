@@ -492,9 +492,19 @@ A read-only dry run of the same inference SQL against production produced:
 | 4 Warehouse ID | 23 | 359 |
 | 5 Junk | 6 | 125 |
 
-Production has baseline and 001–018 applied, so `npm run db:migrate` applies only
-019. It runs in one transaction under the runner's 2 s lock and 30 s statement
-timeouts. Not yet applied to production.
+019 was applied to production on 5 November 2026 at 19:22 IST from commit `d8ca1b3`
+with `database/migrate.mjs` over the session pooler, after a read-only pre-flight
+showed the 19 existing ledger entries matching their source checksums and 019 as
+the only pending file. Verified after commit: 20 ledger entries with 019's checksum;
+both columns NOT NULL with their defaults and no null `updated_at`; the stage check
+validated; the board index valid; all prior trigger enable states unchanged
+(`bolna_assignment_contacts_sync` and `bolna_assignment_quality_guard` still
+disabled) and `bolna_assignment_touch` enabled; 3,433 `stage-backfill` audit rows,
+one per task, none changing any field other than `stage` and `updated_at` and none
+changing `revision`. A second runner pass made no changes. Open tasks after the
+backfill: 484 Inbound, 339 RnR, 14 Rejected, 131 Awaiting details, 59 Details
+collected, 25 Warehouse ID, 6 Junk (two more reached Warehouse ID between the dry
+run and the apply).
 
 To reverse before any board writes depend on it:
 
