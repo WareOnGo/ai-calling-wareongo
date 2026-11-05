@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { STAGES, STAGE_SLUGS, TERMINAL_STAGES, isStage, isTerminal, stageInfo, planMove, MoveError, type TaskSnapshot } from "./board-stages";
+import { STAGES, STAGE_SLUGS, TERMINAL_STAGES, isStage, isTerminal, stageInfo, planMove, movableTasks, MoveError, type TaskSnapshot } from "./board-stages";
+
+describe("which tasks a card move touches", () => {
+  it("moves only open tasks while any are open, so finished listings are not reopened by accident", () => {
+    const tasks = [{ id: "1", state: "open" }, { id: "2", state: "done" }, { id: "3", state: "open" }];
+    expect(movableTasks(tasks).map(t => t.id)).toEqual(["1", "3"]);
+  });
+  it("moves every task of a finished card", () => {
+    expect(movableTasks([{ id: "1", state: "done" }, { id: "2", state: "done" }]).map(t => t.id)).toEqual(["1", "2"]);
+  });
+});
 
 const task = (overrides: Partial<TaskSnapshot> = {}): TaskSnapshot => ({
   stage: "inbound", state: "open", outcome: null, wh_id: null, added_to_db: false, disposition: null, warehouseIds: [], ...overrides,

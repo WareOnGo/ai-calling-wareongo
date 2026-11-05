@@ -518,3 +518,24 @@ DELETE FROM bolna_schema_migrations WHERE name = '019_caller_board_stages.sql';
 ```
 
 The backfill's `stage-backfill` audit rows remain as history.
+
+## Caller board workflow (020)
+
+`020_caller_board_workflow.sql` lets the caller board finish tasks under My Work's
+completion contract, without a logged call or closure form. It replaces
+`bolna_enforce_assignment_quality()` with 018's body plus a transaction-local
+`bolna.employee_workflow = 'board'` mode. The board sets that mode, and the
+`bolna.actor`, only after authenticating the user, who must own the task or be an
+active admin. A board write may change the stage, result, warehouse fields, notes,
+completion, closure, follow-up date, `outcome_attempt_id` and the attempt fields
+set when it logs a no-answer call; anything else falls through to the normal guard.
+018's classic mode is unchanged. Trigger enable states are unchanged, so production,
+where the guard is disabled, behaves as before.
+
+Moving a card into RnR records one `no_answer` manual attempt per task per IST day.
+These are ordinary manual attempts: they appear in Team's recorded calls and in the
+card timeline.
+
+Rehearsed on the disposable stage database and covered by
+`tests/integration/caller-board-moves.test.ts`, with the guard enabled. Not yet
+applied to production.

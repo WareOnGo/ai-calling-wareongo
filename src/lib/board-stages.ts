@@ -49,6 +49,13 @@ export type MovePlan = {
   complete: boolean; reopen: boolean; clearFollowUp: boolean; logNoAnswer: boolean; unchanged: boolean;
 };
 
+/** A card move touches its open tasks; a finished card moves all of them. */
+export const movableTasks = <T extends { state: string }>(tasks: T[]): T[] =>
+  tasks.some(task => task.state === "open") ? tasks.filter(task => task.state === "open") : tasks;
+
+/** Unanswered call outcomes: each IST day with one counts as a strike. */
+export const STRIKE_DISPOSITIONS = ["no_answer", "busy", "switched_off", "owner_unresponsive"] as const;
+
 export class MoveError extends Error {
   constructor(public code: string, public field: "reason" | "wh_id" | "stage", message: string) { super(message); }
 }
