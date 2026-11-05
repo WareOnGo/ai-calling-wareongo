@@ -540,4 +540,11 @@ card timeline.
 Rehearsed on the disposable stage database and covered, with the guard enabled, by
 the board's integration tests on the `codex/bolna-visual-overhaul` branch. On main,
 the employee workflow and shared-schema tests check that classic My Work is unchanged.
-Not yet applied to production.
+
+020 was applied to production on 5 November 2026 at 21:21 IST from main commit
+`8a03fbd`, after a read-only pre-flight showed 20 ledger entries matching their
+source checksums and 020 as the only pending file. Verified after commit: 21 ledger
+entries with 020's checksum; the function has the board mode and an unchanged
+classic list; every trigger enable state is unchanged (the quality guard is still
+disabled); assignment and audit row counts are unchanged (3,433 and 11,919). A
+second runner pass made no changes.
