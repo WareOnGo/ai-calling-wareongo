@@ -102,5 +102,7 @@ describe("logging another no-answer from the board", () => {
     expect((await logNoAnswer([{ id: open, revision: 9 }])).status).toBe(409);
     const theirs = await task("9811800011", { assignee: other.email });
     expect((await logNoAnswer(await refs(theirs))).status).toBe(409);
+    auth.user = { ...admin }; // the board is personal for admins too
+    expect((await logNoAnswer(await refs(theirs))).status).toBe(409);
   });
 });

@@ -43,6 +43,12 @@ const TASK_FROM = `from bolna_assignments a
   ${ASSIGNMENT_SOURCE_JOIN} ${ASSIGNMENT_PHONE_JOIN}`;
 
 /**
+ * The board is a personal view like My Work: everyone, admins included, sees and
+ * edits only their own work there. Admins oversee callers through the funnel.
+ */
+export const ownWork = (user: Viewer): Viewer => ({ email: user.email, isAdmin: false });
+
+/**
  * Predicates for the board. `task` uses only assignment columns; `context` needs
  * the listing/call joins in TASK_FROM. Open work shows in every column; finished
  * work only in the stages that end a task. Employees only ever see their own work.

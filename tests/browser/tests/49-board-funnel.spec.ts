@@ -37,12 +37,12 @@ test('funnel filters change the numbers', async ({ adminPage: page }) => {
   await expect(page.getByRole('button', { name: 'Remove City filter: Delhi' })).toBeVisible();
 });
 
-test('a caller\'s name opens their board', async ({ adminPage: page }) => {
+test('a caller\'s name opens their assignments, since the board is personal', async ({ adminPage: page }) => {
   seed();
   await page.goto('/dashboard/board/funnel');
   await page.getByRole('link', { name: 'Raj Eval' }).click();
-  await expect(page).toHaveURL(/\/dashboard\/board\?assignee=raj%40eval\.test$/);
-  await expect(page.locator('.board-columns .board-card')).toHaveText([/Suresh Kumar/]);
+  await expect(page).toHaveURL(/\/dashboard\/assignments\?assignee=raj%40eval\.test$/);
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Assignments');
 });
 
 test('employees cannot open the funnel and see no funnel tab', async ({ employeePage: page }) => {

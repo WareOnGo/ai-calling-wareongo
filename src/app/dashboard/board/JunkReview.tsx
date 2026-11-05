@@ -11,7 +11,7 @@ const inDays = (days: number) => new Date(Date.now() + days * 86400_000).toLocal
 export const leads = (count: number) => `${count} lead${count === 1 ? "" : "s"}`;
 
 /** The daily digest: five-strike cards wait here until a person confirms or keeps trying. */
-export function JunkDigest({ total, cards, isAdmin }: { total: number; cards: BoardCard[]; isAdmin: boolean }) {
+export function JunkDigest({ total, cards }: { total: number; cards: BoardCard[] }) {
   const [open, setOpen] = useState(false);
   if (!total && !open) return null;
   return <>
@@ -19,11 +19,11 @@ export function JunkDigest({ total, cards, isAdmin }: { total: number; cards: Bo
       <p>{leads(total)} {total === 1 ? "has" : "have"} {STRIKE_LIMIT} strikes and {total === 1 ? "is" : "are"} proposed for Junk. Nothing moves until you confirm.</p>
       <button type="button" className="btn secondary" onClick={() => setOpen(true)}>Review {leads(total)}</button>
     </section>}
-    {open && <JunkReview cards={cards} total={total} isAdmin={isAdmin} onClose={() => setOpen(false)} />}
+    {open && <JunkReview cards={cards} total={total} onClose={() => setOpen(false)} />}
   </>;
 }
 
-function JunkReview({ cards, total, isAdmin, onClose }: { cards: BoardCard[]; total: number; isAdmin: boolean; onClose: () => void }) {
+function JunkReview({ cards, total, onClose }: { cards: BoardCard[]; total: number; onClose: () => void }) {
   const { refresh } = useDashboardUI();
   // Decided cards leave the list at once; the board refreshes behind the dialog.
   const [decided, setDecided] = useState<string[]>([]);
@@ -40,7 +40,7 @@ function JunkReview({ cards, total, isAdmin, onClose }: { cards: BoardCard[]; to
     <div className="modal-body board-review">
       <p className="board-review-intro">These leads had no answer on {STRIKE_LIMIT} different days. Move them to Junk, or choose when to try again.</p>
       {error && <p className="board-panel-error" role="alert">{error}</p>}
-      {remaining.length ? <ul className="board-proposals">{remaining.map(card => <Proposal key={cardId(card)} card={card} isAdmin={isAdmin} busy={busy === cardId(card)}
+      {remaining.length ? <ul className="board-proposals">{remaining.map(card => <Proposal key={cardId(card)} card={card} busy={busy === cardId(card)}
         onJunk={() => decide(card, () => requestMove(card, "junk", { reason: "owner_unresponsive" }))}
         onKeep={day => decide(card, () => sendJson("/api/board/follow-up", "POST", { tasks: taskRefs(card.tasks.filter(task => task.state === "open")), next_due_at: `${day}T10:00:00+05:30` }))} />)}
       </ul> : <p className="board-empty">No leads waiting for review.</p>}
@@ -50,13 +50,13 @@ function JunkReview({ cards, total, isAdmin, onClose }: { cards: BoardCard[]; to
   </Dialog>;
 }
 
-function Proposal({ card, isAdmin, busy, onJunk, onKeep }: { card: BoardCard; isAdmin: boolean; busy: boolean; onJunk: () => void; onKeep: (day: string) => void }) {
+function Proposal({ card, busy, onJunk, onKeep }: { card: BoardCard; busy: boolean; onJunk: () => void; onKeep: (day: string) => void }) {
   const [day, setDay] = useState(inDays(3));
   const name = card.name?.trim() || "Unnamed owner";
   return <li className="board-proposal" aria-busy={busy}>
     <div className="board-proposal-lead">
       <strong>{name}</strong>
-      <span>{[card.phone, card.city, isAdmin ? card.assigneeName || card.assignee : null].filter(Boolean).join(" · ")}</span>
+      <span>{[card.phone, card.city].filter(Boolean).join(" · ")}</span>
       <span className="board-proposal-strikes">{card.strikes} strikes</span>
     </div>
     <div className="board-proposal-actions">

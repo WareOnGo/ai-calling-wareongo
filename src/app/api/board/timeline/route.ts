@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
+import { ownWork } from "@/lib/board";
 import { apiError, bigintId } from "@/lib/api";
 import { cardTimeline } from "@/lib/board-moves";
 
@@ -15,6 +16,6 @@ export async function GET(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   try {
     const tasks = ids.parse([...new Set(req.nextUrl.searchParams.getAll("task"))]);
-    return NextResponse.json({ events: await cardTimeline(user, tasks) }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ events: await cardTimeline(ownWork(user), tasks) }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return apiError(error); }
 }

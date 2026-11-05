@@ -130,12 +130,24 @@ describe("moving board cards", () => {
     expect((await row(first)).stage).toBe("inbound");
   });
 
-  it("does not let an employee move another caller's card, but lets an admin, attributed to the admin", async () => {
-    const id = await task(await listing("9811700009"), { assignee: other.email });
-    expect((await moveCard({ tasks: await refs(id), stage: "rejected" })).status).toBe(409);
+  it("only moves the signed-in person's own cards, for admins too, like My Work", async () => {
+    const theirs = await task(await listing("9811700009"), { assignee: other.email });
+    expect((await moveCard({ tasks: await refs(theirs), stage: "rejected" })).status).toBe(409);
     auth.user = { ...admin };
-    expect((await moveCard({ tasks: await refs(id), stage: "rejected" })).status).toBe(200);
-    expect((await query("select actor from bolna_assignment_changes where assignment_id=$1 order by id desc limit 1", [id])).rows[0].actor).toBe(admin.email);
+    expect((await moveCard({ tasks: await refs(theirs), stage: "rejected" })).status).toBe(409);
+    expect((await row(theirs)).stage).toBe("inbound");
+    const own = await task(await listing("9811700014"), { assignee: admin.email });
+    expect((await moveCard({ tasks: await refs(own), stage: "rejected" })).status).toBe(200);
+    expect((await query("select actor from bolna_assignment_changes where assignment_id=$1 order by id desc limit 1", [own])).rows[0].actor).toBe(admin.email);
+  });
+
+  it("keeps an admin's notes, follow-ups, calls and timeline to their own tasks", async () => {
+    const theirs = await task(await listing("9811700015"), { assignee: other.email });
+    auth.user = { ...admin };
+    const notes = await editNotes(new NextRequest("http://localhost/api/board/tasks", { method: "PATCH", body: JSON.stringify({ revision: 0, remarks: "admin note" }) }), { params: Promise.resolve({ id: theirs }) });
+    expect(notes.status).toBe(409);
+    expect((await post(followUp, "/api/board/follow-up", { tasks: await refs(theirs), next_due_at: null })).status).toBe(409);
+    expect((await (await timeline(new NextRequest(`http://localhost/api/board/timeline?task=${theirs}`))).json()).events).toEqual([]);
   });
 
   it("completes work without a logged call only through the board's workflow", async () => {

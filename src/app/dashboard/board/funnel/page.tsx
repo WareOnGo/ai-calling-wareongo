@@ -3,7 +3,7 @@ import { requireAdmin } from "@/lib/auth";
 import type { SearchValues } from "@/lib/filter-values";
 import { boardFilterOptions } from "@/lib/board";
 import { loadFunnel, type FunnelCounts } from "@/lib/board-funnel";
-import { boardHref, boardSearchValues, parseBoardFilters } from "@/lib/board-filters";
+import { boardSearchValues, parseBoardFilters } from "@/lib/board-filters";
 import { STAGES } from "@/lib/board-stages";
 import { BoardHeader } from "../BoardHeader";
 import { BoardFilters } from "../BoardFilters";
@@ -20,7 +20,7 @@ export default async function FunnelPage({ searchParams }: { searchParams: Promi
   const [{ rows, totals }, options] = await Promise.all([loadFunnel(user, filters), boardFilterOptions(user)]);
   return <>
     <BoardHeader view="funnel" isAdmin />
-    <BoardFilters applied={boardSearchValues(filters)} options={options} isAdmin action="/dashboard/board/funnel" search={false} />
+    <BoardFilters applied={boardSearchValues(filters)} options={options} showAssignee action="/dashboard/board/funnel" search={false} />
     <div className="funnel-page">
       <dl className="funnel-kpis">
         <Kpi label="Total leads" value={String(totals.leads)} note="One per caller and phone" />
@@ -36,7 +36,8 @@ export default async function FunnelPage({ searchParams }: { searchParams: Promi
             <th scope="col" className="num">Leads</th><th scope="col" className="num">To warehouse</th><th scope="col" className="num">Warehouse IDs</th><th scope="col">Funnel mix</th>
           </tr></thead>
           <tbody>{rows.map(row => <tr key={row.assignee}>
-            <th scope="row"><Link href={boardHref({ assignee: [row.assignee] })} title={row.assignee}>{row.name || row.assignee}</Link></th>
+            {/* The board is personal; a caller's work is reviewed on Assignments. */}
+            <th scope="row"><Link href={`/dashboard/assignments?assignee=${encodeURIComponent(row.assignee)}`} title={row.assignee}>{row.name || row.assignee}</Link></th>
             <Counts stages={row.stages} leads={row.leads} reached={row.reachedWarehouse} ids={row.warehouseIdCount} />
           </tr>)}</tbody>
           <tfoot><tr>

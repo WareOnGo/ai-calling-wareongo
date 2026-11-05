@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { boardWhere } from "./board";
+import { boardWhere, ownWork } from "./board";
+
+describe("whose work the board shows", () => {
+  it("is always the signed-in person's own work, for admins too, like My Work", () => {
+    expect(ownWork({ email: "admin@eval.test", isAdmin: true })).toEqual({ email: "admin@eval.test", isAdmin: false });
+    const params: unknown[] = [];
+    expect(boardWhere(ownWork({ email: "Admin@Eval.test", isAdmin: true }), { assignee: ["raj@eval.test"] }, params).task).toContain("a.assignee = $1");
+    expect(params).toEqual(["admin@eval.test"]);
+  });
+});
 
 const employee = { email: "Priya@Eval.test", isAdmin: false };
 const admin = { email: "admin@eval.test", isAdmin: true };

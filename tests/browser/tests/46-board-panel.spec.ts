@@ -93,11 +93,12 @@ test('the keyboard opens a card, Escape closes the panel and focus returns to th
   await expect(cardButton(page, 'Raghav Sharma')).toBeFocused();
 });
 
-test('clicking another card swaps the panel', async ({ adminPage: page }) => {
+test('clicking another card swaps the panel', async ({ employeePage: page }) => {
+  sql(`update bolna_assignments set stage='rejected' where id=2`); // Meera, finished: shown in 2B
   await page.goto('/dashboard/board');
   await cardButton(page, 'Raghav Sharma').click();
-  await cardButton(page, 'Suresh Kumar').click();
-  await expect(panel(page).getByRole('heading', { level: 2 })).toHaveText('Suresh Kumar');
+  await cardButton(page, 'Meera Nair').click();
+  await expect(panel(page).getByRole('heading', { level: 2 })).toHaveText('Meera Nair');
   await expect(cardButton(page, 'Raghav Sharma')).toHaveAttribute('aria-expanded', 'false');
 });
 

@@ -28,13 +28,17 @@ test('callers see their own work grouped by phone in seven stage columns', async
   await shot(page, 'caller-board-employee');
 });
 
-test('cards show follow-up dates, overdue work, finished work and warehouse IDs', async ({ adminPage: page }) => {
+// A phone-less listing, so it can be given to anyone without phone-ownership conflicts.
+const ownTask = (assignee: string, stage: string, extra = '') => sql(`insert into bolna_assignments(entity_type,entity_id,assignee,assigned_by,state,stage${extra ? ',next_due_at' : ''})
+  values ('record','a0000000-0000-4000-8000-000000000006','${assignee}','admin@eval.test','open','${stage}'${extra ? `,${extra}` : ''})`);
+
+test('cards show follow-up dates, overdue work, finished work and warehouse IDs', async ({ employeePage: page }) => {
   // Raghav's listing (RnR, worked last) and AI follow-up (Inbound) share a phone: one card, in RnR.
   // updated_at is set by the database, so work the follow-up first in its own transaction.
   sql(`update bolna_assignments set remarks='checked' where id=5`);
   sql(`update bolna_assignments set stage='rnr', next_due_at=now()-interval '1 day' where id=1;
-       update bolna_assignments set stage='warehouse_created' where id=2;
-       update bolna_assignments set stage='awaiting_details', next_due_at=now()+interval '2 days' where id=4`);
+       update bolna_assignments set stage='warehouse_created' where id=2`);
+  ownTask('priya@eval.test', 'awaiting_details', "now()+interval '2 days'");
   await page.goto('/dashboard/board');
   await expect(card(page, 'Raghav Sharma')).toHaveCount(1);
   await expect(column(page, '2A').locator('.board-card')).toContainText('2 tasks');
@@ -46,19 +50,20 @@ test('cards show follow-up dates, overdue work, finished work and warehouse IDs'
   await expect(finished.locator('.board-wh')).toHaveText('1 warehouse');
 });
 
-test('admins see every caller and can narrow the board to chosen callers', async ({ adminPage: page }) => {
+test('the board is personal like My Work, for admins too', async ({ adminPage: page }) => {
   await page.goto('/dashboard/board');
-  await expect(card(page, 'Suresh Kumar')).toContainText('Raj Eval');
-  await expect(card(page, 'Raghav Sharma')).toContainText('Priya Eval');
+  await expect(page.locator('.board-summary')).toHaveText('0 cards');
+  for (const others of ['Suresh Kumar', 'Raghav Sharma']) await expect(card(page, others)).toHaveCount(0);
   await page.getByRole('button', { name: 'Toggle filters' }).click();
-  const panel = page.locator('.filter-panel');
-  await panel.locator('summary', { hasText: 'Assigned to' }).click();
-  await panel.getByRole('checkbox', { name: 'Raj Eval' }).check();
-  await panel.getByRole('button', { name: 'Apply' }).click();
-  await expect(page).toHaveURL(/assignee=raj%40eval\.test/);
-  await expect(card(page, 'Raghav Sharma')).toHaveCount(0);
-  await expect(card(page, 'Suresh Kumar')).toHaveCount(1);
-  await expect(page.getByRole('button', { name: 'Remove Assigned to filter: raj@eval.test' })).toHaveText(/Assigned to: Raj Eval/);
+  await expect(page.getByRole('group', { name: 'Assigned to' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  // An assignee filter in the URL cannot widen the view either.
+  ownTask('admin@eval.test', 'rnr');
+  await page.goto('/dashboard/board?assignee=raj%40eval.test');
+  await expect(page.locator('.board-summary')).toHaveText('1 card');
+  await expect(card(page, 'No Phone Owner')).toHaveCount(1);
+  await expect(card(page, 'No Phone Owner')).not.toContainText('Eval Admin');
+  await expect(page.getByRole('navigation', { name: 'Board pages' }).getByRole('link', { name: 'Funnel' })).toBeVisible();
 });
 
 test('a column shows one page of cards and loads more on request', async ({ employeePage: page }) => {
@@ -92,7 +97,7 @@ test('search and filters narrow every column and can be cleared', async ({ emplo
 });
 
 for (const theme of ['light', 'dark'] as const) {
-  test(`the board stays readable on a laptop and a phone in the ${theme} theme`, async ({ adminPage: page, shot }) => {
+  test(`the board stays readable on a laptop and a phone in the ${theme} theme`, async ({ employeePage: page, shot }) => {
     sql(`update bolna_assignments set stage='rnr', next_due_at=now()-interval '1 day' where id=1;
          update bolna_assignments set stage='warehouse_created' where id=2`);
     await page.setViewportSize({ width: 1366, height: 768 });

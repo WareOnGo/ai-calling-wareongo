@@ -13,8 +13,9 @@ import { SelectFilter } from "../FilterFields";
 const WORK_KEYS = ["assignee", "assigned_by", "batch", "updated"];
 const LOCATION_KEYS = ["city", "region"];
 
-export function BoardFilters({ applied, options, isAdmin, action = BOARD_PATH, search = true }: {
-  applied: SearchValues; options: BoardFilterOptions; isAdmin: boolean; action?: string; search?: boolean;
+/** The board is personal, so only the admin funnel offers the caller (assignee) filter. */
+export function BoardFilters({ applied, options, showAssignee = false, action = BOARD_PATH, search = true }: {
+  applied: SearchValues; options: BoardFilterOptions; showAssignee?: boolean; action?: string; search?: boolean;
 }) {
   const people = (list: { email: string; name: string | null }[]) => list.map(person => ({ value: person.email, label: person.name || person.email }));
   const batches = [{ value: "none", label: "No batch" }, ...options.batches.map(batch => ({
@@ -30,7 +31,7 @@ export function BoardFilters({ applied, options, isAdmin, action = BOARD_PATH, s
     <ApplyButton />
     <FilterPanel groups={[
       { label: "Work", count: countFilters(applied, WORK_KEYS), content: <>
-        {isAdmin && <MultiSelect name="assignee" label="Assigned to" value={applied.assignee} options={people(options.assignees)} />}
+        {showAssignee && <MultiSelect name="assignee" label="Assigned to" value={applied.assignee} options={people(options.assignees)} />}
         <MultiSelect name="assigned_by" label="Assigned by" value={applied.assigned_by} options={people(options.assigners)} />
         <MultiSelect name="batch" label="Assignment batch" value={applied.batch} options={batches} />
         <SelectFilter name="updated" label="Last updated" applied={applied} any="Any time" options={Object.entries(UPDATED_WINDOWS).map(([value, label]) => ({ value, label }))} />

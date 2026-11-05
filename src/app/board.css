@@ -61,7 +61,6 @@ a.board-strip-item:hover { background: var(--hover); text-decoration: none; }
 .board-followup.overdue, .board-wh { padding: 1px 8px; border: 1px solid; border-radius: var(--radius-pill); font-weight: 600; }
 .board-followup.overdue { color: var(--fill-red-tx); background: var(--fill-red-bg); border-color: var(--fill-red-border); }
 .board-wh { color: var(--fill-green-tx); background: var(--fill-green-bg); border-color: var(--fill-green-border); }
-.board-card-assignee { margin-left: auto; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
 
 /* Strikes: dots plus a written count. Amber from four, so five is not a surprise. */
 .board-card-strikes { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 2px; }

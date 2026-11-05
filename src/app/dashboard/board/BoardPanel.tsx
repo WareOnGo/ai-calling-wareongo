@@ -53,7 +53,7 @@ export function BoardPanel({ card, onClose, request }: { card: BoardCard; onClos
       <div className="board-panel-identity">
         <h2 id={titleId} ref={heading} tabIndex={-1}>{card.name?.trim() || "Unnamed owner"}</h2>
         <div className="board-panel-phone">{card.phone ? <CopyText value={card.phone} label="phone number" /> : <span className="muted">No phone number</span>}</div>
-        <p className="board-panel-meta">{[card.city, card.region, card.assigneeName || card.assignee, card.closed ? "Closed" : null,
+        <p className="board-panel-meta">{[card.city, card.region, card.closed ? "Closed" : null,
           card.strikes ? `${card.strikes} of ${STRIKE_LIMIT} strikes` : null].filter(Boolean).join(" · ")}</p>
       </div>
       <button type="button" className="modal-close" aria-label="Close lead" onClick={onClose}>×</button>

@@ -29,6 +29,7 @@ has a warehouse in the DB or open work with another caller.
 
 | Topic | Decision |
 | --- | --- |
+| Whose work | The board is a personal view like My Work: everyone, admins included, sees and edits only their own work there, and the board's APIs change only the signed-in person's tasks. Admins oversee callers in the Funnel, where a caller's name opens Assignments filtered to them. |
 | Card | One card per caller and phone. It sits in the stage of its most recently worked open task (or latest task, if all are finished). Allocation already keeps one caller per phone. |
 | What the board shows | Open tasks in every column, plus finished tasks only in 2B, 4 and 5. Finished tasks in other stages count only in the funnel. |
 | Moving a card | Moves its open tasks, or every task of a finished card, all or nothing, checking each task's revision first. |

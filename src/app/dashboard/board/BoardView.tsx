@@ -18,8 +18,9 @@ const DRAG_TYPE = "application/x-callongo-card";
 type Drag = { onStart: (card: BoardCard) => void; onEnd: () => void; onOver: (stage: Stage) => void; onDrop: (stage: Stage, event: DragEvent) => void;
   dragging: string | null; target: Stage | null; moving: string | null };
 
-export function BoardView({ board, proposals, filters, limits, isAdmin }: {
-  board: Board; proposals: { total: number; cards: BoardCard[] }; filters: BoardFilters; limits: ColumnLimits; isAdmin: boolean;
+/** The signed-in person's own board; every card here is theirs, so cards never name a caller. */
+export function BoardView({ board, proposals, filters, limits }: {
+  board: Board; proposals: { total: number; cards: BoardCard[] }; filters: BoardFilters; limits: ColumnLimits;
 }) {
   const { refresh, notify } = useDashboardUI();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -60,7 +61,7 @@ export function BoardView({ board, proposals, filters, limits, isAdmin }: {
   };
 
   return <>
-    <JunkDigest total={proposals.total} cards={proposals.cards} isAdmin={isAdmin} />
+    <JunkDigest total={proposals.total} cards={proposals.cards} />
     <nav className="board-strip" aria-label="Cards per stage">{board.columns.map(column => {
       const stage = stageInfo(column.stage);
       return <a key={column.stage} className="board-strip-item" data-stage={column.stage} data-code={stage.code} href={`#board-${column.stage}`}
@@ -71,15 +72,15 @@ export function BoardView({ board, proposals, filters, limits, isAdmin }: {
     <div className={`board-body${selected ? " has-panel" : ""}${dragging ? " is-dragging" : ""}`}>
       <div className="board-scroller" role="region" aria-label="Board columns" tabIndex={0}>
         <div className="board-columns">{board.columns.map(column => <Column key={column.stage} column={column} filters={filters} limits={limits}
-          isAdmin={isAdmin} selectedId={selected ? selectedId : null} onSelect={select} drag={drag} />)}</div>
+          selectedId={selected ? selectedId : null} onSelect={select} drag={drag} />)}</div>
       </div>
       {selected && <BoardPanel card={selected} onClose={close} request={request} />}
     </div>
   </>;
 }
 
-function Column({ column, filters, limits, isAdmin, selectedId, onSelect, drag }: {
-  column: BoardColumn; filters: BoardFilters; limits: ColumnLimits; isAdmin: boolean; selectedId: string | null; onSelect: (id: string) => void; drag: Drag;
+function Column({ column, filters, limits, selectedId, onSelect, drag }: {
+  column: BoardColumn; filters: BoardFilters; limits: ColumnLimits; selectedId: string | null; onSelect: (id: string) => void; drag: Drag;
 }) {
   const { navigate, pending } = useDashboardUI();
   const stage = stageInfo(column.stage);
@@ -96,7 +97,7 @@ function Column({ column, filters, limits, isAdmin, selectedId, onSelect, drag }
     </div>
     <p className="board-column-hint">{stage.hint}</p>
     {column.cards.length ? <ol className="board-cards">{column.cards.map(card => <li key={cardId(card)}>
-      <Card card={card} isAdmin={isAdmin} selected={cardId(card) === selectedId} moving={drag.moving === cardId(card)}
+      <Card card={card} selected={cardId(card) === selectedId} moving={drag.moving === cardId(card)}
         onSelect={() => onSelect(cardId(card))} onDragStart={() => drag.onStart(card)} onDragEnd={drag.onEnd} />
     </li>)}</ol> : <p className="board-empty">No cards</p>}
     {remaining > 0 && <button type="button" className="btn-row board-more" disabled={pending}
@@ -106,8 +107,8 @@ function Column({ column, filters, limits, isAdmin, selectedId, onSelect, drag }
   </section>;
 }
 
-function Card({ card, isAdmin, selected, moving, onSelect, onDragStart, onDragEnd }: {
-  card: BoardCard; isAdmin: boolean; selected: boolean; moving: boolean; onSelect: () => void; onDragStart: () => void; onDragEnd: () => void;
+function Card({ card, selected, moving, onSelect, onDragStart, onDragEnd }: {
+  card: BoardCard; selected: boolean; moving: boolean; onSelect: () => void; onDragStart: () => void; onDragEnd: () => void;
 }) {
   const name = card.name?.trim() || "Unnamed owner";
   const meta = [card.city, card.tasks.length > 1 ? plural(card.tasks.length, "task") : null].filter(Boolean).join(" · ");
@@ -127,10 +128,9 @@ function Card({ card, isAdmin, selected, moving, onSelect, onDragStart, onDragEn
     <span className="board-card-phone">{card.phone || "No phone number"}</span>
     {meta && <span className="board-card-meta">{meta}</span>}
     {card.strikes > 0 && <Strikes count={card.strikes} proposed={card.proposedJunk} />}
-    {(followUp || card.warehouseIds.length > 0 || isAdmin) && <span className="board-card-foot">
+    {(followUp || card.warehouseIds.length > 0) && <span className="board-card-foot">
       {followUp && <span className={`board-followup${card.overdue ? " overdue" : ""}`}>{card.overdue ? "Overdue · " : "Follow up "}{shortDate(card.nextDueAt)}</span>}
       {card.warehouseIds.length > 0 && <span className="board-wh" title={`Warehouse IDs: ${card.warehouseIds.join(", ")}`}>{plural(card.warehouseIds.length, "warehouse")}</span>}
-      {isAdmin && <span className="board-card-assignee" title={card.assignee}>{card.assigneeName || card.assignee}</span>}
     </span>}
   </button>;
 }

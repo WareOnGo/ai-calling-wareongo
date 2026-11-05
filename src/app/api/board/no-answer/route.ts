@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
+import { ownWork } from "@/lib/board";
 import { apiError, bigintId, jsonBody, revision } from "@/lib/api";
 import { logNoAnswer } from "@/lib/board-moves";
 
@@ -14,6 +15,6 @@ export async function POST(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   try {
-    return NextResponse.json(await logNoAnswer(user, await jsonBody(req, schema)));
+    return NextResponse.json(await logNoAnswer(ownWork(user), await jsonBody(req, schema)));
   } catch (error) { return apiError(error); }
 }

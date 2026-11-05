@@ -57,16 +57,16 @@ test('keeping a proposed card sets its next follow-up and withdraws the proposal
   await expect(raghav(page)).not.toContainText('Proposed for Junk');
 });
 
-test('callers review only their own proposals; admins review everyone\'s', async ({ employeePage: employee, adminPage: admin }) => {
+test('everyone reviews only their own proposals, admins included', async ({ employeePage: employee, employee2Page: raj, adminPage: admin }) => {
   strikes(1, 5); strikes(4, 6);
   await employee.goto('/dashboard/board');
   await expect(digest(employee)).toContainText('1 lead has');
+  await raj.goto('/dashboard/board');
+  await digest(raj).getByRole('button', { name: 'Review 1 lead' }).click();
+  await expect(raj.getByRole('dialog', { name: 'Review Junk proposals' }).locator('.board-proposal')).toHaveText([/Suresh Kumar/]);
   await admin.goto('/dashboard/board');
-  await expect(digest(admin)).toContainText('2 leads have');
-  await digest(admin).getByRole('button', { name: 'Review 2 leads' }).click();
-  const dialog = admin.getByRole('dialog', { name: 'Review Junk proposals' });
-  await expect(dialog.locator('.board-proposal').first()).toContainText('Suresh Kumar');
-  await expect(dialog.locator('.board-proposal').first()).toContainText('Raj Eval');
+  await expect(admin.locator('.board-summary')).toHaveText('0 cards');
+  await expect(digest(admin)).toHaveCount(0);
 });
 
 for (const theme of ['light', 'dark'] as const) {
