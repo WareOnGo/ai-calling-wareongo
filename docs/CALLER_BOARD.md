@@ -3,8 +3,8 @@
 The caller board replaces My Work with a seven-stage Kanban for callers, plus a
 per-caller funnel for admins. Status as of 5 November 2026: steps 0–7 are built
 on `codex/bolna-visual-overhaul` at `/dashboard/board` and `/dashboard/board/funnel`,
-alongside My Work. Migration 019 is applied to production; 020 is not. Nothing is
-deployed.
+alongside My Work. Migrations 019 and 020 are applied to production and are on main. Nothing else is
+deployed or merged.
 
 Sources: [PRD and interaction spec](https://claude.ai/artifact/UWzEVdSFT5GBVkB9Cn3pZk)
 and [prototype](https://claude.ai/artifact/5uDWaaY3rnp4LpK5DFW9n4) (board and admin funnel).
@@ -78,7 +78,7 @@ warehouse ID; they are hidden from the board and appear only in the funnel.
 - [x] **5. Drag and drop**, with the panel's buttons as the keyboard path.
 - [x] **6. Strikes and Junk review:** strike dots, `/api/board/no-answer`, banner and review dialog.
 - [x] **7. Admin funnel** (`/dashboard/board/funnel`).
-- [ ] **Apply 020 to production** with the deployment. It only matters where the quality guard is enabled; production has it disabled.
+- [x] **Apply 020 to production.** Applied 5 November 2026, 21:21 IST, from main `8a03fbd`; see `database/README.md`.
 - [ ] **8. Retire My Work:** point employees at the board, then remove `src/app/dashboard/my/classic`, `employee-work*.ts`, `/api/my-work` and their browser tests.
 
 ## Tests

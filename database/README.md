@@ -460,7 +460,8 @@ addition to the complete fresh-schema integration suite.
 ## Caller board stages (019)
 
 `019_caller_board_stages.sql` adds `bolna_assignments.stage` and
-`bolna_assignments.updated_at` for the caller board ([plan](../docs/CALLER_BOARD.md)).
+`bolna_assignments.updated_at` for the caller board (the board itself and its plan,
+`docs/CALLER_BOARD.md`, are on the `codex/bolna-visual-overhaul` branch).
 Stages are `inbound` (1), `rnr` (2A), `rejected` (2B), `awaiting_details` (2C),
 `details_collected` (3), `warehouse_created` (4) and `junk` (5). New tasks start
 in `inbound`; a `bolna_assignment_touch` trigger sets `updated_at` on every real
@@ -536,6 +537,14 @@ Moving a card into RnR records one `no_answer` manual attempt per task per IST d
 These are ordinary manual attempts: they appear in Team's recorded calls and in the
 card timeline.
 
-Rehearsed on the disposable stage database and covered by
-`tests/integration/caller-board-moves.test.ts`, with the guard enabled. Not yet
-applied to production.
+Rehearsed on the disposable stage database and covered, with the guard enabled, by
+the board's integration tests on the `codex/bolna-visual-overhaul` branch. On main,
+the employee workflow and shared-schema tests check that classic My Work is unchanged.
+
+020 was applied to production on 5 November 2026 at 21:21 IST from main commit
+`8a03fbd`, after a read-only pre-flight showed 20 ledger entries matching their
+source checksums and 020 as the only pending file. Verified after commit: 21 ledger
+entries with 020's checksum; the function has the board mode and an unchanged
+classic list; every trigger enable state is unchanged (the quality guard is still
+disabled); assignment and audit row counts are unchanged (3,433 and 11,919). A
+second runner pass made no changes.
