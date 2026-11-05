@@ -456,3 +456,55 @@ The rehearsal upgrades a fresh copy of the deployed 001–017 schema to 018, ver
 that previous ledger rows and both 009 indexes are unchanged, runs the employee
 and shared-schema regressions, and drops its temporary database. CI runs this in
 addition to the complete fresh-schema integration suite.
+
+## Caller board stages (019)
+
+`019_caller_board_stages.sql` adds `bolna_assignments.stage` and
+`bolna_assignments.updated_at` for the caller board ([plan](../docs/CALLER_BOARD.md)).
+Stages are `inbound` (1), `rnr` (2A), `rejected` (2B), `awaiting_details` (2C),
+`details_collected` (3), `warehouse_created` (4) and `junk` (5). New tasks start
+in `inbound`; a `bolna_assignment_touch` trigger sets `updated_at` on every real
+change. It sorts after `bolna_assignment_quality_guard`, so 018's classic-edit
+exception still compares an unchanged `updated_at`.
+
+The migration backfills every existing task with `bolna_infer_stage(outcome,
+wh_id, added_to_db, remarks)`. Production callers record work only in the result
+dropdown and free-text remarks, so those drive the mapping; a valid WHID or the
+Added flag wins, then agent/broker/repeated/duplicate remarks stay in Inbound,
+then wrong/invalid numbers go to Junk, then the result and remark keywords decide.
+`updated_at` is backfilled from the latest audit event, call attempt, completion
+or assignment time. State, results, remarks, ownership and warehouse fields are
+not changed. The backfill writes one audit row per task with actor `stage-backfill`
+(stage `null` → inferred stage), so it is distinguishable from real stage moves.
+
+Rehearsed on 5 November 2026 on a disposable PostgreSQL 16 database: 20 fixtures
+covering every mapping branch, audit attribution, defaults, the stage check, the
+touch trigger, and 018's classic completion path with the quality guard enabled.
+A read-only dry run of the same inference SQL against production produced:
+
+| Stage | Open | Done |
+| --- | ---: | ---: |
+| 1 Inbound | 485 | 212 |
+| 2A RnR | 340 | 204 |
+| 2B Rejected | 14 | 1,038 |
+| 2C Awaiting details | 131 | 106 |
+| 3 Details collected | 59 | 226 |
+| 4 Warehouse ID | 23 | 359 |
+| 5 Junk | 6 | 125 |
+
+Production has baseline and 001–018 applied, so `npm run db:migrate` applies only
+019. It runs in one transaction under the runner's 2 s lock and 30 s statement
+timeouts. Not yet applied to production.
+
+To reverse before any board writes depend on it:
+
+```sql
+DROP TRIGGER bolna_assignment_touch ON bolna_assignments;
+DROP FUNCTION bolna_touch_assignment();
+DROP INDEX bolna_assignments_board_idx;
+ALTER TABLE bolna_assignments DROP COLUMN stage, DROP COLUMN updated_at;
+DROP FUNCTION bolna_infer_stage(text, text, boolean, text);
+DELETE FROM bolna_schema_migrations WHERE name = '019_caller_board_stages.sql';
+```
+
+The backfill's `stage-backfill` audit rows remain as history.

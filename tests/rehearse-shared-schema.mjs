@@ -45,11 +45,12 @@ try {
   try {
     await db.query(await readFile('database/rollback-handoff.sql', 'utf8'));
     const before = (await db.query('select name,checksum,applied_at from bolna_schema_migrations order by name')).rows;
-    // Preserve every existing ledger record and add only the compatibility migration.
+    // Preserve every existing ledger record and add only the migrations written after this schema.
+    const upgrades = ['018_employee_workflow_compat.sql', '019_caller_board_stages.sql'];
     run(process.execPath, ['database/migrate.mjs'], env);
     const after = (await db.query('select name,checksum,applied_at from bolna_schema_migrations order by name')).rows;
-    assert.deepEqual(after.filter(row => row.name !== '018_employee_workflow_compat.sql'), before);
-    assert.equal(after.filter(row => row.name === '018_employee_workflow_compat.sql').length, 1);
+    assert.deepEqual(after.filter(row => !upgrades.includes(row.name)), before);
+    for (const name of upgrades) assert.equal(after.filter(row => row.name === name).length, 1, `${name} applied once`);
     run(process.execPath, ['database/migrate.mjs'], env);
     assert.deepEqual((await db.query('select name,checksum,applied_at from bolna_schema_migrations order by name')).rows, after);
     assert.equal((await db.query("select count(*)::int n from bolna_schema_migrations where name='009_dashboard_page_indexes.sql'")).rows[0].n, 1);
