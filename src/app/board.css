@@ -80,22 +80,49 @@
 .board-proposal-lead strong { color: var(--heading); }
 .board-proposal-strikes { font-size: var(--text-caption); font-weight: 600; color: var(--fill-red-tx); }
 .board-proposal-actions { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-2); }
-.board-panel-calls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
-.board-panel-note { margin: 0; font-size: var(--text-support); color: var(--text); }
+.board-panel-note { margin: 0; font-size: var(--text-caption); color: var(--text); }
 
 /* Lead panel: beside the board on wide screens, over it on narrow ones. Non-modal,
-   so another card can be opened without closing it first. */
+   so another card can be opened without closing it first. It reads top-down:
+   the lead, the next step, the selected task, then activity. */
 .board-body { flex: 1; min-height: 0; display: flex; }
 .board-body > .board-scroller { flex: 1; min-width: 0; }
-.board-panel { flex: none; display: flex; flex-direction: column; width: 400px; min-height: 0; box-sizing: border-box;
+.board-panel { flex: none; display: flex; flex-direction: column; width: 420px; min-height: 0; box-sizing: border-box;
   background: var(--surface); border-left: 1px solid var(--border); }
-.board-panel-head { flex: none; display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--panel-inset); border-bottom: 1px solid var(--border); }
+.board-panel-head { flex: none; display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-4) var(--panel-inset); border-bottom: 1px solid var(--border); }
 .board-panel-identity { flex: 1; min-width: 0; display: grid; gap: 2px; }
 .board-panel-identity h2 { margin: 0; font-size: var(--text-section); font-weight: 600; color: var(--heading); overflow-wrap: anywhere; }
 .board-panel-identity h2:focus { outline: none; }
 .board-panel-identity h2:focus-visible { box-shadow: var(--focus-ring); border-radius: 4px; }
 .board-panel-meta { margin: 0; font-size: var(--text-caption); color: var(--muted); }
-.board-panel-body { flex: 1; min-height: 0; overflow-y: auto; display: grid; align-content: start; gap: var(--space-4); padding: var(--space-4) var(--panel-inset) var(--space-6); }
+.board-panel-status { display: flex; flex-wrap: wrap; align-items: center; gap: 0 4px; margin: var(--space-2) 0 0; font-size: var(--text-support); color: var(--text); }
+.board-panel-status .board-code { margin-right: 2px; }
+.board-status-overdue { color: var(--fill-red-tx); font-weight: 600; }
+.board-panel-body { flex: 1; min-height: 0; overflow-y: auto; display: grid; align-content: start; padding: 0 var(--panel-inset) var(--space-6); }
+/* Sections are separated by hairlines rather than nested boxes. */
+.board-panel-section { display: grid; gap: var(--space-3); padding: var(--space-4) 0; border-bottom: 1px solid var(--grid-line); }
+.board-panel-section:last-child { border-bottom: 0; }
+.board-panel-section h3 { margin: 0; font-size: var(--text-caption); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+
+/* Label column shared by Next step, details and calls, so values line up. */
+.board-steps, .board-facts { display: grid; grid-template-columns: 100px minmax(0, 1fr); align-items: baseline; gap: var(--space-3) var(--space-3); margin: 0; }
+.board-step-label { font-size: var(--text-support); font-weight: 500; color: var(--muted); }
+.board-steps .board-step-label { align-self: start; line-height: var(--control-compact); }
+.board-step { display: grid; gap: var(--space-2); min-width: 0; }
+.board-step-inline { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.board-facts > div { display: contents; }
+.board-facts dt { font-size: var(--text-support); font-weight: 500; color: var(--muted); }
+.board-facts dd { margin: 0; min-width: 0; font-size: var(--text-support); color: var(--text); overflow-wrap: anywhere; }
+.board-facts .pill-none { background: var(--surface-subtle); color: var(--muted); border: 1px solid var(--border); }
+.board-fact-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.board-fact-row > .btn-row { margin-left: auto; }
+.board-fact-row .work-ai { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; }
+.board-section-foot { display: flex; justify-content: flex-end; }
+
+.board-stage-picker select, .board-date { min-height: var(--control-compact); padding: 4px 8px; box-sizing: border-box; border: 1px solid var(--field-border);
+  border-radius: var(--radius-input); background: var(--field-bg); color: var(--text); font: inherit; font-size: var(--text-body); }
+.board-stage-picker select { width: 100%; border-left: 4px solid var(--stage-tx); }
+.board-stage-picker select:focus-visible, .board-date:focus-visible { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
 .board-move-form { display: grid; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--border-strong); border-radius: var(--radius-input); background: var(--surface-subtle); }
 .board-move-form fieldset { display: grid; gap: var(--space-2); margin: 0; padding: 0; border: 0; }
 .board-move-form legend { margin-bottom: var(--space-1); font-size: var(--text-support); font-weight: 600; color: var(--heading); }
@@ -103,38 +130,31 @@
 .board-move-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); }
 .board-panel-error { margin: 0; font-size: var(--text-support); color: var(--danger); }
 .board-field { display: grid; gap: var(--space-1); font-size: var(--text-support); color: var(--text); }
-.board-field > span, .board-field > label, .board-field-label { font-size: var(--text-support); font-weight: 600; color: var(--heading); }
+.board-field > label { font-size: var(--text-support); font-weight: 600; color: var(--heading); }
 .board-field small { font-size: var(--text-caption); color: var(--muted); }
 .board-field input, .board-notes { min-height: var(--control-compact); padding: 6px 10px; box-sizing: border-box; border: 1px solid var(--field-border);
   border-radius: var(--radius-input); background: var(--field-bg); color: var(--text); font: inherit; font-size: var(--text-body); }
 .board-notes { width: 100%; resize: vertical; }
 .board-field input:focus-visible, .board-notes:focus-visible { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
-.board-panel-section { display: grid; gap: var(--space-2); }
-.board-panel-section h3 { margin: 0; font-size: var(--text-support); font-weight: 600; color: var(--heading); }
-.board-task { display: grid; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-input); }
-.board-task-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
-.board-task h4 { margin: 0; font-size: var(--text-support); font-weight: 600; color: var(--heading); }
-.board-task-meta { margin: 0; font-size: var(--text-caption); color: var(--muted); }
-.board-stage-picker { display: grid; gap: var(--space-3); }
-.board-stage-picker select { min-height: var(--control-compact); padding: 4px 8px; border: 1px solid var(--field-border); border-left: 4px solid var(--stage-tx);
-  border-radius: var(--radius-input); background: var(--field-bg); color: var(--text); font: inherit; font-size: var(--text-body); }
-.board-stage-picker select:focus-visible { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
-.board-task .work-context { margin-top: 0; }
-.board-task .work-assignment-note { margin-top: 0; }
-.board-task .work-assignment-note .brief { display: block; margin: 5px 0 0; font-style: normal; font-size: var(--text-caption); line-height: 1.5; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
-.board-task .work-assignment-note .brief-preview { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.board-task .work-assigned-meta { display: flex; gap: var(--space-2); margin-top: 0; font-size: var(--text-caption); color: var(--muted); }
-.board-task-calls { display: grid; gap: var(--space-2); padding: var(--space-2) 0; border-block: 1px solid var(--grid-line); }
-.board-task-ai, .board-task-manual { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-.board-task .board-task-ai .work-ai { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; }
-.board-task-manual > span { font-size: var(--text-caption); color: var(--text); }
-.board-task-ai .btn-row, .board-task-manual .btn-row { margin-left: auto; }
-.board-task-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: var(--space-2); margin: 0; }
-.board-task-facts > div { display: grid; gap: 2px; }
-.board-task-facts dt { font-size: var(--text-caption); font-weight: 600; color: var(--muted); }
-.board-task-facts dd { margin: 0; font-size: var(--text-support); color: var(--text); }
-.board-task-facts .pill-none { background: var(--surface-subtle); color: var(--muted); border: 1px solid var(--border); }
 .board-task-status { margin-right: auto; font-size: var(--text-caption); color: var(--muted); }
+
+/* Tasks on one phone, as tabs like the page tabs. */
+.board-task-tabs { display: flex; gap: var(--space-4); margin-top: var(--space-2); border-bottom: 1px solid var(--border); }
+.board-task-tabs [role="tab"] { padding: var(--space-2) 0; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent;
+  color: var(--muted); font: inherit; font-size: var(--text-support); font-weight: 600; cursor: pointer; }
+.board-task-tabs [role="tab"][aria-selected="true"] { border-bottom-color: var(--accent); color: var(--heading); }
+.board-task-tabs [role="tab"]:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: 4px; }
+.board-tab-note { font-weight: 400; }
+.board-task { display: grid; }
+.board-task > .board-brief { margin-top: var(--space-4); }
+
+/* The assigner's instructions: a quiet callout before the task's fields. */
+.board-brief { display: grid; gap: 2px; padding: var(--space-2) var(--space-3); border-left: 2px solid var(--accent); border-radius: 0 6px 6px 0; background: var(--surface-subtle); }
+.board-brief-label { margin: 0; font-size: var(--text-caption); font-weight: 600; color: var(--muted); }
+.board-brief-text { margin: 0; font-size: var(--text-support); color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+.board-brief-text.clamped { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.board-brief .btn-text { justify-self: start; padding: 0; }
+
 .board-timeline { display: grid; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
 .board-timeline li { display: grid; gap: 2px; padding-left: var(--space-3); border-left: 2px solid var(--border); font-size: var(--text-support); color: var(--text); }
 .board-timeline li[data-kind="stage"] { border-left-color: var(--accent); }

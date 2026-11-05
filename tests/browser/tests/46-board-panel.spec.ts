@@ -16,49 +16,59 @@ const moveTo = async (page: any, value: string, short: string) => {
   await panel(page).getByRole('button', { name: `Move to ${short}` }).click();
 };
 
-test('opening a card shows the lead, its tasks, the current stage and its timeline', async ({ employeePage: page, shot }) => {
+/** The value beside a label in the panel's aligned detail lists. */
+const fact = (page: any, label: string) => panel(page).locator('.board-facts > div')
+  .filter({ has: page.locator('dt', { hasText: new RegExp(`^${label.replace(/[?]/g, '\\?')}$`) }) }).locator('dd');
+
+test('the panel reads top-down: the lead, the next step, the task, then activity', async ({ employeePage: page, shot }) => {
   await page.goto('/dashboard/board');
   await cardButton(page, 'Raghav Sharma').click();
   await expect(panel(page).getByRole('heading', { level: 2 })).toHaveText('Raghav Sharma');
   await expect(panel(page)).toContainText('+919811100001');
+  await expect(panel(page).locator('.board-panel-status')).toContainText('1 Inbound');
   await expect(cardButton(page, 'Raghav Sharma')).toHaveAttribute('aria-expanded', 'true');
   await expect(stage(page)).toHaveValue('inbound');
   await expect(panel(page).getByRole('button', { name: /Move to/ })).toHaveCount(0);
-  await expect(panel(page).locator('.board-task')).toHaveCount(2);
-  await expect(panel(page).locator('.board-task h4')).toHaveText(['Listing', 'AI follow-up']);
-  await expect(panel(page).getByText('verify area + rent')).toBeVisible();
+  await expect(panel(page).getByRole('heading', { level: 3 })).toHaveText(['Next step', 'Your notes', 'Listing details', 'Calls', 'Activity']);
+  // Two tasks on one phone are tabs, not two stacked copies of the same layout.
+  await expect(panel(page).getByRole('tab')).toHaveText(['Listing', 'AI follow-up']);
+  await expect(panel(page).getByRole('tab', { name: 'Listing' })).toHaveAttribute('aria-selected', 'true');
+  await expect(panel(page).locator('.board-task')).toHaveCount(1);
+  await expect(panel(page).locator('.board-brief')).toContainText('verify area + rent');
   await expect(panel(page).locator('.board-timeline')).toContainText('No activity yet');
   await shot(page, 'board-panel-open');
+  // Tall enough to review the whole panel without its scroll cutting it off.
+  await page.setViewportSize({ width: 1600, height: 1900 });
+  await shot(page, 'board-panel-full');
 });
 
 test('each task shows everything My Work shows for it', async ({ employeePage: page }) => {
   await page.goto('/dashboard/board');
   await cardButton(page, 'Raghav Sharma').click();
-  const [listing, followUp] = [panel(page).locator('.board-task').first(), panel(page).locator('.board-task').last()];
   // Property facts, assigner, AI status and the manual work fields, as in My Work's row.
-  await expect(listing.locator('.work-context')).toContainText('Rajkot');
-  await expect(listing.locator('.work-context')).toContainText('12,000 sqft');
-  await expect(listing.locator('.work-context')).toContainText('₹45,000');
-  await expect(listing.locator('.work-assigned-meta')).toContainText('Assigned by Eval Admin');
-  await expect(listing.locator('.work-ai-status')).toHaveText('AI: Unclear');
-  await expect(listing.locator('.work-ai-count')).toHaveText('2 AI calls');
-  await expect(followUp.locator('.work-ai-status')).toHaveText('AI: Available');
-  await expect(followUp.locator('.work-context')).toContainText('12,000 sqft built-up');
-  const facts = listing.locator('.board-task-facts');
-  await expect(facts).toContainText('Result');
-  await expect(facts).toContainText('Not called yet');
-  await expect(facts).toContainText('In DB?');
-  await expect(facts).toContainText('Not yet');
-  await expect(facts).toContainText('WH ID');
-  await expect(facts).toContainText('Finished?');
-  await expect(facts).toContainText('Open');
-  await expect(listing.locator('.board-task-manual')).toContainText('No manual calls logged');
+  await expect(fact(page, 'Assigned')).toContainText('Eval Admin');
+  await expect(fact(page, 'City')).toHaveText('Rajkot');
+  await expect(fact(page, 'Area')).toHaveText('12,000 sqft');
+  await expect(fact(page, 'Rent')).toHaveText('₹45,000');
+  await expect(fact(page, 'Result')).toHaveText('Not called yet');
+  await expect(fact(page, 'In DB?')).toHaveText('Not yet');
+  await expect(fact(page, 'WH ID')).toHaveText('—');
+  await expect(fact(page, 'Finished?')).toHaveText('Open');
+  await expect(fact(page, 'AI calls').locator('.work-ai-status')).toHaveText('AI: Unclear');
+  await expect(fact(page, 'AI calls').locator('.work-ai-count')).toHaveText('2 AI calls');
+  await expect(fact(page, 'Manual calls')).toContainText('None logged');
   // AI and manual call history open the record straight on their tabs.
-  await listing.getByRole('button', { name: 'AI calls for this listing' }).click();
+  await panel(page).getByRole('button', { name: 'AI calls for this listing' }).click();
   await expect(page.getByRole('dialog').getByRole('tab', { name: 'AI activity' })).toHaveAttribute('aria-selected', 'true');
   await page.getByRole('dialog').getByRole('button', { name: 'Close' }).first().click();
-  await listing.getByRole('button', { name: 'Manual calls for this listing' }).click();
+  await panel(page).getByRole('button', { name: 'Manual calls for this listing' }).click();
   await expect(page.getByRole('dialog').getByRole('tab', { name: 'Manual activity' })).toHaveAttribute('aria-selected', 'true');
+  await page.getByRole('dialog').getByRole('button', { name: 'Close' }).first().click();
+  // The other task on the same phone has its own facts.
+  await panel(page).getByRole('tab', { name: 'AI follow-up' }).click();
+  await expect(panel(page).getByRole('heading', { name: 'AI follow-up details' })).toBeVisible();
+  await expect(fact(page, 'AI calls').locator('.work-ai-status')).toHaveText('AI: Available');
+  await expect(fact(page, 'Area')).toHaveText('12,000 sqft built-up');
 });
 
 test('moving a card to an open stage updates the board, the panel and the timeline', async ({ employeePage: page }) => {
@@ -77,7 +87,7 @@ test('moving to RnR records the unanswered call', async ({ employeePage: page })
   await moveTo(page, 'rnr', 'RnR');
   await expect(column(page, '2A').locator('.board-card')).toContainText('Raghav Sharma');
   await expect(panel(page).locator('.board-timeline')).toContainText('No answer / RNR');
-  await expect(panel(page).locator('.board-task-manual').first()).toContainText('1 manual call');
+  await expect(fact(page, 'Manual calls')).toContainText('1 logged');
 });
 
 test('Junk needs a reason before the card moves', async ({ employeePage: page }) => {
