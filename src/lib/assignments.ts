@@ -6,7 +6,7 @@ import { ApiError } from "./api";
 import { query, transaction } from "@/lib/db";
 import type { CurrentUser } from "@/lib/auth";
 import { contactTargets, type EntityType, type Outcome, type AssignmentState } from "@/lib/scope";
-import { ASSIGNMENT_SOURCE_JOIN as HISTORY_SOURCE, ASSIGNMENT_CITY as HISTORY_CITY, ASSIGNMENT_REGION as HISTORY_REGION, ASSIGNMENT_SUBJECT as HISTORY_SUBJECT } from './assignment-context';
+import { ASSIGNMENT_SOURCE_JOIN as HISTORY_SOURCE, ASSIGNMENT_CITY as HISTORY_CITY, ASSIGNMENT_REGION as HISTORY_REGION, ASSIGNMENT_SUBJECT as HISTORY_SUBJECT, ASSIGNMENT_PHONE_JOIN, ASSIGNMENT_PHONE } from './assignment-context';
 
 // Write layer for assignments. Reads go through the two grid filter builders
 // (lib/calls.ts, lib/raw.ts) so the employee scope is applied in exactly one place.
@@ -198,12 +198,7 @@ const HISTORY_ENTITIES = `
          on a.entity_type = 'record' and r.id = a.entity_id
   left join bolna_call_logs cl
          on a.entity_type = 'call'   and cl.id = a.entity_id`;
-const HISTORY_PHONE = `
-  left join lateral (
-    select pp.phone from raw_phones rp
-      join raw_phone_numbers pp on pp.phone_id = rp.phone_id
-     where rp.master_id = r.id and nullif(trim(pp.phone), '') is not null order by rp.is_primary desc limit 1
-  ) rphone on true`;
+const HISTORY_PHONE = ASSIGNMENT_PHONE_JOIN;
 // A record assignment can still have AI calls across its linked numbers.
 const HISTORY_AI = `left join lateral (
     select bolna_availability(cl2.status, cl2.llm_availability) as llm_availability
@@ -315,7 +310,7 @@ export async function listAssignments(viewer: import("./scope").Viewer, f: Histo
      select ${warehouseIdsSql('a.entity_type', 'a.entity_id')} as warehouse_ids,
             a.revision, a.id::text as id, a.batch_id::text, a.entity_type, a.entity_id::text as entity_id,
             ${HISTORY_SUBJECT} as subject,
-            coalesce(rphone.phone, case when cl.call_type = 'inbound' then cl.from_number else cl.to_number end) as phone,
+            ${ASSIGNMENT_PHONE} as phone,
             ${HISTORY_CITY} as city,
             a.assignee, u.name as assignee_name, a.assigned_by, assigner.name as assigned_by_name,
             a.assigned_at::text as assigned_at, a.note, a.state, a.outcome, a.remarks,
