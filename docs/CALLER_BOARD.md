@@ -3,7 +3,8 @@
 The caller board replaces My Work with a seven-stage Kanban for callers, plus a
 per-caller funnel for admins. Status as of 5 November 2026: steps 0–7 are built
 on `codex/bolna-visual-overhaul` at `/dashboard/board` and `/dashboard/board/funnel`,
-alongside My Work. Migrations 019 and 020 are applied to production and are on main. Nothing else is
+alongside My Work. Its tab reads "Board" with a Beta tag while both views run side by side.
+Migrations 019 and 020 are applied to production and are on main. Nothing else is
 deployed or merged.
 
 Sources: [PRD and interaction spec](https://claude.ai/artifact/UWzEVdSFT5GBVkB9Cn3pZk)

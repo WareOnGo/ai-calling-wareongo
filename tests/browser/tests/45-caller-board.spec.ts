@@ -31,7 +31,11 @@ test('callers see their own work grouped by phone in seven stage columns', async
   await expect(page.getByRole('button', { name: 'More filters' })).toHaveAttribute('aria-expanded', 'true');
   for (const name of MORE_FILTERS) await expect(page.getByRole('combobox', { name, exact: true })).toBeVisible();
   await expect(page.locator('.board-summary')).toHaveText('1 card');
-  await expect(page.getByRole('link', { name: 'Board', exact: true })).toHaveAttribute('aria-current', 'page');
+  // The board ships as a beta: its tab carries a Beta tag that screen readers hear too.
+  const boardTab = page.locator('.topnav').getByRole('link', { name: 'Board Beta', exact: true });
+  await expect(boardTab).toHaveAttribute('aria-current', 'page');
+  await expect(boardTab.locator('.nav-tag')).toHaveText('Beta');
+  await expect(page.locator('.topnav').getByRole('link', { name: 'My Work', exact: true })).toBeVisible();
   await expect(page.getByRole('combobox', { name: 'Assigned to' })).toHaveCount(0);
   await shot(page, 'caller-board-employee');
 });
@@ -195,6 +199,7 @@ for (const theme of ['light', 'dark'] as const) {
     await page.goto('/dashboard/board');
     if (theme === 'dark') { await page.locator('.theme-toggle').click(); await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark'); }
     expect(await unreadableText(page, '.dashboard-content')).toEqual([]);
+    expect(await unreadableText(page, '.topnav')).toEqual([]);
     // Seven columns scroll inside the board, never the page.
     expect(await bodyOverflowsX(page)).toBe(false);
     await shot(page, `caller-board-1366-${theme}`);
@@ -202,6 +207,12 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(board(page)).toBeVisible();
     expect(await bodyOverflowsX(page)).toBe(false);
     expect(await unreadableText(page, '.dashboard-content')).toEqual([]);
+    expect(await unreadableText(page, '.topnav')).toEqual([]);
+    // The Beta tag stays on the tab's line rather than wrapping under "Board".
+    const tab = await page.locator('.topnav a[aria-current="page"]').boundingBox();
+    const tag = await page.locator('.topnav .nav-tag').boundingBox();
+    expect(tag!.y).toBeGreaterThanOrEqual(tab!.y);
+    expect(tag!.y + tag!.height).toBeLessThanOrEqual(tab!.y + tab!.height);
     await shot(page, `caller-board-390-${theme}`);
   });
 }

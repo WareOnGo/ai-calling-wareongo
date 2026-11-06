@@ -9,6 +9,8 @@
 .header.app-header .topnav a { display: inline-flex; align-items: center; padding: 0 12px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; box-shadow: none; color: var(--muted); background: transparent; font-size: var(--text-support); }
 .header.app-header .topnav a:hover { text-decoration: none; color: var(--heading); }
 .header.app-header .topnav a[aria-current="page"] { color: var(--accent); border-bottom-color: var(--accent); }
+.header.app-header .topnav a { white-space: nowrap; }
+.header.app-header .topnav .nav-tag { margin-left: 6px; padding: 0 6px; border: 1px solid var(--accent-border); border-radius: var(--radius-pill); background: var(--accent-bg); color: var(--accent); font-size: .6875rem; font-weight: 600; line-height: 1.5; letter-spacing: .02em; }
 .header.app-header .user { display: flex; flex: none; gap: 12px; margin-left: auto; }
 .header.app-header .theme-toggle { border: 0; background: transparent; box-shadow: none; width: 36px; height: 36px; margin: 0; }
 .account-menu { position: relative; }
