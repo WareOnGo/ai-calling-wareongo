@@ -46,7 +46,7 @@ try {
     await db.query(await readFile('database/rollback-handoff.sql', 'utf8'));
     const before = (await db.query('select name,checksum,applied_at from bolna_schema_migrations order by name')).rows;
     // Preserve every existing ledger record and add only the migrations written after this schema.
-    const upgrades = ['018_employee_workflow_compat.sql', '019_caller_board_stages.sql', '020_caller_board_workflow.sql'];
+    const upgrades = ['018_employee_workflow_compat.sql', '019_caller_board_stages.sql', '020_caller_board_workflow.sql', '021_caller_board_stage_sync.sql'];
     run(process.execPath, ['database/migrate.mjs'], env);
     const after = (await db.query('select name,checksum,applied_at from bolna_schema_migrations order by name')).rows;
     assert.deepEqual(after.filter(row => !upgrades.includes(row.name)), before);

@@ -97,7 +97,8 @@ for(const mode of ["fresh","legacy","current","interrupted","index_wait"]){
       assert.equal((await db.query('select count(*) n from bolna_assignment_quality_review')).rows[0].n,'2');
       assert.equal((await db.query("select to_regclass('bolna_assignment_contact_claims') name")).rows[0].name,null);
       assert.deepEqual((await db.query("select wh_id,added_to_db,legacy_onboarding from bolna_assignments where entity_type='call'")).rows[0],{wh_id:'WH-789',added_to_db:true,legacy_onboarding:true});
-      assert.equal((await db.query('select count(*) n from bolna_assignment_changes')).rows[0].n,'0','No invented historical verification timestamps');
+      // 019's backfill writes one 'stage-backfill' row per task by design; 021's catch-up writes none when stages already match.
+      assert.equal((await db.query("select count(*) n from bolna_assignment_changes where actor is distinct from 'stage-backfill'")).rows[0].n,'0','No invented historical verification timestamps');
       assert.equal((await db.query('select count(*) n from bolna_ai_attempts')).rows[0].n,'1');
       assert.deepEqual((await db.query('select provider_call_id,status,batch_id,phone_last10,duration_seconds::int,confirmed_conversation,raw->>\'retry_count\' retry_index from bolna_ai_attempts')).rows,
         [{provider_call_id:'retained-call',status:'completed',batch_id:'retained-batch',phone_last10:'9876543210',duration_seconds:50,confirmed_conversation:true,retry_index:'2'}]);
