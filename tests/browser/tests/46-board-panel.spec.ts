@@ -66,14 +66,27 @@ test('each task shows everything My Work shows for it', async ({ employeePage: p
   await expect(fact(page, 'Finished?')).toHaveText('Open');
   await expect(fact(page, 'AI calls').locator('.work-ai-status')).toHaveText('AI: Unclear');
   await expect(fact(page, 'AI calls').locator('.work-ai-count')).toHaveText('2 AI calls');
-  await expect(fact(page, 'Manual calls')).toContainText('None logged');
-  // AI and manual call history open the record straight on their tabs.
-  await panel(page).getByRole('button', { name: 'AI calls for this listing' }).click();
-  await expect(page.getByRole('dialog').getByRole('tab', { name: 'AI activity' })).toHaveAttribute('aria-selected', 'true');
-  await page.getByRole('dialog').getByRole('button', { name: 'Close' }).first().click();
-  await panel(page).getByRole('button', { name: 'Manual calls for this listing' }).click();
-  await expect(page.getByRole('dialog').getByRole('tab', { name: 'Manual activity' })).toHaveAttribute('aria-selected', 'true');
-  await page.getByRole('dialog').getByRole('button', { name: 'Close' }).first().click();
+  // Employees do not see manual or Callyzer call records.
+  await expect(fact(page, 'Manual calls')).toHaveCount(0);
+  await expect(panel(page).getByRole('button', { name: /manual calls/i })).toHaveCount(0);
+  // AI call history expands inside the panel; nothing opens over it. With no provider
+  // attempts recorded, the saved AI summary from the call logs is one click away.
+  const showAi = panel(page).getByRole('button', { name: 'Show AI calls' });
+  await expect(showAi).toHaveAttribute('aria-expanded', 'false');
+  await showAi.click();
+  await expect(panel(page).getByRole('button', { name: 'Hide AI calls' })).toHaveAttribute('aria-expanded', 'true');
+  const history = panel(page).getByRole('region', { name: 'AI call history' });
+  await expect(history).toContainText('No recorded AI calls for this number');
+  await history.getByRole('button', { name: 'View saved record details' }).click();
+  await expect(history.getByRole('region', { name: 'Saved AI summary' })).toContainText('AI notes');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await panel(page).getByRole('button', { name: 'Hide AI calls' }).click();
+  await expect(panel(page).getByRole('region', { name: 'AI call history' })).toHaveCount(0);
+  // An employee's full record is My Work's details view, without manual call tabs.
+  await panel(page).getByRole('button', { name: 'Details for this listing' }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByRole('dialog').getByRole('tab', { name: 'Manual activity' })).toHaveCount(0);
+  await page.getByRole('dialog').getByRole('button', { name: 'Close details' }).click();
   // The other task on the same phone has its own facts.
   await panel(page).getByRole('tab', { name: 'AI follow-up' }).click();
   await expect(panel(page).getByRole('heading', { name: 'AI follow-up details' })).toBeVisible();
@@ -91,13 +104,28 @@ test('moving a card to an open stage updates the board, the panel and the timeli
   await expect(panel(page).locator('.board-timeline li').first()).toContainText('Moved to 2C Available, details awaited');
 });
 
-test('moving to RnR records the unanswered call', async ({ employeePage: page }) => {
+test('moving to RnR counts a strike without showing the call record to an employee', async ({ employeePage: page }) => {
   await page.goto('/dashboard/board');
   await cardButton(page, 'Raghav Sharma').click();
   await moveTo(page, 'rnr', 'RnR');
   await expect(column(page, '2A').locator('.board-card')).toContainText('Raghav Sharma');
-  await expect(panel(page).locator('.board-timeline')).toContainText('No answer / RNR');
+  await expect(panel(page).locator('.board-panel-status')).toContainText('1 of 5 strikes');
+  await expect(panel(page).locator('.board-timeline')).toContainText('Moved to 2A RnR');
+  await expect(panel(page).locator('.board-timeline')).not.toContainText('No answer / RNR');
+});
+
+test('admins see logged calls and their history in the panel', async ({ adminPage: page }) => {
+  // A phone-less listing, so the admin can hold it without phone-ownership conflicts.
+  sql(`insert into bolna_assignments(entity_type,entity_id,assignee,assigned_by,state,stage)
+       values ('record','a0000000-0000-4000-8000-000000000006','admin@eval.test','admin@eval.test','open','inbound')`);
+  await page.goto('/dashboard/board');
+  await cardButton(page, 'No Phone Owner').click();
+  await moveTo(page, 'rnr', 'RnR');
   await expect(fact(page, 'Manual calls')).toContainText('1 logged');
+  await expect(panel(page).locator('.board-timeline')).toContainText('No answer / RNR');
+  await panel(page).getByRole('button', { name: 'Show manual calls' }).click();
+  await expect(panel(page).getByRole('region', { name: 'Manual call history' }).locator('.attempt-item')).toContainText(['No answer / RNR']);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
 });
 
 test('Junk needs a reason before the card moves', async ({ employeePage: page }) => {

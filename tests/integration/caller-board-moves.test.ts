@@ -188,17 +188,25 @@ describe("editing a card", () => {
 });
 
 describe("card timeline", () => {
-  it("lists stage moves, note edits and logged calls newest first, only for visible tasks", async () => {
+  it("lists stage moves and note edits newest first, only for visible tasks, without calls for employees", async () => {
     const id = await task(await listing("9811700013"));
     await moveCard({ tasks: await refs(id), stage: "rnr" });
     await editNotes(new NextRequest("http://localhost/api/board/tasks", { method: "PATCH", body: JSON.stringify({ revision: (await row(id)).revision, remarks: "rang twice" }) }), { params: Promise.resolve({ id }) });
     const read = () => timeline(new NextRequest(`http://localhost/api/board/timeline?task=${id}`));
+    // Employees do not see manual or Callyzer call records, so logged calls stay out.
     const events = (await (await read()).json()).events as { kind: string; text: string; actor: string | null }[];
-    expect(events.map(event => event.kind)).toEqual(["notes", "call", "stage"]);
+    expect(events.map(event => event.kind)).toEqual(["notes", "stage"]);
     expect(events[0].text).toBe("rang twice");
-    expect(events[1].text).toBe("No answer / RNR");
-    expect(events[2].text).toBe("Moved to 2A RnR");
+    expect(events[1].text).toBe("Moved to 2A RnR");
     auth.user = { ...other };
     expect((await (await read()).json()).events).toEqual([]);
+  });
+
+  it("includes logged calls for admins on their own cards", async () => {
+    auth.user = { ...admin };
+    const id = await task(await listing("9811700016"), { assignee: admin.email });
+    await moveCard({ tasks: await refs(id), stage: "rnr" });
+    const events = (await (await timeline(new NextRequest(`http://localhost/api/board/timeline?task=${id}`))).json()).events as { kind: string; text: string }[];
+    expect(events.map(event => [event.kind, event.text])).toEqual([["call", "No answer / RNR"], ["stage", "Moved to 2A RnR"]]);
   });
 });

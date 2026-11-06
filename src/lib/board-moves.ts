@@ -141,17 +141,20 @@ export async function setFollowUp(viewer: Viewer, input: { tasks: TaskRef[]; nex
   });
 }
 
-/** Stage moves, edits and logged calls for the viewer's visible tasks on one card. */
-export async function cardTimeline(viewer: Viewer, ids: string[]): Promise<TimelineEvent[]> {
+/**
+ * Stage moves and edits for the viewer's visible tasks on one card. Logged calls are
+ * included only when `includeCalls` is set: employees do not see manual call records.
+ */
+export async function cardTimeline(viewer: Viewer, ids: string[], { includeCalls = false } = {}): Promise<TimelineEvent[]> {
   const scope = [ids, viewer.isAdmin, viewer.email.toLowerCase()];
   const visible = "a.id = any($1::bigint[]) and a.state <> 'dropped' and ($2::boolean or a.assignee = $3)";
   const [audit, attempts] = await Promise.all([
     query<AuditRow>(`select c.assignment_id::text as task_id, c.actor, u.name as actor_name, c.changed_at::text as at, c.before_values, c.after_values
         from bolna_assignment_changes c join bolna_assignments a on a.id = c.assignment_id left join bolna_app_users u on u.email = c.actor
        where ${visible} and c.before_values <> '{}'::jsonb order by c.changed_at desc, c.id desc limit 200`, scope),
-    query<AttemptRow>(`select e.assignment_id::text as task_id, e.actor, u.name as actor_name, e.occurred_at::text as at, e.disposition, e.outcome, e.notes
+    includeCalls ? query<AttemptRow>(`select e.assignment_id::text as task_id, e.actor, u.name as actor_name, e.occurred_at::text as at, e.disposition, e.outcome, e.notes
         from bolna_effective_manual_attempts e join bolna_assignments a on a.id = e.assignment_id left join bolna_app_users u on u.email = e.actor
-       where ${visible} order by e.occurred_at desc limit 100`, scope),
+       where ${visible} order by e.occurred_at desc limit 100`, scope) : Promise.resolve({ rows: [] as AttemptRow[] }),
   ]);
   return timelineEvents(audit.rows, attempts.rows).slice(0, 200);
 }

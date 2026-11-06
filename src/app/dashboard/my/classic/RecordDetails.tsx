@@ -8,9 +8,9 @@ import { Dialog } from "./Dialog";
 import { CopyText } from "./CopyText";
 import { requestJson } from "../../requests";
 
-export function RecordDetails({ id, entity, label = "Details" }: { id: string; entity: "call" | "record"; label?: string }) {
+export function RecordDetails({ id, entity, label = "Details", ariaLabel }: { id: string; entity: "call" | "record"; label?: string; ariaLabel?: string }) {
   const [open, setOpen] = useState(false);
-  return <><button type="button" className="btn-row details-trigger" onClick={() => setOpen(true)} aria-label={`${label} for ${entity}`}>{label}</button>{open && <DetailContents id={id} entity={entity} onClose={() => setOpen(false)} />}</>;
+  return <><button type="button" className="btn-row details-trigger" onClick={() => setOpen(true)} aria-label={ariaLabel || `${label} for ${entity}`}>{label}</button>{open && <DetailContents id={id} entity={entity} onClose={() => setOpen(false)} />}</>;
 }
 function DetailContents({ id, entity, onClose }: { id: string; entity: "call" | "record"; onClose: () => void }) {
   const [data, setData] = useState<{ row: RawRow & CallRow; history: AssignmentHistoryRow[]; historyTotal: number } | null>(null);

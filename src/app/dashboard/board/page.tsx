@@ -20,6 +20,7 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
   return <>
     <BoardHeader view="board" isAdmin={user.isAdmin} status={<span className="board-summary">{board.total} {board.total === 1 ? "card" : "cards"}</span>} />
     <BoardFilters applied={boardSearchValues(filters)} options={options} />
-    <BoardView board={board} proposals={proposals} filters={filters} limits={limits} />
+    {/* Manual and Callyzer call records are for admins; employees (and Employee view) see AI calls only. */}
+    <BoardView board={board} proposals={proposals} filters={filters} limits={limits} showCalls={user.isAdmin} />
   </>;
 }

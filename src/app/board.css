@@ -126,6 +126,9 @@
 .board-fact-row > .btn-row { margin-left: auto; }
 .board-fact-row .work-ai { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; }
 .board-section-foot { display: flex; justify-content: flex-end; }
+/* Expanded call history sits inside the Calls section, under its summary rows. */
+.board-call-history { padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-input); background: var(--surface-subtle); }
+.board-call-history .history-heading h3 { font-size: var(--text-support); }
 
 .board-stage-picker select, .board-date { min-height: var(--control-compact); padding: 4px 8px; box-sizing: border-box; border: 1px solid var(--field-border);
   border-radius: var(--radius-input); background: var(--field-bg); color: var(--text); font: inherit; font-size: var(--text-body); }

@@ -19,8 +19,8 @@ type Drag = { onStart: (card: BoardCard) => void; onEnd: () => void; onOver: (st
   dragging: string | null; target: Stage | null; moving: string | null };
 
 /** The signed-in person's own board; every card here is theirs, so cards never name a caller. */
-export function BoardView({ board, proposals, filters, limits }: {
-  board: Board; proposals: { total: number; cards: BoardCard[] }; filters: BoardFilters; limits: ColumnLimits;
+export function BoardView({ board, proposals, filters, limits, showCalls }: {
+  board: Board; proposals: { total: number; cards: BoardCard[] }; filters: BoardFilters; limits: ColumnLimits; showCalls: boolean;
 }) {
   const { refresh, notify } = useDashboardUI();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -67,7 +67,7 @@ export function BoardView({ board, proposals, filters, limits }: {
         <div className="board-columns">{board.columns.map(column => <Column key={column.stage} column={column} filters={filters} limits={limits}
           selectedId={selected ? selectedId : null} onSelect={select} drag={drag} />)}</div>
       </div>
-      {selected && <BoardPanel card={selected} onClose={close} request={request} />}
+      {selected && <BoardPanel card={selected} onClose={close} request={request} showCalls={showCalls} />}
     </div>
   </>;
 }

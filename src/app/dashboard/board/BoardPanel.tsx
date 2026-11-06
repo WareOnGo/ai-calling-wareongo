@@ -11,7 +11,12 @@ import { requestJson, RequestError } from "../requests";
 import { requestMove, sendJson as send, taskRefs as refsOf, type InputStage } from "./board-requests";
 import { CopyText } from "../CopyText";
 import { RecordDetails } from "../RecordDetails";
+import { RecordDetails as EmployeeRecordDetails } from "../my/classic/RecordDetails";
+import { SavedAiSummary } from "./SavedAiSummary";
 import { AiCallStatus } from "../my/AiCallStatus";
+import { AiTimeline } from "../AiTimeline";
+import { ManualCallTimeline } from "../ManualCallTimeline";
+import type { ManualCallHistory } from "@/lib/manual-attempts";
 import { IconX } from "../icons";
 
 // The panel reads top-down: who the lead is, the next step, the selected task
@@ -37,7 +42,11 @@ const sizeOf = (tasks: BoardTask[]) => tasks.map(areaText).find(value => value !
 const taskOrder = (tasks: BoardTask[]) => [...tasks].sort((a, b) => (a.entity === b.entity ? 0 : a.entity === "record" ? -1 : 1) || Number(a.id) - Number(b.id));
 
 /** `request` opens the panel at a stage's input step, e.g. after a card is dropped on Junk. */
-export function BoardPanel({ card, onClose, request }: { card: BoardCard; onClose: () => void; request?: { stage: InputStage; token: number } | null }) {
+export function BoardPanel({ card, onClose, request, showCalls }: {
+  card: BoardCard; onClose: () => void; request?: { stage: InputStage; token: number } | null;
+  /** Manual and Callyzer call records are for admins only. */
+  showCalls: boolean;
+}) {
   const { refresh } = useDashboardUI();
   const titleId = useId();
   const heading = useRef<HTMLHeadingElement>(null);
@@ -125,7 +134,7 @@ export function BoardPanel({ card, onClose, request }: { card: BoardCard; onClos
 
       {tasks.length > 1 && <TaskTabs tasks={tasks} selected={task.id} onSelect={setSelected} idPrefix={titleId} />}
       <div className="board-task" key={task.id} {...(tasks.length > 1 ? { role: "tabpanel", id: `${titleId}-task`, "aria-labelledby": `${titleId}-tab-${task.id}` } : {})}>
-        <TaskDetails task={task} idPrefix={`${titleId}-${task.id}`} onSaved={refresh} />
+        <TaskDetails task={task} idPrefix={`${titleId}-${task.id}`} onSaved={refresh} showCalls={showCalls} />
       </div>
 
       <Timeline taskIds={card.tasks.map(candidate => candidate.id)} version={version} labelledBy={`${titleId}-activity`} />
@@ -156,11 +165,14 @@ function TaskTabs({ tasks, selected, onSelect, idPrefix }: { tasks: BoardTask[];
 }
 
 /** Everything My Work shows for one task, grouped: instructions, your notes, details, calls. */
-function TaskDetails({ task, idPrefix, onSaved }: { task: BoardTask; idPrefix: string; onSaved: () => void }) {
+function TaskDetails({ task, idPrefix, onSaved, showCalls }: { task: BoardTask; idPrefix: string; onSaved: () => void; showCalls: boolean }) {
   const kind = KIND[task.entity];
   const assigner = who(task.assignedByName, task.assignedBy);
-  const view = (label: string, section: "Overview" | "AI activity" | "Manual activity", text = "View") =>
-    <RecordDetails id={task.entityId} entity={task.entity} label={text} initialSection={section} className="btn-row" ariaLabel={`${label} for this ${kind.noun}`} />;
+  // Admins get the full record; employees get My Work's details view, which has no
+  // manual or Callyzer call history.
+  const fullRecord = showCalls
+    ? <RecordDetails id={task.entityId} entity={task.entity} label="Open full record" className="btn-row" ariaLabel={`Details for this ${kind.noun}`} />
+    : <EmployeeRecordDetails id={task.entityId} entity={task.entity} label="Open full record" ariaLabel={`Details for this ${kind.noun}`} />;
   const areaValue = areaText(task), rentValue = rent(task.rent);
   return <>
     {task.note?.trim() && <Brief note={task.note} label={`Note from ${assigner}`} />}
@@ -176,18 +188,51 @@ function TaskDetails({ task, idPrefix, onSaved }: { task: BoardTask; idPrefix: s
         <Fact label="WH ID">{task.whId?.trim() || "—"}</Fact>
         <Fact label="Finished?">{task.state === "done" ? "Done" : "Open"}</Fact>
       </dl>
-      <div className="board-section-foot">{view("Details", "Overview", "Open full record")}</div>
+      <div className="board-section-foot">{fullRecord}</div>
     </Section>
-    <Section title="Calls" id={`${idPrefix}-calls`}>
-      <dl className="board-facts">
-        <Fact label="AI calls"><span className="board-fact-row"><AiCallStatus result={task.aiResult} count={task.aiCount} />{task.aiCount > 0 && view("AI calls", "AI activity")}</span></Fact>
-        <Fact label="Manual calls"><span className="board-fact-row">
-          <span>{task.manualCalls ? <>{task.manualCalls} logged · last: {dispositionLabel(task.disposition)}{task.lastAttemptAt && <>, <time dateTime={task.lastAttemptAt} title={dateTime(task.lastAttemptAt)}>{when(task.lastAttemptAt)}</time></>}</> : "None logged"}</span>
-          {view("Manual calls", "Manual activity")}
-        </span></Fact>
-      </dl>
-    </Section>
+    <Calls task={task} idPrefix={idPrefix} showCalls={showCalls} />
   </>;
+}
+
+/**
+ * AI and manual call summaries whose full history expands in place, so the caller
+ * never leaves the panel. Uses the same timelines as the full record.
+ */
+function Calls({ task, idPrefix, showCalls }: { task: BoardTask; idPrefix: string; showCalls: boolean }) {
+  const [open, setOpen] = useState<{ ai: boolean; manual: boolean }>({ ai: false, manual: false });
+  const toggle = (which: "ai" | "manual", label: string) => <button type="button" className="btn-row" aria-expanded={open[which]} aria-controls={`${idPrefix}-${which}-calls`}
+    onClick={() => setOpen(current => ({ ...current, [which]: !current[which] }))}>{open[which] ? `Hide ${label}` : `Show ${label}`}</button>;
+  return <Section title="Calls" id={`${idPrefix}-calls`}>
+    <dl className="board-facts">
+      <Fact label="AI calls"><span className="board-fact-row"><AiCallStatus result={task.aiResult} count={task.aiCount} />{task.aiCount > 0 && toggle("ai", "AI calls")}</span></Fact>
+      {showCalls && <Fact label="Manual calls"><span className="board-fact-row">
+        <span>{task.manualCalls ? <>{task.manualCalls} logged · last: {dispositionLabel(task.disposition)}{task.lastAttemptAt && <>, <time dateTime={task.lastAttemptAt} title={dateTime(task.lastAttemptAt)}>{when(task.lastAttemptAt)}</time></>}</> : "None logged"}</span>
+        {toggle("manual", "manual calls")}
+      </span></Fact>}
+    </dl>
+    {open.ai && <div id={`${idPrefix}-ai-calls`} className="board-call-history">
+      <AiTimeline entity={task.entity} id={task.entityId} initialOpen><SavedAiSummary entity={task.entity} id={task.entityId} /></AiTimeline>
+    </div>}
+    {showCalls && open.manual && <div id={`${idPrefix}-manual-calls`} className="board-call-history"><ManualHistory key={task.revision} task={task} /></div>}
+  </Section>;
+}
+
+/** Logged calls and Callyzer calls for the task, from the same endpoint as the full record. */
+function ManualHistory({ task }: { task: BoardTask }) {
+  const [page, setPage] = useState(1);
+  const [history, setHistory] = useState<ManualCallHistory | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    const controller = new AbortController();
+    setError("");
+    requestJson<{ manual: ManualCallHistory }>(`/api/details/${task.entity}/${encodeURIComponent(task.entityId)}?section=manual&manual_page=${page}`, { signal: controller.signal })
+      .then(value => setHistory(value.manual))
+      .catch(failure => { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Couldn't load manual calls."); });
+    return () => controller.abort();
+  }, [task.entity, task.entityId, page]);
+  if (error) return <p className="board-panel-error" role="alert">{error}</p>;
+  if (!history) return <p className="muted" role="status">Loading manual calls…</p>;
+  return <ManualCallTimeline history={history} onPage={setPage} />;
 }
 
 function Fact({ label, children }: { label: string; children: ReactNode }) {
