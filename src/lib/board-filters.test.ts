@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BOARD_PAGE_SIZE, BOARD_MAX_CARDS, boardHref, hasBoardCriteria, parseBoardFilters, parseColumnLimits } from "./board-filters";
+import { BOARD_PAGE_SIZE, BOARD_MAX_CARDS, boardHref, hasBoardCriteria, nextColumnLimit, parseBoardFilters, parseColumnLimits } from "./board-filters";
 
 const employee = { isAdmin: false };
 const admin = { isAdmin: true };
@@ -46,6 +46,20 @@ describe("column limits", () => {
 
   it("ignores unknown columns and non-numeric or small values", () => {
     expect(parseColumnLimits({ "2A_cards": "100", rnr_cards: "lots", inbound_cards: "10", rejected_cards: "-50" })).toEqual({});
+  });
+
+  it("scrolling to a column's end asks for one more page while cards remain", () => {
+    expect(nextColumnLimit(50, 56)).toBe(100);
+    expect(nextColumnLimit(100, 312)).toBe(150);
+    expect(nextColumnLimit(BOARD_MAX_CARDS - BOARD_PAGE_SIZE, 900)).toBe(BOARD_MAX_CARDS);
+  });
+
+  it("stops when every card is shown or the column reaches the ceiling", () => {
+    expect(nextColumnLimit(50, 50)).toBeNull();
+    expect(nextColumnLimit(100, 56)).toBeNull();
+    expect(nextColumnLimit(50, 0)).toBeNull();
+    // At the ceiling a further request would parse back to the same limit and load nothing.
+    expect(nextColumnLimit(BOARD_MAX_CARDS, BOARD_MAX_CARDS + 1)).toBeNull();
   });
 });
 

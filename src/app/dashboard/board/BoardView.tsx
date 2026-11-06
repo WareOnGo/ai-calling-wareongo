@@ -1,7 +1,7 @@
 "use client";
-import { useCallback, useId, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type DragEvent } from "react";
 import type { Board, BoardCard, BoardColumn } from "@/lib/board";
-import { BOARD_PAGE_SIZE, boardHref, type BoardFilters, type ColumnLimits } from "@/lib/board-filters";
+import { BOARD_MAX_CARDS, BOARD_PAGE_SIZE, boardHref, nextColumnLimit, type BoardFilters, type ColumnLimits } from "@/lib/board-filters";
 import { STRIKE_LIMIT, stageInfo, type Stage } from "@/lib/board-stages";
 import { shortDate } from "@/lib/display";
 import { useDashboardUI } from "../DashboardUI";
@@ -22,7 +22,7 @@ type Drag = { onStart: (card: BoardCard) => void; onEnd: () => void; onOver: (st
 export function BoardView({ board, proposals, filters, limits, showCalls }: {
   board: Board; proposals: { total: number; cards: BoardCard[] }; filters: BoardFilters; limits: ColumnLimits; showCalls: boolean;
 }) {
-  const { refresh, notify } = useDashboardUI();
+  const { refresh, notify, navigate } = useDashboardUI();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [request, setRequest] = useState<{ stage: InputStage; token: number } | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
@@ -30,6 +30,21 @@ export function BoardView({ board, proposals, filters, limits, showCalls }: {
   const [moving, setMoving] = useState<string | null>(null);
   const cards = board.columns.flatMap(column => column.cards);
   const selected = cards.find(card => cardId(card) === selectedId) ?? null;
+
+  // Columns page independently. Every request merges into one set of limits, so
+  // two columns reaching their end together both grow; neither URL replaces the
+  // other's. The set starts over when the filters change.
+  const wanted = useRef<{ filters: string; limits: ColumnLimits }>({ filters: "", limits: {} });
+  const filterKey = JSON.stringify(filters);
+  const grow = useCallback((stage: Stage, limit: number) => {
+    if (wanted.current.filters !== filterKey) wanted.current = { filters: filterKey, limits: {} };
+    const asked = Math.max(limits[stage] ?? BOARD_PAGE_SIZE, wanted.current.limits[stage] ?? 0);
+    if (asked >= limit) return;
+    wanted.current.limits = { ...wanted.current.limits, [stage]: limit };
+    const merged: ColumnLimits = { ...limits };
+    for (const [key, value] of Object.entries(wanted.current.limits) as [Stage, number][]) merged[key] = Math.max(merged[key] ?? 0, value);
+    navigate(boardHref(filters, merged), { replace: true });
+  }, [filters, filterKey, limits, navigate]);
 
   const select = (id: string) => { setSelectedId(id); setRequest(null); };
   const close = useCallback(() => {
@@ -64,7 +79,7 @@ export function BoardView({ board, proposals, filters, limits, showCalls }: {
     <JunkDigest total={proposals.total} cards={proposals.cards} />
     <div className={`board-body${selected ? " has-panel" : ""}${dragging ? " is-dragging" : ""}`}>
       <div className="board-scroller" role="region" aria-label="Board columns" tabIndex={0}>
-        <div className="board-columns">{board.columns.map(column => <Column key={column.stage} column={column} filters={filters} limits={limits}
+        <div className="board-columns">{board.columns.map(column => <Column key={column.stage} column={column} onGrow={grow}
           selectedId={selected ? selectedId : null} onSelect={select} drag={drag} />)}</div>
       </div>
       {selected && <BoardPanel card={selected} onClose={close} request={request} showCalls={showCalls} />}
@@ -72,13 +87,18 @@ export function BoardView({ board, proposals, filters, limits, showCalls }: {
   </>;
 }
 
-function Column({ column, filters, limits, selectedId, onSelect, drag }: {
-  column: BoardColumn; filters: BoardFilters; limits: ColumnLimits; selectedId: string | null; onSelect: (id: string) => void; drag: Drag;
+function Column({ column, onGrow, selectedId, onSelect, drag }: {
+  column: BoardColumn; onGrow: (stage: Stage, limit: number) => void; selectedId: string | null; onSelect: (id: string) => void; drag: Drag;
 }) {
-  const { navigate, pending } = useDashboardUI();
+  const { pending } = useDashboardUI();
   const stage = stageInfo(column.stage);
   const id = useId();
   const remaining = column.total - column.cards.length;
+  // Reaching the end of the list loads this column's next page in place; the URL
+  // is replaced, so Back leaves the board rather than unloading cards page by page.
+  const next = nextColumnLimit(column.limit, column.total);
+  const { list, end, near } = useNearEnd(next !== null);
+  useEffect(() => { if (near && next !== null && !pending) onGrow(column.stage, next); }, [near, next, pending, onGrow, column.stage]);
   const accepts = (event: DragEvent) => !!drag.dragging || event.dataTransfer.types.includes(DRAG_TYPE);
   return <section id={`board-${column.stage}`} className={`board-column${drag.target === column.stage ? " drop-target" : ""}`}
     data-stage={column.stage} data-code={stage.code} aria-labelledby={`${id}-title`} aria-describedby={`${id}-count`}
@@ -89,15 +109,32 @@ function Column({ column, filters, limits, selectedId, onSelect, drag }: {
       <span id={`${id}-count`} className="board-column-count" title={plural(column.total, "card")}>{column.total}</span>
     </div>
     <p className="board-column-hint">{stage.hint}</p>
-    {column.cards.length ? <ol className="board-cards">{column.cards.map(card => <li key={cardId(card)}>
+    {column.cards.length ? <ol ref={list} className="board-cards">{column.cards.map(card => <li key={cardId(card)}>
       <Card card={card} selected={cardId(card) === selectedId} moving={drag.moving === cardId(card)}
         onSelect={() => onSelect(cardId(card))} onDragStart={() => drag.onStart(card)} onDragEnd={drag.onEnd} />
-    </li>)}</ol> : <p className="board-empty">No cards</p>}
-    {remaining > 0 && <button type="button" className="btn-row board-more" disabled={pending}
-      onClick={() => navigate(boardHref(filters, { ...limits, [column.stage]: column.limit + BOARD_PAGE_SIZE }))}>
-      Show {Math.min(remaining, BOARD_PAGE_SIZE)} more
-    </button>}
+    </li>)}{next !== null && <li ref={end} className="board-cards-end" aria-hidden="true" />}</ol> : <p className="board-empty">No cards</p>}
+    {remaining > 0 && <p className="board-column-progress" role="status">
+      {next === null ? `Showing the first ${BOARD_MAX_CARDS} of ${column.total}. Search or filter to find the rest.`
+        : near && pending ? "Loading more cards…" : `Showing ${column.cards.length} of ${column.total}`}
+    </p>}
   </section>;
+}
+
+/**
+ * Whether the end of a scrolling list is within 240px of view. The list scrolls
+ * on its own, so it is the observer's root; keyboard focus scrolls it as well.
+ */
+function useNearEnd(enabled: boolean) {
+  const list = useRef<HTMLOListElement>(null);
+  const end = useRef<HTMLLIElement>(null);
+  const [near, setNear] = useState(false);
+  useEffect(() => {
+    if (!enabled || !list.current || !end.current) return;
+    const observer = new IntersectionObserver(([entry]) => setNear(entry.isIntersecting), { root: list.current, rootMargin: "0px 0px 240px 0px" });
+    observer.observe(end.current);
+    return () => { observer.disconnect(); setNear(false); };
+  }, [enabled]);
+  return { list, end, near: enabled && near };
 }
 
 function Card({ card, selected, moving, onSelect, onDragStart, onDragEnd }: {

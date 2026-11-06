@@ -40,7 +40,8 @@
 .board-cards { flex: 1; min-height: 0; display: grid; align-content: start; gap: var(--space-2); margin: 0; padding: 0 var(--space-2) var(--space-2);
   list-style: none; overflow-y: auto; scrollbar-width: thin; }
 .board-empty { margin: var(--space-2) var(--space-3) var(--space-3); font-size: var(--text-support); color: var(--muted); }
-.board-more { margin: 0 var(--space-2) var(--space-3); min-height: var(--control-compact); }
+.board-cards-end { height: 1px; }
+.board-column-progress { margin: var(--space-1) var(--space-3) var(--space-3); font-size: var(--text-caption); color: var(--muted); }
 
 .board-card { display: grid; gap: 2px; width: 100%; padding: var(--space-3); box-sizing: border-box; border: 1px solid var(--border); border-radius: var(--radius-input);
   background: var(--lane-card-bg); box-shadow: var(--shadow-panel); color: inherit; font: inherit; text-align: left; cursor: pointer; }

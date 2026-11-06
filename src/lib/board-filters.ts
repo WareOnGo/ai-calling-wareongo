@@ -52,7 +52,7 @@ export function parseBoardFilters(params: SearchValues, viewer: { isAdmin: boole
   return filters;
 }
 
-/** "Show more" grows a column in whole pages; anything else falls back to one page. */
+/** Scrolling grows a column in whole pages; anything else falls back to one page. */
 export function parseColumnLimits(params: SearchValues): ColumnLimits {
   const limits: ColumnLimits = {};
   for (const stage of STAGE_SLUGS) {
@@ -63,6 +63,15 @@ export function parseColumnLimits(params: SearchValues): ColumnLimits {
     limits[stage] = Math.min(BOARD_MAX_CARDS, Math.ceil(requested / BOARD_PAGE_SIZE) * BOARD_PAGE_SIZE);
   }
   return limits;
+}
+
+/**
+ * The limit a column grows to when its end scrolls into view: one more page,
+ * or null once every card is shown or the column has reached the ceiling.
+ */
+export function nextColumnLimit(limit: number, total: number): number | null {
+  if (total <= limit || limit >= BOARD_MAX_CARDS) return null;
+  return Math.min(BOARD_MAX_CARDS, limit + BOARD_PAGE_SIZE);
 }
 
 export const hasBoardCriteria = (filters: BoardFilters) => Object.values(filters).some(value => Array.isArray(value) ? value.length > 0 : !!value);

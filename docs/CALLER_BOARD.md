@@ -75,6 +75,7 @@ warehouse ID; they are hidden from the board and appear only in the funnel.
 - [x] **1. Migration 019:** `stage`, `updated_at`, touch trigger, board index, backfill. Applied to production on 5 November 2026 at 19:22 IST.
 - [x] **2. Read model** (`src/lib/board.ts`): cards, column totals and paging, filters, scope.
 - [x] **3. Board page** (`/dashboard/board`): columns, count strip, cards, filters, loading state.
+  Each column pages on its own: it shows 50 cards, and reaching the end of its list (by scrolling or keyboard focus) loads 50 more in place, up to 500. The column sizes live in the URL (`inbound_cards=100`) and the URL is replaced, not pushed, so Back leaves the board. Columns that reach their end together merge into one request. At 500 the column says to search or filter for the rest.
 - [x] **4. Panel and moves:** stage buttons, reason and warehouse-ID steps, notes, follow-up, timeline; `/api/board/{move,tasks/[id],follow-up,timeline}`; migration 020.
 - [x] **5. Drag and drop**, with the panel's buttons as the keyboard path.
 - [x] **6. Strikes and Junk review:** strike dots, `/api/board/no-answer`, banner and review dialog.

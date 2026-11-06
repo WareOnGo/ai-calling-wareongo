@@ -72,17 +72,77 @@ test('the board is personal like My Work, for admins too', async ({ adminPage: p
   await expect(page.getByRole('navigation', { name: 'Board pages' }).getByRole('link', { name: 'Funnel' })).toBeVisible();
 });
 
-test('a column shows one page of cards and loads more on request', async ({ employeePage: page }) => {
+/** Open tasks with no listing behind them: each is its own card in Inbound. */
+const seedInbound = (count: number) => sql(`insert into bolna_assignments(entity_type,entity_id,assignee,assigned_by,state,stage,updated_at)
+     select 'record',gen_random_uuid(),'priya@eval.test','admin@eval.test','open','inbound',now()-make_interval(mins=>g) from generate_series(1,${count}) g`);
+const scrollToEnd = (list: any) => list.evaluate((node: HTMLElement) => node.scrollTo({ top: node.scrollHeight }));
+
+test('scrolling to the end of a column loads its next page in place', async ({ employeePage: page }) => {
+  seedInbound(55);
+  await page.goto('/dashboard/board');
+  const inbound = column(page, '1');
+  const list = inbound.locator('.board-cards');
+  await expect(inbound.locator('.board-card')).toHaveCount(50);
+  await expect(inbound.locator('.board-column-count')).toHaveText('56');
+  await expect(inbound.locator('.board-column-progress')).toHaveText('Showing 50 of 56');
+  // There is no button to press: reaching the end is the request.
+  await expect(inbound.getByRole('button', { name: /more/i })).toHaveCount(0);
+  const before = await page.evaluate(() => history.length);
+  await scrollToEnd(list);
+  await expect(inbound.locator('.board-card')).toHaveCount(56);
+  await expect(page).toHaveURL(/inbound_cards=100/);
+  // The page replaces the URL, so Back leaves the board instead of unloading cards.
+  expect(await page.evaluate(() => history.length)).toBe(before);
+  // The list keeps its place, and the progress line goes once everything is shown.
+  expect(await list.evaluate((node: HTMLElement) => node.scrollTop)).toBeGreaterThan(0);
+  await expect(inbound.locator('.board-column-progress')).toHaveCount(0);
+  // Other columns are untouched.
+  await expect(page).not.toHaveURL(/rnr_cards/);
+});
+
+test('each column pages on its own, even when two reach their end together', async ({ employeePage: page }) => {
+  seedInbound(55);
   sql(`insert into bolna_assignments(entity_type,entity_id,assignee,assigned_by,state,stage,updated_at)
-       select 'record',gen_random_uuid(),'priya@eval.test','admin@eval.test','open','inbound',now()-make_interval(mins=>g) from generate_series(1,55) g`);
+       select 'record',gen_random_uuid(),'priya@eval.test','admin@eval.test','open','rnr',now()-make_interval(mins=>g) from generate_series(1,70) g;
+       insert into bolna_assignments(entity_type,entity_id,assignee,assigned_by,state,stage,updated_at)
+       select 'record',gen_random_uuid(),'priya@eval.test','admin@eval.test','open','awaiting_details',now()-make_interval(mins=>g) from generate_series(1,60) g`);
+  await page.goto('/dashboard/board');
+  const inbound = column(page, '1'), rnr = column(page, '2A'), awaiting = column(page, '2C');
+  await expect(rnr.locator('.board-card')).toHaveCount(50);
+  // A third column scrolled part-way keeps its cards and its place.
+  await awaiting.locator('.board-cards').evaluate((node: HTMLElement) => { node.scrollTop = 300; });
+  // Both lists reach their end in the same frame.
+  await page.evaluate(() => document.querySelectorAll<HTMLElement>('[data-code="1"] .board-cards, [data-code="2A"] .board-cards')
+    .forEach(node => node.scrollTo({ top: node.scrollHeight })));
+  await expect(inbound.locator('.board-card')).toHaveCount(56);
+  await expect(rnr.locator('.board-card')).toHaveCount(70);
+  await expect(page).toHaveURL(/inbound_cards=100/);
+  await expect(page).toHaveURL(/rnr_cards=100/);
+  await expect(page).not.toHaveURL(/awaiting_details_cards/);
+  await expect(awaiting.locator('.board-card')).toHaveCount(50);
+  await expect(awaiting.locator('.board-column-progress')).toHaveText('Showing 50 of 60');
+  expect(await awaiting.locator('.board-cards').evaluate((node: HTMLElement) => node.scrollTop)).toBe(300);
+});
+
+test('keyboard focus reaching the last card loads the next page too', async ({ employeePage: page }) => {
+  seedInbound(60);
   await page.goto('/dashboard/board');
   const inbound = column(page, '1');
   await expect(inbound.locator('.board-card')).toHaveCount(50);
-  await expect(inbound.locator('.board-column-count')).toHaveText('56');
-  await inbound.getByRole('button', { name: 'Show 6 more' }).click();
-  await expect(page).toHaveURL(/inbound_cards=100/);
-  await expect(inbound.locator('.board-card')).toHaveCount(56);
-  await expect(inbound.getByRole('button', { name: /Show \d+ more/ })).toHaveCount(0);
+  await inbound.locator('.board-card').last().focus();
+  await expect(inbound.locator('.board-card')).toHaveCount(61);
+  await expect(inbound.locator('.board-card').nth(49)).toBeFocused();
+});
+
+test('a column stops at the ceiling and says how to find the rest', async ({ employeePage: page }) => {
+  seedInbound(505);
+  await page.goto('/dashboard/board?inbound_cards=500');
+  const inbound = column(page, '1');
+  await expect(inbound.locator('.board-card')).toHaveCount(500);
+  await expect(inbound.locator('.board-column-progress')).toHaveText('Showing the first 500 of 506. Search or filter to find the rest.');
+  await scrollToEnd(inbound.locator('.board-cards'));
+  await expect(page).toHaveURL(/inbound_cards=500$/);
+  await expect(inbound.locator('.board-card')).toHaveCount(500);
 });
 
 test('search and filters narrow every column and can be cleared', async ({ employeePage: page }) => {

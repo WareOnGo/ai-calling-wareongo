@@ -10,7 +10,8 @@ type Save = { dirty: boolean; status: string; label: string; retry: () => void; 
 type UI = {
   pending: boolean;
   transitioning: boolean;
-  navigate: (href: string) => void;
+  /** Go to a dashboard URL. `replace` swaps the history entry, for in-place growth such as loading more cards. */
+  navigate: (href: string, options?: { replace?: boolean }) => void;
   refresh: () => void;
   notify: (text: string) => void;
   reportSave: (id: string, save: Save | null) => void;
@@ -53,8 +54,9 @@ export function DashboardUI({ children, header, userEmail, isAdmin }: { children
     notify("Finish saving your changes before leaving or refreshing. Your drafts are still here.");
     return false;
   }, [hasDrafts, notify]);
-  const navigate = useCallback((href: string) => {
-    if (canLeave(href)) startTransition(() => router.push(href, { scroll: false }));
+  const navigate = useCallback((href: string, options?: { replace?: boolean }) => {
+    if (!canLeave(href)) return;
+    startTransition(() => options?.replace ? router.replace(href, { scroll: false }) : router.push(href, { scroll: false }));
   }, [router, canLeave]);
   const refresh = useCallback(() => {
     if (canLeave('refresh')) startTransition(() => router.refresh());
