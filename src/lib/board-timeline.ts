@@ -10,7 +10,8 @@ export type AttemptRow = { task_id: string; actor: string | null; actor_name: st
 export type TimelineKind = "notes" | "follow_up" | "call" | "stage" | "result" | "state" | "warehouse";
 export type TimelineEvent = { taskId: string; at: string; kind: TimelineKind; text: string; actor: string | null; actorName: string };
 
-const SYSTEM_ACTORS: Record<string, string> = { "stage-backfill": "System", "warehouse-contact-sync": "Warehouse sync" };
+// Writes by migrations (019 backfill, 021 catch-up) and jobs, not by a person.
+const SYSTEM_ACTORS: Record<string, string> = { "stage-backfill": "System", "stage-sync": "System", "warehouse-contact-sync": "Warehouse sync" };
 // Equal timestamps come from one transaction: show its edits, then the call, then the move it caused.
 const ORDER: TimelineKind[] = ["notes", "follow_up", "call", "result", "state", "warehouse", "stage"];
 const STATE_TEXT: Record<string, string> = { done: "Marked done", open: "Reopened", dropped: "Unassigned" };

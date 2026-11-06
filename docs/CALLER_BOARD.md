@@ -4,7 +4,7 @@ The caller board replaces My Work with a seven-stage Kanban for callers, plus a
 per-caller funnel for admins. Status as of 5 November 2026: steps 0–7 are built
 on `codex/bolna-visual-overhaul` at `/dashboard/board` and `/dashboard/board/funnel`,
 alongside My Work. Its tab reads "Board" with a Beta tag while both views run side by side.
-Migrations 019 and 020 are applied to production and are on main. Nothing else is
+Migrations 019, 020 and 021 are applied to production and are on main. Nothing else is
 deployed or merged.
 
 Sources: [PRD and interaction spec](https://claude.ai/artifact/UWzEVdSFT5GBVkB9Cn3pZk)
@@ -82,6 +82,7 @@ warehouse ID; they are hidden from the board and appear only in the funnel.
 - [x] **6. Strikes and Junk review:** strike dots, `/api/board/no-answer`, banner and review dialog.
 - [x] **7. Admin funnel** (`/dashboard/board/funnel`).
 - [x] **Apply 020 to production.** Applied 5 November 2026, 21:21 IST, from main `8a03fbd`; see `database/README.md`.
+- [x] **Migration 021: My Work keeps the stage in step.** While both views run, a non-board write (My Work, admin edits, logged calls) re-places a task with 019's inference when its result or warehouse changes, or when a task still in Inbound gets notes or is finished. Notes-only edits and completing a task past Inbound keep the column chosen on the board. A one-off catch-up re-placed 36 tasks the board never moved. Applied 6 November 2026, 15:04 IST, from main `c67e515`; see main's `database/README.md`.
 - [ ] **8. Retire My Work:** point employees at the board, then remove `src/app/dashboard/my/classic`, `employee-work*.ts`, `/api/my-work` and their browser tests.
 
 ## Tests
@@ -89,7 +90,7 @@ warehouse ID; they are hidden from the board and appear only in the funnel.
 | Layer | Files |
 | --- | --- |
 | Unit | `src/lib/board-stages.test.ts`, `board-filters.test.ts`, `board.test.ts`, `board-timeline.test.ts`, `board-funnel.test.ts` |
-| Integration (PostgreSQL) | `tests/integration/caller-board.test.ts`, `caller-board-moves.test.ts`, `caller-board-strikes.test.ts`, `caller-board-funnel.test.ts` |
+| Integration (PostgreSQL) | `tests/integration/caller-board.test.ts`, `caller-board-moves.test.ts`, `caller-board-strikes.test.ts`, `caller-board-funnel.test.ts`, `caller-board-stage-sync.test.ts` |
 | Browser | `tests/browser/tests/45-caller-board` to `49-board-funnel` specs: scope, grouping, filters, paging, moves, drag and drop, strikes, funnel, keyboard and focus, contrast and overflow at 1366 and 390 px in both themes |
 
 ## Open decisions

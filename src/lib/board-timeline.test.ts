@@ -23,6 +23,11 @@ describe("card timeline events", () => {
     expect(event).toMatchObject({ text: "Placed in 2B Unavailable / rejected from earlier notes", actorName: "System" });
   });
 
+  it("labels 021's catch-up as the system re-placing the card", () => {
+    const [event] = timelineEvents([audit("2026-11-06T10:00:00Z", {}, { stage: "warehouse_created" }, { actor: "stage-sync", actor_name: null })], []);
+    expect(event).toMatchObject({ text: "Moved to 4 Warehouse ID created", actorName: "System" });
+  });
+
   it("reports notes, follow-up dates, results, completion and warehouse IDs edited outside a stage move", () => {
     const events = timelineEvents([
       audit("2026-11-05T10:05:00Z", {}, { remarks: "call after Diwali", next_due_at: "2026-11-10T04:30:00+00:00" }),
