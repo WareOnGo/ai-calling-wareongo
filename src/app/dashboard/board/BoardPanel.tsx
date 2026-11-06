@@ -12,6 +12,7 @@ import { requestMove, sendJson as send, taskRefs as refsOf, type InputStage } fr
 import { CopyText } from "../CopyText";
 import { RecordDetails } from "../RecordDetails";
 import { AiCallStatus } from "../my/AiCallStatus";
+import { IconX } from "../icons";
 
 // The panel reads top-down: who the lead is, the next step, the selected task
 // (its notes, details and calls), then the card's activity.
@@ -30,6 +31,8 @@ const KIND: Record<BoardTask["entity"], { title: string; noun: string }> = {
 // The same area wording as My Work: carpet, then built-up, then the listing's own area.
 const areaText = (task: BoardTask) => task.carpetArea ? `${area(task.carpetArea)} carpet`
   : task.builtUpArea ? `${area(task.builtUpArea)} built-up` : area(task.listingArea);
+/** The lead's size: the first task, listings first, with a recorded area. */
+const sizeOf = (tasks: BoardTask[]) => tasks.map(areaText).find(value => value !== "—") ?? null;
 // Listings first, then AI follow-ups, each oldest first.
 const taskOrder = (tasks: BoardTask[]) => [...tasks].sort((a, b) => (a.entity === b.entity ? 0 : a.entity === "record" ? -1 : 1) || Number(a.id) - Number(b.id));
 
@@ -80,7 +83,11 @@ export function BoardPanel({ card, onClose, request }: { card: BoardCard; onClos
       <div className="board-panel-identity">
         <h2 id={titleId} ref={heading} tabIndex={-1}>{card.name?.trim() || "Unnamed owner"}</h2>
         <div className="board-panel-phone">{card.phone ? <CopyText value={card.phone} label="phone number" /> : <span className="muted">No phone number</span>}</div>
-        {(card.city || card.region) && <p className="board-panel-meta">{[card.city, card.region].filter(Boolean).join(", ")}</p>}
+        <dl className="board-keyfacts">
+          <KeyFact label="City" value={card.city} />
+          <KeyFact label="State" value={card.region} />
+          <KeyFact label="Size" value={sizeOf(tasks)} />
+        </dl>
         <p className="board-panel-status">
           <span className="board-code" data-stage={card.stage}>{stage.code}</span> {stage.label}
           {card.closed && <span> · Closed</span>}
@@ -88,7 +95,7 @@ export function BoardPanel({ card, onClose, request }: { card: BoardCard; onClos
           {card.nextDueAt && !card.closed && <span className={card.overdue ? "board-status-overdue" : undefined}> · {card.overdue ? "Overdue since" : "Follow up"} {shortDate(card.nextDueAt)}</span>}
         </p>
       </div>
-      <button type="button" className="modal-close" aria-label="Close lead" onClick={onClose}>×</button>
+      <button type="button" className="board-panel-close" aria-label="Close lead" title="Close" onClick={onClose}><IconX size={18} /></button>
     </header>
 
     <div className="board-panel-body">
@@ -124,6 +131,11 @@ export function BoardPanel({ card, onClose, request }: { card: BoardCard; onClos
       <Timeline taskIds={card.tasks.map(candidate => candidate.id)} version={version} labelledBy={`${titleId}-activity`} />
     </div>
   </aside>;
+}
+
+/** City, state and size: the facts a caller needs before dialling, labelled and prominent. */
+function KeyFact({ label, value }: { label: string; value: string | null }) {
+  return <div><dt>{label}</dt><dd>{value?.trim() || <span className="board-keyfact-missing">Not recorded</span>}</dd></div>;
 }
 
 function Section({ title, id, children }: { title: string; id: string; children: ReactNode }) {

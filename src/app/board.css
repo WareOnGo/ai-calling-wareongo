@@ -95,6 +95,14 @@
 .board-panel-identity h2:focus { outline: none; }
 .board-panel-identity h2:focus-visible { box-shadow: var(--focus-ring); border-radius: 4px; }
 .board-panel-meta { margin: 0; font-size: var(--text-caption); color: var(--muted); }
+.board-keyfacts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); margin: var(--space-3) 0 var(--space-1); }
+.board-keyfacts dt { font-size: var(--text-caption); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.board-keyfacts dd { margin: 2px 0 0; font-size: var(--text-body); font-weight: 600; color: var(--heading); overflow-wrap: anywhere; }
+.board-keyfact-missing { font-weight: 400; color: var(--muted); }
+.board-panel-close { flex: none; display: inline-grid; place-items: center; width: var(--control-compact); height: var(--control-compact); padding: 0;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-input); background: var(--surface); color: var(--heading); cursor: pointer; }
+.board-panel-close:hover { background: var(--hover); border-color: var(--heading); }
+.board-panel-close:focus-visible { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
 .board-panel-status { display: flex; flex-wrap: wrap; align-items: center; gap: 0 4px; margin: var(--space-2) 0 0; font-size: var(--text-support); color: var(--text); }
 .board-panel-status .board-code { margin-right: 2px; }
 .board-status-overdue { color: var(--fill-red-tx); font-weight: 600; }

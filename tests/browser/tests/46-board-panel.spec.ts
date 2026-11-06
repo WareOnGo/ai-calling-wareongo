@@ -26,6 +26,16 @@ test('the panel reads top-down: the lead, the next step, the task, then activity
   await expect(panel(page).getByRole('heading', { level: 2 })).toHaveText('Raghav Sharma');
   await expect(panel(page)).toContainText('+919811100001');
   await expect(panel(page).locator('.board-panel-status')).toContainText('1 Inbound');
+  // City, state and size are the lead's key facts, labelled and at body size under the phone.
+  const keyFact = (label: string) => panel(page).locator('.board-keyfacts > div').filter({ has: page.locator('dt', { hasText: label }) }).locator('dd');
+  await expect(keyFact('City')).toHaveText('Rajkot');
+  await expect(keyFact('State')).toHaveText('Gujarat');
+  await expect(keyFact('Size')).toHaveText('12,000 sqft');
+  // The close control is a clear icon button with a 32px target.
+  const close = panel(page).getByRole('button', { name: 'Close lead' });
+  await expect(close.locator('svg')).toBeVisible();
+  const box = (await close.boundingBox())!;
+  expect(Math.min(box.width, box.height)).toBeGreaterThanOrEqual(32);
   await expect(cardButton(page, 'Raghav Sharma')).toHaveAttribute('aria-expanded', 'true');
   await expect(stage(page)).toHaveValue('inbound');
   await expect(panel(page).getByRole('button', { name: /Move to/ })).toHaveCount(0);
