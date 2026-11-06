@@ -109,7 +109,25 @@ describe("planning a stage move", () => {
   });
 
   it("treats a move to the current stage as unchanged", () => {
-    expect(planMove(task({ stage: "rnr" }), { stage: "rnr" }).unchanged).toBe(true);
-    expect(planMove(task({ stage: "rejected", state: "done" }), { stage: "rejected", reason: "leased_out" }).unchanged).toBe(false);
+    expect(planMove(task({ stage: "rnr", outcome: "Unclear" }), { stage: "rnr" }).unchanged).toBe(true);
+    expect(planMove(task({ stage: "rejected", state: "done", outcome: "Unavailable" }), { stage: "rejected", reason: "leased_out" }).unchanged).toBe(false);
+  });
+
+  it("still records the stage's result on a task already in that stage without it", () => {
+    // e.g. backfilled to 2C from callback remarks with no result saved
+    const plan = planMove(task({ stage: "awaiting_details", outcome: null }), { stage: "awaiting_details" });
+    expect(plan).toMatchObject({ unchanged: false, outcome: "Available" });
+  });
+
+  it("clears the warehouse ID and the In DB mark when a card leaves stage 4", () => {
+    const created = task({ stage: "warehouse_created", state: "done", outcome: "Available", wh_id: "9876", added_to_db: true });
+    expect(planMove(created, { stage: "details_collected" })).toMatchObject({ whId: null, addedToDb: false, reopen: true, leavesWarehouse: true });
+    expect(planMove(created, { stage: "junk", reason: "invalid_number" })).toMatchObject({ whId: null, addedToDb: false, reopen: false, leavesWarehouse: true });
+    expect(planMove(created, { stage: "warehouse_created" })).toMatchObject({ whId: "9876", addedToDb: true, leavesWarehouse: false });
+  });
+
+  it("keeps warehouse fields saved elsewhere when the task was never in stage 4", () => {
+    expect(planMove(task({ stage: "inbound", wh_id: "1234", added_to_db: true }), { stage: "rnr" }))
+      .toMatchObject({ whId: "1234", addedToDb: true, leavesWarehouse: false });
   });
 });

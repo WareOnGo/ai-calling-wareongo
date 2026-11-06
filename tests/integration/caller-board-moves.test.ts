@@ -121,6 +121,25 @@ describe("moving board cards", () => {
     expect(await response.json()).toMatchObject({ code: "WAREHOUSE_ALREADY_ADDED" });
   });
 
+  it("keeps a registered warehouse in stage 4: the card cannot go to Junk or Rejected either", async () => {
+    const phone = "9811700017", id = await task(await listing(phone), { stage: "warehouse_created", state: "done", outcome: "Available", whId: "78" });
+    await query("update bolna_assignments set added_to_db = true where id = $1", [id]);
+    await warehouse(phone, 78);
+    for (const move of [{ stage: "junk", reason: "invalid_number" }, { stage: "rejected" }]) {
+      const response = await moveCard({ tasks: await refs(id), ...move });
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({ code: "WAREHOUSE_ALREADY_ADDED" });
+    }
+    expect(await row(id)).toMatchObject({ stage: "warehouse_created", wh_id: "78", added_to_db: true });
+  });
+
+  it("clears an unregistered warehouse ID when the card leaves stage 4", async () => {
+    const phone = "9811700018", id = await task(await listing(phone), { stage: "warehouse_created", state: "done", outcome: "Available", whId: "9876" });
+    await query("update bolna_assignments set added_to_db = true where id = $1", [id]);
+    expect((await moveCard({ tasks: await refs(id), stage: "details_collected" })).status).toBe(200);
+    expect(await row(id)).toMatchObject({ stage: "details_collected", state: "open", wh_id: null, added_to_db: false });
+  });
+
   it("changes nothing when any task on the card is stale", async () => {
     const phone = "9811700008", first = await task(await listing(phone)), second = await task(await listing(phone));
     const stale = [...await refs(first), { id: second, revision: 7 }];

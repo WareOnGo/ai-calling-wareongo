@@ -12,6 +12,15 @@ export const sendJson = (url: string, method: string, body: unknown) =>
   requestJson(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 export const taskRefs = (tasks: BoardTask[]) => tasks.map(task => ({ id: task.id, revision: task.revision }));
 
+/** A card's identity on the board: one per caller and phone. */
+export const cardId = (card: BoardCard) => `${card.assignee}:${card.key}`;
+/** Follow-ups are due at 10:00 IST on the chosen day. */
+export const followUpAt = (day: string) => `${day}T10:00:00+05:30`;
+/** A timestamp's IST calendar day as YYYY-MM-DD, for date inputs. */
+export const istDay = (value: string | null) => value ? new Date(value).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }) : "";
+/** The IST calendar day `days` from now as YYYY-MM-DD. */
+export const istDayIn = (days: number) => istDay(new Date(Date.now() + days * 86400_000).toISOString());
+
 export function requestMove(card: BoardCard, stage: Stage, extra: { reason?: string | null; wh_id?: string | null } = {}) {
   return sendJson("/api/board/move", "POST", { tasks: taskRefs(movableTasks(card.tasks)), stage, ...extra });
 }

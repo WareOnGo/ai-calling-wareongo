@@ -38,11 +38,16 @@ async function lockTasks(client: PoolClient, viewer: Viewer, refs: TaskRef[]): P
   return rows;
 }
 
+/** A number whose warehouse is in the DB keeps its finished work, and its stage 4 credit. */
+async function assertNoWarehouse(client: PoolClient, task: TaskRow, message: string) {
+  const registered = await client.query("select 1 from bolna_warehouse_matches where entity_type = $1 and entity_id = $2 limit 1", [task.entity_type, task.entity_id]);
+  if (registered.rowCount) throw new ApiError(409, message, "WAREHOUSE_ALREADY_ADDED");
+}
+
 // The shared deployment can run with the ownership trigger disabled, so reopening
 // is checked here, as updateAssignment does.
 async function assertCanReopen(client: PoolClient, task: TaskRow, cardTaskIds: string[]) {
-  const registered = await client.query("select 1 from bolna_warehouse_matches where entity_type = $1 and entity_id = $2 limit 1", [task.entity_type, task.entity_id]);
-  if (registered.rowCount) throw new ApiError(409, "This number already has a warehouse in the DB, so its finished work cannot be reopened.", "WAREHOUSE_ALREADY_ADDED");
+  await assertNoWarehouse(client, task, "This number already has a warehouse in the DB, so its finished work cannot be reopened.");
   const owner = await client.query(`select 1 from (${contactTargets("$1::text", "$2::uuid")}) contacts
       join bolna_assignments a using(entity_type, entity_id)
      where a.state = 'open' and a.id <> all($3::bigint[]) limit 1`, [task.entity_type, task.entity_id, cardTaskIds]);
@@ -72,7 +77,10 @@ export async function moveCard(viewer: Viewer, input: { tasks: TaskRef[]; stage:
       try { return { task, plan: planMove({ ...task, warehouseIds: task.warehouse_ids }, input) }; }
       catch (error) { if (error instanceof MoveError) throw new ApiError(422, error.message, error.code, error.field); throw error; }
     });
-    for (const { task, plan } of plans) if (plan.reopen) await assertCanReopen(client, task, tasks.map(t => t.id));
+    for (const { task, plan } of plans) {
+      if (plan.reopen) await assertCanReopen(client, task, tasks.map(t => t.id));
+      else if (plan.leavesWarehouse) await assertNoWarehouse(client, task, "This number already has a warehouse in the DB, so it stays in 4 Warehouse ID.");
+    }
     const moved: MovedTask[] = [];
     for (const { task, plan } of plans) {
       if (plan.unchanged) { moved.push({ id: task.id, revision: task.revision, stage: task.stage, state: task.state }); continue; }

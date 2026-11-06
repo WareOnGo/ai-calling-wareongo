@@ -47,6 +47,8 @@ export type MovePlan = {
   stage: Stage; state: "open" | "done"; outcome: string | null; whId: string | null; addedToDb: boolean;
   disposition: string | null; closureReason: string | null;
   complete: boolean; reopen: boolean; clearFollowUp: boolean; logNoAnswer: boolean; unchanged: boolean;
+  /** Leaving stage 4: the caller must check the number has no warehouse in the DB. */
+  leavesWarehouse: boolean;
 };
 
 /** A card move touches its open tasks; a finished card moves all of them. */
@@ -100,16 +102,20 @@ export function planMove(task: TaskSnapshot, input: MoveInput): MovePlan {
   const reason = reasonFor(input.stage, input.reason);
   const state = terminal ? "done" : "open";
   const reopen = task.state === "done" && !terminal;
-  const whId = input.stage === "warehouse_created" ? warehouseFor(task, input.whId) : task.wh_id;
+  // Leaving stage 4 means this lead created no warehouse after all, so its ID goes too.
+  const leavesWarehouse = task.stage === "warehouse_created" && input.stage !== "warehouse_created";
+  const whId = input.stage === "warehouse_created" ? warehouseFor(task, input.whId) : leavesWarehouse ? null : task.wh_id;
   // A finished card keeps its reason only while it stays finished; reopened work starts clean.
   const disposition = terminal ? reason : reopen ? null : task.disposition;
   const closureReason = input.stage === "junk" ? CLOSURE_FOR_JUNK[reason as JunkReason] : null;
   const plan: MovePlan = {
     stage: input.stage, state, outcome: OUTCOME_FOR_STAGE[input.stage] ?? task.outcome, whId,
-    addedToDb: input.stage === "warehouse_created" ? true : task.added_to_db,
+    addedToDb: input.stage === "warehouse_created" ? true : leavesWarehouse ? false : task.added_to_db,
     disposition, closureReason, complete: task.state === "open" && terminal, reopen,
-    clearFollowUp: terminal, logNoAnswer: input.stage === "rnr" && task.stage !== "rnr", unchanged: false,
+    clearFollowUp: terminal, logNoAnswer: input.stage === "rnr" && task.stage !== "rnr", unchanged: false, leavesWarehouse,
   };
-  plan.unchanged = task.stage === input.stage && task.state === state && plan.disposition === task.disposition && plan.whId === task.wh_id;
+  // Skip only a task that already matches everything the stage implies, its result included.
+  plan.unchanged = task.stage === input.stage && task.state === state && plan.disposition === task.disposition
+    && plan.whId === task.wh_id && plan.outcome === task.outcome && plan.addedToDb === task.added_to_db;
   return plan;
 }

@@ -124,6 +124,28 @@ test('each task shows everything My Work shows for it', async ({ employeePage: p
   await expect(fact(page, 'Area')).toHaveText('12,000 sqft built-up');
 });
 
+test('tabs number tasks within their kind', async ({ employeePage: page }) => {
+  // A second AI follow-up on Raghav's number: the call made on 5 August.
+  sql(`insert into bolna_assignments(entity_type,entity_id,assignee,assigned_by,state,stage)
+       values ('call','c0000000-0000-4000-8000-000000000005','priya@eval.test','admin@eval.test','open','inbound')`);
+  await page.goto('/dashboard/board');
+  await cardButton(page, 'Raghav Sharma').click();
+  await expect(panel(page).getByRole('tab')).toHaveText(['Listing', 'AI follow-up 1', 'AI follow-up 2']);
+});
+
+test('saving notes and moving straight away does not report a false conflict', async ({ employeePage: page }) => {
+  await page.goto('/dashboard/board');
+  await cardButton(page, 'Raghav Sharma').click();
+  const notes = panel(page).getByRole('textbox', { name: 'Your notes' });
+  // A trailing space is trimmed on save; the button must not stay enabled because of it.
+  await notes.fill('Owner asked for a call on Monday ');
+  await panel(page).getByRole('button', { name: 'Save notes' }).click();
+  await moveTo(page, 'details_collected', 'Details');
+  await expect(column(page, '3').locator('.board-card')).toContainText('Raghav Sharma');
+  await expect(panel(page).locator('.board-panel-error')).toHaveCount(0);
+  await expect(panel(page).getByRole('button', { name: 'Save notes' })).toBeDisabled();
+});
+
 test('moving a card to an open stage updates the board, the panel and the timeline', async ({ employeePage: page }) => {
   await page.goto('/dashboard/board');
   await cardButton(page, 'Raghav Sharma').click();

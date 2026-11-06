@@ -8,7 +8,7 @@ import { area, rent, resultClass } from "@/lib/employee-display";
 import { dispositionLabel } from "@/lib/manual-dispositions";
 import { useDashboardUI } from "../DashboardUI";
 import { requestJson, RequestError } from "../requests";
-import { requestMove, sendJson as send, taskRefs as refsOf, type InputStage } from "./board-requests";
+import { followUpAt, istDay, requestMove, sendJson as send, taskRefs as refsOf, type InputStage } from "./board-requests";
 import { CopyText } from "../CopyText";
 import { RecordDetails } from "../RecordDetails";
 import { RecordDetails as EmployeeRecordDetails } from "../my/classic/RecordDetails";
@@ -23,8 +23,6 @@ import { IconX } from "../icons";
 // (its notes, details and calls), then the card's activity.
 
 // The date picker chooses a day; follow-ups are due at 10:00 IST that day.
-const followUpAt = (day: string) => `${day}T10:00:00+05:30`;
-const istDay = (value: string | null) => value ? new Date(value).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }) : "";
 /** A short IST date and time for lists; the full timestamp stays in the tooltip. */
 const when = (value: string) => new Date(value).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
 /** A person's name, or their account handle rather than a full email address. */
@@ -47,14 +45,17 @@ export function BoardPanel({ card, onClose, request, showCalls }: {
   /** Manual and Callyzer call records are for admins only. */
   showCalls: boolean;
 }) {
-  const { refresh } = useDashboardUI();
+  const { refresh, pending } = useDashboardUI();
   const titleId = useId();
   const heading = useRef<HTMLHeadingElement>(null);
   // The stage chosen in the dropdown; a move happens only when it is confirmed.
   const [target, setTarget] = useState<Stage>(request?.stage ?? card.stage);
   // After a confirmed move, until the refreshed card arrives with its new stage.
   const [moved, setMoved] = useState<Stage | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
+  // Locked while a write is in flight and until the refreshed card arrives, so the
+  // next action never sends a revision the server has already moved past.
+  const busy = saving || pending;
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
   const tasks = taskOrder(card.tasks);
@@ -71,13 +72,19 @@ export function BoardPanel({ card, onClose, request, showCalls }: {
   useEffect(() => { setTarget(request?.stage ?? card.stage); setMoved(null); }, [card.key, card.stage, request?.token, request?.stage]);
 
   async function run(action: () => Promise<unknown>) {
-    setBusy(true); setError(""); setNote("");
+    setSaving(true); setError(""); setNote("");
     try { await action(); refresh(); }
     catch (failure) {
       setError(failure instanceof Error ? failure.message : "Couldn't save the change. Try again.");
       // A conflict means newer data exists; reload it so the next attempt uses it.
       if (failure instanceof RequestError && failure.code === "ASSIGNMENT_CONFLICT") refresh();
-    } finally { setBusy(false); }
+    } finally { setSaving(false); }
+  }
+  /** Notes save through the same lock; the field reports its own outcome. */
+  async function saveNotes(target: BoardTask, remarks: string) {
+    setSaving(true);
+    try { await send(`/api/board/tasks/${target.id}`, "PATCH", { revision: target.revision, remarks }); refresh(); }
+    finally { setSaving(false); }
   }
   const move = (to: Stage, extra: { reason?: string | null; wh_id?: string | null } = {}) =>
     run(async () => { await requestMove(card, to, extra); setMoved(to); });
@@ -134,7 +141,7 @@ export function BoardPanel({ card, onClose, request, showCalls }: {
 
       {tasks.length > 1 && <TaskTabs tasks={tasks} selected={task.id} onSelect={setSelected} idPrefix={titleId} />}
       <div className="board-task" key={task.id} {...(tasks.length > 1 ? { role: "tabpanel", id: `${titleId}-task`, "aria-labelledby": `${titleId}-tab-${task.id}` } : {})}>
-        <TaskDetails task={task} idPrefix={`${titleId}-${task.id}`} onSaved={refresh} showCalls={showCalls} />
+        <TaskDetails task={task} idPrefix={`${titleId}-${task.id}`} busy={busy} onSaveNotes={remarks => saveNotes(task, remarks)} showCalls={showCalls} />
       </div>
 
       <Timeline taskIds={card.tasks.map(candidate => candidate.id)} version={version} labelledBy={`${titleId}-activity`} />
@@ -153,7 +160,11 @@ function Section({ title, id, children }: { title: string; id: string; children:
 
 /** Tasks that share the card's phone, one at a time. Arrow keys move between tabs. */
 function TaskTabs({ tasks, selected, onSelect, idPrefix }: { tasks: BoardTask[]; selected: string; onSelect: (id: string) => void; idPrefix: string }) {
-  const titles = tasks.map((task, index) => KIND[task.entity].title + (tasks.filter(other => other.entity === task.entity).length > 1 ? ` ${index + 1}` : ""));
+  // Numbered within their kind: Listing, AI follow-up 1, AI follow-up 2.
+  const titles = tasks.map(task => {
+    const same = tasks.filter(other => other.entity === task.entity);
+    return KIND[task.entity].title + (same.length > 1 ? ` ${same.indexOf(task) + 1}` : "");
+  });
   return <div className="board-task-tabs" role="tablist" aria-label="Tasks on this number">{tasks.map((task, index) =>
     <button key={task.id} type="button" role="tab" id={`${idPrefix}-tab-${task.id}`} aria-controls={`${idPrefix}-task`} aria-selected={task.id === selected}
       tabIndex={task.id === selected ? 0 : -1} onClick={() => onSelect(task.id)} onKeyDown={event => {
@@ -165,7 +176,9 @@ function TaskTabs({ tasks, selected, onSelect, idPrefix }: { tasks: BoardTask[];
 }
 
 /** Everything My Work shows for one task, grouped: instructions, your notes, details, calls. */
-function TaskDetails({ task, idPrefix, onSaved, showCalls }: { task: BoardTask; idPrefix: string; onSaved: () => void; showCalls: boolean }) {
+function TaskDetails({ task, idPrefix, busy, onSaveNotes, showCalls }: {
+  task: BoardTask; idPrefix: string; busy: boolean; onSaveNotes: (remarks: string) => Promise<void>; showCalls: boolean;
+}) {
   const kind = KIND[task.entity];
   const assigner = who(task.assignedByName, task.assignedBy);
   // Admins get the full record; employees get My Work's details view, which has no
@@ -176,7 +189,7 @@ function TaskDetails({ task, idPrefix, onSaved, showCalls }: { task: BoardTask; 
   const areaValue = areaText(task), rentValue = rent(task.rent);
   return <>
     {task.note?.trim() && <Brief note={task.note} label={`Note from ${assigner}`} />}
-    <Notes task={task} id={`${idPrefix}-notes`} onSaved={onSaved} />
+    <Notes task={task} id={`${idPrefix}-notes`} busy={busy} onSave={onSaveNotes} />
     <Section title={`${kind.title} details`} id={`${idPrefix}-details`}>
       <dl className="board-facts">
         <Fact label="Assigned"><span title={dateTime(task.assignedAt)}>{assigner} · {shortDate(task.assignedAt)}</span></Fact>
@@ -251,7 +264,7 @@ function Brief({ note, label }: { note: string; label: string }) {
   </div>;
 }
 
-function Notes({ task, id, onSaved }: { task: BoardTask; id: string; onSaved: () => void }) {
+function Notes({ task, id, busy, onSave }: { task: BoardTask; id: string; busy: boolean; onSave: (remarks: string) => Promise<void> }) {
   const saved = task.remarks ?? "";
   const [notes, setNotes] = useState(saved);
   const [status, setStatus] = useState("");
@@ -264,7 +277,7 @@ function Notes({ task, id, onSaved }: { task: BoardTask; id: string; onSaved: ()
   }, [saved]); // Only a new saved value should replace the field; typing must not.
   async function save() {
     setSaving(true); setStatus("");
-    try { await send(`/api/board/tasks/${task.id}`, "PATCH", { revision: task.revision, remarks: notes }); setStatus("Saved"); onSaved(); }
+    try { await onSave(notes); setStatus("Saved"); }
     catch (failure) { setStatus(failure instanceof Error ? failure.message : "Couldn't save notes."); }
     finally { setSaving(false); }
   }
@@ -272,7 +285,7 @@ function Notes({ task, id, onSaved }: { task: BoardTask; id: string; onSaved: ()
     <textarea aria-labelledby={id} className="board-notes" rows={3} value={notes} placeholder="What did the owner say?" onChange={event => { setNotes(event.target.value); setStatus(""); }} />
     <div className="board-move-actions">
       <span role="status" className="board-task-status">{status}</span>
-      <button type="button" className="btn secondary" disabled={saving || notes === saved} onClick={save}>Save notes</button>
+      <button type="button" className="btn secondary" disabled={busy || saving || notes.trim() === saved} onClick={save}>Save notes</button>
     </div>
   </Section>;
 }

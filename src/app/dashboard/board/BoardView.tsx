@@ -7,12 +7,11 @@ import { shortDate } from "@/lib/display";
 import { useDashboardUI } from "../DashboardUI";
 import { RequestError } from "../requests";
 import { BoardPanel } from "./BoardPanel";
-import { NEEDS_INPUT, requestMove, type InputStage } from "./board-requests";
+import { NEEDS_INPUT, cardId, requestMove, type InputStage } from "./board-requests";
 import { JunkDigest } from "./JunkReview";
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
 // Admins see several callers' cards for one phone, so the caller is part of the identity.
-const cardId = (card: BoardCard) => `${card.assignee}:${card.key}`;
 const DRAG_TYPE = "application/x-callongo-card";
 
 type Drag = { onStart: (card: BoardCard) => void; onEnd: () => void; onOver: (stage: Stage) => void; onDrop: (stage: Stage, event: DragEvent) => void;

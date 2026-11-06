@@ -4,10 +4,8 @@ import type { BoardCard } from "@/lib/board";
 import { STRIKE_LIMIT } from "@/lib/board-stages";
 import { useDashboardUI } from "../DashboardUI";
 import { Dialog } from "../Dialog";
-import { requestMove, sendJson, taskRefs } from "./board-requests";
+import { cardId, followUpAt, istDayIn, requestMove, sendJson, taskRefs } from "./board-requests";
 
-const cardId = (card: BoardCard) => `${card.assignee}:${card.key}`;
-const inDays = (days: number) => new Date(Date.now() + days * 86400_000).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 export const leads = (count: number) => `${count} lead${count === 1 ? "" : "s"}`;
 
 /** The daily digest: five-strike cards wait here until a person confirms or keeps trying. */
@@ -42,7 +40,7 @@ function JunkReview({ cards, total, onClose }: { cards: BoardCard[]; total: numb
       {error && <p className="board-panel-error" role="alert">{error}</p>}
       {remaining.length ? <ul className="board-proposals">{remaining.map(card => <Proposal key={cardId(card)} card={card} busy={busy === cardId(card)}
         onJunk={() => decide(card, () => requestMove(card, "junk", { reason: "owner_unresponsive" }))}
-        onKeep={day => decide(card, () => sendJson("/api/board/follow-up", "POST", { tasks: taskRefs(card.tasks.filter(task => task.state === "open")), next_due_at: `${day}T10:00:00+05:30` }))} />)}
+        onKeep={day => decide(card, () => sendJson("/api/board/follow-up", "POST", { tasks: taskRefs(card.tasks.filter(task => task.state === "open")), next_due_at: followUpAt(day) }))} />)}
       </ul> : <p className="board-empty">No leads waiting for review.</p>}
       {total > cards.length && <p className="board-review-intro">Showing the first {cards.length} of {total}. The rest appear as these are decided.</p>}
     </div>
@@ -51,7 +49,10 @@ function JunkReview({ cards, total, onClose }: { cards: BoardCard[]; total: numb
 }
 
 function Proposal({ card, busy, onJunk, onKeep }: { card: BoardCard; busy: boolean; onJunk: () => void; onKeep: (day: string) => void }) {
-  const [day, setDay] = useState(inDays(3));
+  const [day, setDay] = useState(istDayIn(3));
+  // Keeping a lead needs a day after today: a follow-up due at 10:00 today is
+  // already past for most of the day, and a past date leaves the proposal standing.
+  const earliest = istDayIn(1);
   const name = card.name?.trim() || "Unnamed owner";
   return <li className="board-proposal" aria-busy={busy}>
     <div className="board-proposal-lead">
@@ -60,8 +61,8 @@ function Proposal({ card, busy, onJunk, onKeep }: { card: BoardCard; busy: boole
       <span className="board-proposal-strikes">{card.strikes} strikes</span>
     </div>
     <div className="board-proposal-actions">
-      <label className="board-field"><span>Try again on</span><input type="date" value={day} min={inDays(0)} onChange={event => setDay(event.target.value)} /></label>
-      <button type="button" className="btn secondary" disabled={busy || !day} aria-label={`Keep trying ${name}`} onClick={() => onKeep(day)}>Keep trying</button>
+      <label className="board-field"><span>Try again on</span><input type="date" value={day} min={earliest} onChange={event => setDay(event.target.value)} /></label>
+      <button type="button" className="btn secondary" disabled={busy || !day || day < earliest} aria-label={`Keep trying ${name}`} onClick={() => onKeep(day)}>Keep trying</button>
       <button type="button" className="btn-primary" disabled={busy} aria-label={`Move ${name} to Junk`} onClick={onJunk}>Move to Junk</button>
     </div>
   </li>;

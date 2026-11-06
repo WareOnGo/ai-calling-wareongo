@@ -57,6 +57,22 @@ test('keeping a proposed card sets its next follow-up and withdraws the proposal
   await expect(raghav(page)).not.toContainText('Proposed for Junk');
 });
 
+test('keeping a card needs a day after today, so the proposal cannot come straight back', async ({ employeePage: page }) => {
+  strikes(1, 5);
+  await page.goto('/dashboard/board');
+  await digest(page).getByRole('button', { name: 'Review 1 lead' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Review Junk proposals' });
+  // Follow-ups are due at 10:00 IST, so "today" is already past for most of the day.
+  const ist = (days: number) => new Date(Date.now() + days * 86400_000).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+  const field = dialog.getByLabel('Try again on');
+  const keep = dialog.getByRole('button', { name: 'Keep trying Raghav Sharma' });
+  await expect(field).toHaveAttribute('min', ist(1));
+  await field.fill(ist(0));
+  await expect(keep).toBeDisabled();
+  await field.fill(ist(1));
+  await expect(keep).toBeEnabled();
+});
+
 test('everyone reviews only their own proposals, admins included', async ({ employeePage: employee, employee2Page: raj, adminPage: admin }) => {
   strikes(1, 5); strikes(4, 6);
   await employee.goto('/dashboard/board');
