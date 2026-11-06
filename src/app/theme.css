@@ -29,6 +29,10 @@
   --grid-line-strong: var(--border-strong);
   --gutter-bg: var(--surface-subtle);
   --gutter-text: var(--muted);
+  /* Board layers: the board sits behind its lanes, and cards sit on the lanes. */
+  --board-bg: var(--surface-subtle);
+  --lane-bg: var(--surface);
+  --lane-card-bg: var(--surface);
   --blue: var(--accent);
   --green: #27734e;
   --primary-button-text: var(--primary-text);
@@ -116,6 +120,10 @@
   --disabled-text: #909099;
   --hover: #1d2023;
   --grid-line: #282c2f;
+  /* Dark elevation steps lighter: black board, then lanes, then raised cards. */
+  --board-bg: var(--canvas);
+  --lane-bg: var(--surface-subtle);
+  --lane-card-bg: var(--surface-raised);
   --green: #91d3ae;
   --fill-green-bg: #14251c;
   --fill-green-tx: #91d3ae;

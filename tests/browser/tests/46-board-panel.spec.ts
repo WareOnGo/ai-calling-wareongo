@@ -52,6 +52,36 @@ test('the panel reads top-down: the lead, the next step, the task, then activity
   await shot(page, 'board-panel-full');
 });
 
+/** Key-fact words split across lines. A value may wrap between words, never inside one. */
+const splitWords = (page: any): Promise<string[]> => panel(page).locator('.board-keyfacts dd').evaluateAll((nodes: Element[]) => nodes.flatMap(node => {
+  const text = node.firstChild;
+  if (!text || text.nodeType !== Node.TEXT_NODE) return [];
+  return [...(text.textContent || '').matchAll(/\S+/g)].filter(match => {
+    const range = document.createRange();
+    range.setStart(text, match.index!);
+    range.setEnd(text, match.index! + match[0].length);
+    return range.getClientRects().length > 1;
+  }).map(match => match[0]);
+}));
+
+for (const width of [1366, 390]) {
+  test(`long city and state names wrap between words, never inside one, at ${width}px`, async ({ employeePage: page, shot }) => {
+    // The card shows its latest task's place: here the AI follow-up call's recipient area.
+    sql(`update raw_records set city='Vishakhapatnam', state='Andhra Pradesh' where id='a0000000-0000-4000-8000-000000000001';
+         update bolna_call_logs set context_details = jsonb_set(context_details, '{recipient_data,area}', '"vishakhapatnam"')
+          where id='c0000000-0000-4000-8000-000000000001'`);
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/dashboard/board');
+    await cardButton(page, 'Raghav Sharma').click();
+    const facts = panel(page).locator('.board-keyfacts');
+    await expect(facts).toContainText('Vishakhapatnam');
+    expect(await splitWords(page)).toEqual([]);
+    // Nothing spills past the panel edge either.
+    expect(await facts.evaluate((node: Element) => node.scrollWidth <= node.clientWidth)).toBe(true);
+    await shot(page, `board-panel-long-place-${width}`);
+  });
+}
+
 test('each task shows everything My Work shows for it', async ({ employeePage: page }) => {
   await page.goto('/dashboard/board');
   await cardButton(page, 'Raghav Sharma').click();
