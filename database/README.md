@@ -589,6 +589,17 @@ entries with 021 the only pending file, and 36 tasks for the catch-up:
 | 2C Awaiting details | 4 Warehouse ID | | 2 |
 | 3 Details collected | 4 Warehouse ID | 1 | 2 |
 
+021 was applied to production on 6 November 2026 at 15:04 IST from main commit
+`c67e515` with `database/migrate.mjs`. Verified after commit: 22 ledger entries with
+021's checksum; `bolna_assignment_stage_sync` enabled and every other trigger enable
+state unchanged (`bolna_assignment_quality_guard` and
+`bolna_assignment_contacts_sync` still disabled, `bolna_assignment_touch` enabled);
+36 `stage-sync` audit rows, one per task, matching the pre-flight table and changing
+nothing but `stage` (so `revision` and `updated_at` are unchanged); 3,433 assignments;
+no task left whose stage the catch-up would still change. A second runner pass made
+no changes. Open tasks afterwards: 449 Inbound, 353 RnR, 13 Rejected, 130 Awaiting
+details, 67 Details collected, 20 Warehouse ID, 6 Junk.
+
 To reverse:
 
 ```sql
