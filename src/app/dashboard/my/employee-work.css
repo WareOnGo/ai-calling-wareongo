@@ -1160,3 +1160,45 @@
   top: auto;
   bottom: calc(100% + 4px);
 }
+
+/* Warehouse matches remain visible, but no longer invite caller updates. */
+#employee-work table.task-sheet tr.row-warehouse-added td.who {
+  opacity: 1;
+}
+#employee-work table.task-sheet tbody tr.row-warehouse-added td.edit-cell {
+  background: var(--fill-gray-bg);
+}
+#employee-work table.task-sheet tr.row-warehouse-added td.edit-cell .field,
+#employee-work table.task-sheet tr.row-warehouse-added td.edit-cell .btn-done {
+  background: var(--fill-gray-bg);
+  color: var(--fill-gray-tx);
+  border-color: var(--border);
+  cursor: default;
+  opacity: 1;
+}
+#employee-work .warehouse-added-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding-top: 6px;
+  color: var(--text);
+  font-size: 12px;
+}
+#employee-work .warehouse-added-status svg { color: var(--green); }
+#employee-work .warehouse-reference { padding-top: 6px; }
+#employee-work .warehouse-reference-value {
+  display: block;
+  color: var(--text);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+#employee-work .warehouse-reference-value .muted { color: var(--fill-gray-tx); }
+#employee-work .warehouse-reference-source {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--fill-gray-tx);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

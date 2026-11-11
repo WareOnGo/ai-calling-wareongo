@@ -12,6 +12,16 @@ fields, autosave recovery, Done and reopen interactions. It does not introduce
 manual-call forms, closure reasons, new WH-ID formatting rules or compulsory call
 logging. Employee visibility and revision checks remain enforced.
 
+Warehouse matches from the same phone-matching data used in Assignments appear
+as an **Already added** chip in My Work. Matched listings and AI follow-ups show
+read-only update fields and a disabled completion button, without mounting
+autosave. Result, notes and completion are greyed out. Added and WH ID are plain,
+readable values with no checkbox or textbox. Warehouse references retain a
+different saved ID and show every match; an empty saved ID displays all matches.
+Existing notes, saved references and completion state are preserved. A caller's
+manual In DB checkbox alone does not lock a row before a warehouse match exists.
+This display also applies in the admin's employee perspective.
+
 Admins can use **View work as** on My Work to inspect an active team member's
 assignments, totals, saved updates and details in a read-only employee
 perspective. **My work (me)** restores their own editable assignments. The

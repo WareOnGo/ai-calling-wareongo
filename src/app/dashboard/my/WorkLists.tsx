@@ -14,6 +14,7 @@ import { CopyText } from "./classic/CopyText";
 import { RecordDetails } from "./classic/RecordDetails";
 import { Freshness } from "../DashboardUI";
 import { IconClipboard } from "../icons";
+import { WarehouseNotice } from "../WarehouseNotice";
 
 type WorkListsProps = {
   records: WorkPage; calls: WorkPage; totals: WorkTotals; matchingTotals: WorkTotals; filters: Filters;
@@ -90,14 +91,15 @@ function WorkListContents({ records, calls, totals, matchingTotals, filters, ass
         <h2 className="section-head" tabIndex={-1}>{title}<span className="count">{matchingTotals[entity].open + delta(list.rows)} left of {matchingTotals[entity].open + matchingTotals[entity].done}</span></h2>
         <div className="gridwrap"><table className="sheet task-sheet">
           <WorkColumns /><WorkHeaders readOnly={readOnly} />
-          <tbody>{list.rows.map((r,i) => <tr key={r.id} className={(states[r.id] || r.state) === 'done' ? 'row-done' : undefined}>
+          <tbody>{list.rows.map((r,i) => <tr key={r.id} className={[(states[r.id] || r.state) === 'done' && 'row-done', r.warehouseIds.length > 0 && 'row-warehouse-added'].filter(Boolean).join(' ') || undefined}>
             <td className="rownum">{(list.page-1)*25+i+1}</td>
             <td className="who"><div className="work-person-heading"><span className="who-name">{r.who}</span><RecordDetails id={r.entityId} entity={entity} employee={filters.employee} /></div>
               <WorkContext context={r.context} />
+              <WarehouseNotice ids={r.warehouseIds} compact />
               <AssignmentBrief id={r.id} note={r.brief} assignedBy={r.assignedBy} name={r.assignedByName} assignedAt={r.assignedAt} />
             </td>
             <td className="work-phone"><CopyText value={r.phone} label="phone number" /><AiCallStatus result={r.ai} count={r.aiCount} /></td>
-            {readOnly ? <ReadOnlyOutcomeCells outcome={r.outcome} remarks={r.remarks} addedToDb={r.addedToDb} whId={r.whId} state={r.state} /> : <OutcomeCells revision={r.revision} assignmentId={r.id} contactName={r.who} phone={r.phone} outcome={r.outcome} remarks={r.remarks} addedToDb={r.addedToDb} whId={r.whId} state={r.state} onStateChange={onStateChange} />}
+            {readOnly || r.warehouseIds.length > 0 ? <ReadOnlyOutcomeCells outcome={r.outcome} remarks={r.remarks} addedToDb={r.addedToDb} whId={r.whId} state={r.state} warehouseIds={r.warehouseIds} notesLabel={readOnly ? "Employee notes" : "Your notes"} /> : <OutcomeCells revision={r.revision} assignmentId={r.id} contactName={r.who} phone={r.phone} outcome={r.outcome} remarks={r.remarks} addedToDb={r.addedToDb} whId={r.whId} state={r.state} onStateChange={onStateChange} />}
           </tr>)}</tbody>
         </table></div>
         {list.pages > 1 && <nav className="work-pager" aria-label={`${title} pages`}>

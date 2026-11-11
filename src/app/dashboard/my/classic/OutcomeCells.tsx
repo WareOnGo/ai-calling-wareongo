@@ -5,17 +5,23 @@ import { IconCheck } from "../../icons";
 import { useAutosave, SaveStatus } from "../../useAutosave";
 import { useDashboardUI } from "../../DashboardUI";
 import { AssignmentConflict, workValues } from "./AssignmentConflict";
+import { WarehouseReference } from "../../WarehouseNotice";
 
 type Props = { revision: number; assignmentId: string; contactName: string | null; phone: string | null; outcome: string | null; remarks: string | null; addedToDb: boolean; whId: string | null; state?: string; onStateChange?: (id: string, state: string) => void };
 
 // Keep the employee layout, without mounting autosave or any mutation handlers.
-export function ReadOnlyOutcomeCells({ outcome, remarks, addedToDb, whId, state }: Pick<Props, "outcome" | "remarks" | "addedToDb" | "whId" | "state">) {
+export function ReadOnlyOutcomeCells({ outcome, remarks, addedToDb, whId, state, warehouseIds = [], notesLabel = "Employee notes" }: Pick<Props, "outcome" | "remarks" | "addedToDb" | "whId" | "state"> & { warehouseIds?: number[]; notesLabel?: string }) {
   const done = state === "done";
   return <>
     <td className="edit-cell edit-first"><select disabled className="field field-select" aria-label="Result of the call" value={outcome || ""}><option value="">Not called yet</option>{OUTCOMES.map(value => <option key={value}>{value}</option>)}</select></td>
-    <td className="edit-cell notes-cell"><textarea readOnly className="field notes-field" aria-label="Employee notes" rows={2} value={remarks || ""} placeholder="No notes yet" /></td>
-    <td className="edit-cell center"><label className="checkfield"><input disabled type="checkbox" checked={addedToDb} /><span>{addedToDb ? "Added" : "Not yet"}</span></label></td>
-    <td className="edit-cell"><input readOnly className="field field-narrow" aria-label="Warehouse ID" value={whId || ""} placeholder="WH ID" /></td>
+    <td className="edit-cell notes-cell"><textarea readOnly className="field notes-field" aria-label={notesLabel} rows={2} value={remarks || ""} placeholder="No notes yet" /></td>
+    {warehouseIds.length > 0 ? <>
+      <td className="edit-cell center warehouse-value-cell"><span className="warehouse-added-status" title="Matched by phone against the warehouse database"><IconCheck size={14} />Added</span></td>
+      <td className="edit-cell warehouse-value-cell"><WarehouseReference ids={warehouseIds} savedId={whId} /></td>
+    </> : <>
+      <td className="edit-cell center"><label className="checkfield"><input disabled type="checkbox" checked={addedToDb} /><span>{addedToDb ? "Added" : "Not yet"}</span></label></td>
+      <td className="edit-cell"><input readOnly className="field field-narrow" aria-label="Warehouse ID" value={whId || ""} placeholder="WH ID" /></td>
+    </>}
     <td className="edit-cell"><button disabled type="button" className={`btn-done${done ? " is-done" : ""}`} aria-pressed={done}><IconCheck size={14} />{done ? "Done" : "Mark done"}</button></td>
   </>;
 }

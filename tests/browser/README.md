@@ -14,6 +14,12 @@ to editable own work, and desktop/mobile layouts in both themes. Pagination
 checks verify that the updated list and first row actually enter the viewport,
 with focus on that list's heading, for both admins and employees.
 
+`warehouse-contacts.spec.ts` also covers the Already added chip and disabled
+updates in caller My Work and admin employee perspectives, for open listings and
+completed AI follow-ups. It checks preserved notes/references, multiple matched
+warehouse IDs, no write requests, and editable manual In DB flags without a
+database match. Desktop/mobile captures cover both themes.
+
 From the app root:
 
 ```bash

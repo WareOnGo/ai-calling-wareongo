@@ -10,7 +10,7 @@ export type WorkItem = {
   revision: number; id: string; entityId: string; entity: "record" | "call"; who: string; phone: string | null;
   context: { city: string | null; area: string | null; rent: string | null }; ai: string | null; aiCount: number; brief: string | null;
   assignedBy: string; assignedByName: string | null; assignedAt: string;
-  state: string; outcome: string | null; remarks: string | null; addedToDb: boolean; whId: string | null;
+  state: string; outcome: string | null; remarks: string | null; addedToDb: boolean; whId: string | null; warehouseIds: number[];
 };
 export type WorkPage = { rows: WorkItem[]; total: number; page: number; pages: number };
 export type WorkTotals = { record: { open: number; done: number }; call: { open: number; done: number } };
@@ -43,7 +43,7 @@ export async function personalWork(user: Viewer, entity: "call" | "record", filt
       },
       ai: r?.last_availability || c?.availability || null, aiCount: Number(r?.call_count || (c ? 1 : 0)), brief: a.note,
       assignedBy: a.assigned_by, assignedByName: a.assigned_by_name, assignedAt: a.assigned_at,
-      state: a.state, outcome: a.outcome, remarks: a.remarks, addedToDb: a.added_to_db, whId: a.wh_id,
+      state: a.state, outcome: a.outcome, remarks: a.remarks, addedToDb: a.added_to_db, whId: a.wh_id, warehouseIds: a.warehouse_ids,
     };
   });
   return { rows, total: result.total, page: result.page, pages: result.pages };
