@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, useTransition, useMemo } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Dialog } from "./Dialog";
 import { Dialog as EmployeeDialog } from "./my/classic/Dialog";
 import { WalletBalanceProvider } from "./WalletBalance";
@@ -28,7 +28,9 @@ export function useDashboardUI() {
 export function DashboardUI({ children, header, userEmail, isAdmin }: { children: React.ReactNode; header?: React.ReactNode; userEmail: string; isAdmin: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
+  const params = useSearchParams();
   const employeeWork = pathname === "/dashboard/my";
+  const perspective = employeeWork && isAdmin && !!params.get("employee") && params.get("employee")!.trim().toLowerCase() !== userEmail;
   const ActiveDialog = employeeWork ? EmployeeDialog : Dialog;
   const [transitioning, startTransition] = useTransition();
   const [hydrated, setHydrated] = useState(false);
@@ -99,7 +101,7 @@ export function DashboardUI({ children, header, userEmail, isAdmin }: { children
   return <WalletBalanceProvider scope={`${userEmail}:${isAdmin}`}><Context.Provider value={context}>
     {header}
     {transitioning && <div className={`navigation-progress${employeeWork ? " employee-work-status" : ""}`} role="status"><span />Updating results…</div>}
-    {(saveList.length > 0 || pathname === "/dashboard/my") && <div className={`${employeeWork ? "employee-work-status " : ""}sheet-save-status${failed.length ? " has-error" : ""}${!failed.length && !saving && !dirty.length ? " is-idle" : ""}`} role="status" aria-live="polite">
+    {(saveList.length > 0 || (employeeWork && !perspective)) && <div className={`${employeeWork ? "employee-work-status " : ""}sheet-save-status${failed.length ? " has-error" : ""}${!failed.length && !saving && !dirty.length ? " is-idle" : ""}`} role="status" aria-live="polite">
       {!saveList.length ? "Edits save automatically" : failed.length ? <>{failed.length} {failed.length === 1 ? "row hasn't" : "rows haven't"} saved. Your drafts are still here.
         <button type="button" onClick={() => review ? review.retry() : failed.forEach(([, s]) => s.retry())}>{review ? "Review changes" : "Retry"}</button>
         <button type="button" onClick={() => document.getElementById(`save-${failed[0][0]}`)?.scrollIntoView({ block: "center", inline: "nearest" })}>Show change</button>

@@ -1,4 +1,5 @@
 export type WorkFilters = {
+  employee?: string;
   q?: string; view?: "open" | "done"; type?: "record" | "call"; outcome?: "none" | "Available" | "Unavailable" | "Unclear";
   city?: string; assigned_by?: string; added_to_db?: "yes" | "no"; sort?: "oldest" | "name";
 };
@@ -11,6 +12,7 @@ export const WORK_SORT_LABELS = { newest: "Newest assigned", oldest: "Oldest ass
 export function parseWorkFilters(params: Record<string, string | string[] | undefined>): WorkFilters {
   const value = (key: string) => { const raw = params[key]; return (Array.isArray(raw) ? raw[0] : raw)?.trim() || undefined; };
   const filters: WorkFilters = {};
+  if (value("employee")) filters.employee = value("employee")!.toLowerCase();
   for (const key of ["q", "city", "assigned_by"] as const) if (value(key)) filters[key] = value(key);
   const options = { view: ["open", "done"], type: ["record", "call"], outcome: ["none", "Available", "Unavailable", "Unclear"], added_to_db: ["yes", "no"], sort: ["oldest", "name"] };
   for (const [key, allowed] of Object.entries(options)) {
@@ -27,7 +29,7 @@ export function workHref(filters: WorkFilters, override: Record<string, string |
 }
 
 export function hasWorkCriteria(filters: WorkFilters) {
-  return Object.entries(filters).some(([key, value]) => value && key !== "view" && key !== "sort");
+  return Object.entries(filters).some(([key, value]) => value && key !== "view" && key !== "sort" && key !== "employee");
 }
 
 export function workFilterValue(key: string, value: string) {

@@ -7,6 +7,19 @@ import { useDashboardUI } from "../../DashboardUI";
 import { AssignmentConflict, workValues } from "./AssignmentConflict";
 
 type Props = { revision: number; assignmentId: string; contactName: string | null; phone: string | null; outcome: string | null; remarks: string | null; addedToDb: boolean; whId: string | null; state?: string; onStateChange?: (id: string, state: string) => void };
+
+// Keep the employee layout, without mounting autosave or any mutation handlers.
+export function ReadOnlyOutcomeCells({ outcome, remarks, addedToDb, whId, state }: Pick<Props, "outcome" | "remarks" | "addedToDb" | "whId" | "state">) {
+  const done = state === "done";
+  return <>
+    <td className="edit-cell edit-first"><select disabled className="field field-select" aria-label="Result of the call" value={outcome || ""}><option value="">Not called yet</option>{OUTCOMES.map(value => <option key={value}>{value}</option>)}</select></td>
+    <td className="edit-cell notes-cell"><textarea readOnly className="field notes-field" aria-label="Employee notes" rows={2} value={remarks || ""} placeholder="No notes yet" /></td>
+    <td className="edit-cell center"><label className="checkfield"><input disabled type="checkbox" checked={addedToDb} /><span>{addedToDb ? "Added" : "Not yet"}</span></label></td>
+    <td className="edit-cell"><input readOnly className="field field-narrow" aria-label="Warehouse ID" value={whId || ""} placeholder="WH ID" /></td>
+    <td className="edit-cell"><button disabled type="button" className={`btn-done${done ? " is-done" : ""}`} aria-pressed={done}><IconCheck size={14} />{done ? "Done" : "Mark done"}</button></td>
+  </>;
+}
+
 export function OutcomeCells({ revision, assignmentId, contactName, phone, outcome, remarks, addedToDb, whId, state = "open", onStateChange }: Props) {
   const key = `assignment-${assignmentId}`;
   const url = `/api/my-work/assignments/${assignmentId}`;

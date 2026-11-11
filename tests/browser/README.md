@@ -8,6 +8,12 @@ are `05-employee-work`, `11-ux-recovery`, `14-my-work-filters` and
 completion redesign are retained in [deferred-employee](deferred-employee/README.md),
 outside the active test directory. Admin and API manual-call coverage stays active.
 
+`45-employee-perspective.spec.ts` covers the admin's read-only employee dropdown,
+assignment and detail scope, filter/saved-view continuity, pagination, returning
+to editable own work, and desktop/mobile layouts in both themes. Pagination
+checks verify that the updated list and first row actually enter the viewport,
+with focus on that list's heading, for both admins and employees.
+
 From the app root:
 
 ```bash

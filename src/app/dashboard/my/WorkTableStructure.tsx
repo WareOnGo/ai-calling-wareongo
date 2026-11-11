@@ -10,29 +10,30 @@ export function WorkColumns() {
   </colgroup>;
 }
 
-export function WorkHeaders() {
+export function WorkHeaders({ readOnly = false }: { readOnly?: boolean }) {
   return <thead><tr className="colheads">
     <th className="rowgutter" aria-label="Row" /><th>Who to call</th><th>Phone / AI status</th>
     <th className="mine mine-first"><IconPencil size={12} />Result</th>
-    <th className="mine">Your notes</th><th className="mine">In DB?</th>
+    <th className="mine">{readOnly ? "Employee notes" : "Your notes"}</th><th className="mine">In DB?</th>
     <th className="mine">WH ID</th><th className="mine">Finished?</th>
   </tr></thead>;
 }
 
-export function WorkLegend() {
+export function WorkLegend({ readOnly = false }: { readOnly?: boolean }) {
+  if (readOnly) return <p className="legend">Assignment details and employee updates are read only.</p>;
   return <p className="legend">
     <span className="legend-sys">Assignment details</span> are read only.{" "}
     <span className="legend-mine"><IconPencil size={11} />Your updates</span> save automatically.
   </p>;
 }
 
-export function WorkStatusBar({ filters, total = 0, open = 0, loading = false }: { filters: WorkFilters; total?: number; open?: number; loading?: boolean }) {
+export function WorkStatusBar({ filters, total = 0, open = 0, loading = false, employeeName }: { filters: WorkFilters; total?: number; open?: number; loading?: boolean; employeeName?: string }) {
   return <div className="work-status-bar"><nav className="work-tabs" aria-label="Work status">
     {[["all", "All", total], ["open", "Open", open], ["done", "Done", total - open]].map(([key, label, count]) => {
       const content = <>{label}<span>{loading ? <span className="skeleton skeleton-inline" style={{ width: 12, height: 10 }} /> : count.toLocaleString()}</span></>;
       return loading ? <a key={key} aria-current={(filters.view || "all") === key ? "page" : undefined}>{content}</a> : <Link key={key} href={workHref(filters, { view: key === "all" ? undefined : String(key) })} aria-current={(filters.view || "all") === key ? "page" : undefined}>{content}</Link>;
     })}
-  </nav><span className="work-scope">{hasWorkCriteria(filters) ? "Counts match your filters" : "All assignments to you"}</span></div>;
+  </nav><span className="work-scope">{hasWorkCriteria(filters) ? "Counts match your filters" : `All assignments to ${employeeName || "you"}`}</span></div>;
 }
 
 export function WorkResultSummary({ filters, count = 0, loading = false }: { filters: WorkFilters; count?: number; loading?: boolean }) {

@@ -12,6 +12,17 @@ fields, autosave recovery, Done and reopen interactions. It does not introduce
 manual-call forms, closure reasons, new WH-ID formatting rules or compulsory call
 logging. Employee visibility and revision checks remain enforced.
 
+Admins can use **View work as** on My Work to inspect an active team member's
+assignments, totals, saved updates and details in a read-only employee
+perspective. **My work (me)** restores their own editable assignments. The
+selection persists through filters, status tabs, pagination and refresh; quick
+and saved filter views apply to the currently selected person. Switching people
+resets pagination. Next/Previous reveals and focuses the heading of the updated
+work list, including AI follow-ups below Listings. The `employee` URL parameter
+only selects a perspective for an admin in admin mode. It never changes the
+authenticated actor or grants write access, and details use the selected
+employee's visibility scope.
+
 ## Boundaries
 
 - `src/app/dashboard/my` contains the retained screen and loading layout.

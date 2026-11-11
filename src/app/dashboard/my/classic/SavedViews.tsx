@@ -56,10 +56,19 @@ export function SavedViews({ path, applied }: { path: string; applied: Record<st
   function save() {
     if (!name.trim()) return;
     const params = new URLSearchParams();
-    for (const [k,v] of Object.entries(applied)) if (v && !['page','records_page','calls_page','ids'].includes(k)) params.set(k,v);
+    for (const [k,v] of Object.entries(applied)) if (v && !['page','records_page','calls_page','ids','employee'].includes(k)) params.set(k,v);
     if (persist([...views.filter(v => v.name !== name.trim()), {name:name.trim(), query:params.toString()}].slice(-20))) { setOpen(false); setName(''); notify('View saved in this browser'); }
   }
-  function go(query: string) { if (menu.current) menu.current.open = false; navigate(path + (query ? `?${query}` : '')); }
+  function go(query: string) {
+    if (menu.current) menu.current.open = false;
+    const params = new URLSearchParams(query);
+    // Saved filters and quick views always apply to the currently selected person.
+    if (path.endsWith('/my')) {
+      params.delete('employee');
+      if (applied.employee) params.set('employee', applied.employee);
+    }
+    navigate(path + (params.size ? `?${params}` : ''));
+  }
   const quick: View[] = path.endsWith('/my') ? [{name:'Still to do',query:'view=open'}, {name:'Not called yet',query:'view=open&outcome=none'}, {name:'Oldest open work',query:'view=open&sort=oldest'}] : path.endsWith('/raw') ? [{name:'Not called', query:'called=no'}, {name:'Unassigned', query:'assignee=none'}] : path.endsWith('/calls') ? [{name:'Needs AI review', query:'needs_review=1'}] : [{name:'Open assignments',query:'state=open'}, {name:'Completed',query:'state=done'}];
   return <>
     <details ref={menu} className="column-menu views-menu"><summary>Views</summary><div className="column-options">
