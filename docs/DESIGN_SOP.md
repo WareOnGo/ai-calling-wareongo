@@ -29,9 +29,11 @@ Reporting tables show values as text. In AI Calls, manual notes, Added and WH ID
 Warehouse phone matches belong in the existing WH ID column wherever one exists.
 Show the IDs as ordinary values with a compact source annotation. Preserve a
 different saved ID and label the phone matches separately within that same cell.
-In My Work, keep matches beneath the editable WH ID field; never select an
-arbitrary warehouse when a number matches several. Avoid repeating the same ID
-under the contact or duplicating identical legacy references.
+In My Work, show an Already added chip by the contact. In matched rows, render
+Added and WH ID as plain, readable values with no checkbox or textbox; grey out
+result, notes and completion. Keep all phone matches beside a different saved ID. Never
+select an arbitrary warehouse when a number matches several. Avoid repeating
+the same ID under the contact or duplicating identical legacy references.
 
 Keep attribution after an assignment is completed. When there is no active assignment, show the last completed assignment's caller with “Assignment completed” beneath the name. A new active assignment takes precedence. Keep an email fallback when the caller no longer has access; removing access must not erase their attribution.
 

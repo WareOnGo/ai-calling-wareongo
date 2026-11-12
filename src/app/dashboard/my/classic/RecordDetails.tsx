@@ -8,11 +8,11 @@ import { Dialog } from "./Dialog";
 import { CopyText } from "./CopyText";
 import { requestJson } from "../../requests";
 
-export function RecordDetails({ id, entity, label = "Details", ariaLabel }: { id: string; entity: "call" | "record"; label?: string; ariaLabel?: string }) {
+export function RecordDetails({ id, entity, employee, label = "Details", ariaLabel }: { id: string; entity: "call" | "record"; employee?: string; label?: string; ariaLabel?: string }) {
   const [open, setOpen] = useState(false);
-  return <><button type="button" className="btn-row details-trigger" onClick={() => setOpen(true)} aria-label={ariaLabel || `${label} for ${entity}`}>{label}</button>{open && <DetailContents id={id} entity={entity} onClose={() => setOpen(false)} />}</>;
+  return <><button type="button" className="btn-row details-trigger" onClick={() => setOpen(true)} aria-label={ariaLabel || `${label} for ${entity}`}>{label}</button>{open && <DetailContents id={id} entity={entity} employee={employee} onClose={() => setOpen(false)} />}</>;
 }
-function DetailContents({ id, entity, onClose }: { id: string; entity: "call" | "record"; onClose: () => void }) {
+function DetailContents({ id, entity, employee, onClose }: { id: string; entity: "call" | "record"; employee?: string; onClose: () => void }) {
   const [data, setData] = useState<{ row: RawRow & CallRow; history: AssignmentHistoryRow[]; historyTotal: number } | null>(null);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
@@ -20,9 +20,9 @@ function DetailContents({ id, entity, onClose }: { id: string; entity: "call" | 
   useEffect(() => {
     const controller = new AbortController();
     setError("");
-    requestJson(`/api/details/${entity}/${encodeURIComponent(id)}`, { signal: controller.signal }).then(setData).catch(e => { if (!controller.signal.aborted) setError(e.message); });
+    requestJson(`/api/details/${entity}/${encodeURIComponent(id)}${employee ? `?${new URLSearchParams({ employee })}` : ""}`, { signal: controller.signal }).then(setData).catch(e => { if (!controller.signal.aborted) setError(e.message); });
     return () => controller.abort();
-  }, [entity, id, attempt]);
+  }, [entity, id, employee, attempt]);
   const r = data?.row;
   const phone = r ? entity === "record" ? r.phone : r.call_type === "inbound" ? r.from_number : r.to_number : null;
   const audio = r ? entity === "record" ? r.last_recording_url : r.recording_url : null;

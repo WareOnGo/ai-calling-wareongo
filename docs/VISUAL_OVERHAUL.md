@@ -167,6 +167,75 @@ The full run exposed medium-width My Work overflow and 4px of excess assignment 
 
 Review the [before gallery](../../bolna-eval/shots/spacing-before/index.html), [final gallery](../../bolna-eval/shots/spacing-final/index.html), and [spacing rules and references](DESIGN_SOP.md#3-use-whitespace-to-group-information).
 
+## Admin employee perspective — 11 November 2026
+
+My Work now includes an admin-only **View work as** dropdown. Selecting an
+active team member shows their assignments, counts, saved updates and details
+using employee visibility. The task layout remains familiar, with read-only
+controls and a visible perspective label. **My work (me)** restores the admin's
+own editable tasks. Filters, saved views and navigation retain the selected
+employee; switching people resets pagination.
+
+Validation passed: type checking, 191 unit tests, 38 ownership/filter integration
+tests, the production build, and 36 production browser tests including 10 new
+perspective checks. Desktop and mobile captures were inspected in both themes;
+the dropdown remains within the viewport and the task tables retain their
+existing horizontal scrolling on mobile. Representative synthetic captures:
+[desktop](visual-overhaul/employee-perspective-1600-light.png) and
+[mobile dark](visual-overhaul/employee-perspective-390-dark.png).
+
+A separate local production-build check used real data for three active
+employees. Database totals, displayed rows and saved values, detail responses,
+pagination, completed-work views, search and work-type filters matched each
+employee's own view. Refresh and returning to own work passed, as did mobile
+layout checks in both themes. Every application query ran in a PostgreSQL
+read-only transaction; the browser made no write requests. No real contact
+data or screenshots were saved in this repository. These checks used the local
+build and do not establish a deployed release.
+
+Pagination follow-up: changing AI follow-up pages correctly fetched new rows,
+but remounting the work area reset its scroll position to the unchanged Listings
+table. The page now retains the navigation wrapper and reveals and focuses the
+heading of the list whose page changed. A regression test failed against the
+earlier build because the updated list was outside the viewport. The final run
+passed 40 production browser tests, including forward/back checks for admins
+and employees at desktop and mobile widths, plus type checking, 191 unit tests
+and the production build. Read-only checks on localhost:3000 with real data
+confirmed AI pages 1 → 2 → 3 → 2 → 1 and Listings page 2, including the visible
+rows and scroll position. The [synthetic page-2 capture](visual-overhaul/my-work-paging-1366.png)
+shows the AI follow-up heading and row 26 immediately after paging.
+
+## Caller warehouse matches
+
+My Work now carries the warehouse matches already available in the assignments
+reader. Matched listings and AI follow-ups show a compact Already added chip
+beside the contact, an Added database status, and all matched IDs beneath the
+preserved WH ID. Result, notes and completion controls become grey and read-only
+without mounting autosave. Added and WH ID are plain, readable values without a
+checkbox or textbox. The admin employee perspective uses the same display.
+A manual In DB checkbox alone
+keeps the ordinary caller workflow editable.
+
+Validation passed: type checking, 191 unit tests, the production build, 21
+employee/perspective browser tests and 10 warehouse browser tests. The warehouse
+checks cover open and completed work, multiple matches, a differing saved ID,
+preserved notes, refresh, no write requests and manual-only database flags.
+Desktop and mobile screenshots were inspected in both themes; contrast checks
+cover the changed contact and update cells. Representative synthetic captures:
+[desktop](visual-overhaul/caller-warehouse-1366-light.png) and
+[mobile dark](visual-overhaul/caller-warehouse-390-dark.png).
+
+The static Added/WH ID display passed type checking and five focused read-only
+and visual browser checks against the development build. Refreshed captures
+cover both widths and themes; matched warehouse cells contain no form inputs.
+
+A read-only real-data check on localhost:3000 verified four existing matched
+assignments across Listings and AI follow-ups, covering open and completed work.
+All eight caller/admin perspective views showed the expected chip, every
+warehouse match, preserved saved values and locked controls. Direct database
+comparison queries ran in a read-only transaction; the browser sent zero write
+requests. No real contact data or screenshots were saved in this repository.
+
 ## Repeatable screenshots
 
 From the sibling `bolna-eval` directory, `npm run render:dashboard` delegates to this checkout's versioned renderer using `APP_DIR`. The command creates an HTML gallery with page/theme/width filters and a JSON manifest of captures. It includes every page type and the main filter, assignment, history, details, queue and manual-call interaction states, in both themes at 1366 × 768 and 390 × 844. Batch member tables receive separate captures after scrolling. Team Performance, Access control and the add-member form each have their own captures.

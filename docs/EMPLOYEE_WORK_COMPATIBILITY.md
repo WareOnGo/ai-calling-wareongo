@@ -12,6 +12,27 @@ fields, autosave recovery, Done and reopen interactions. It does not introduce
 manual-call forms, closure reasons, new WH-ID formatting rules or compulsory call
 logging. Employee visibility and revision checks remain enforced.
 
+Warehouse matches from the same phone-matching data used in Assignments appear
+as an **Already added** chip in My Work. Matched listings and AI follow-ups show
+read-only update fields and a disabled completion button, without mounting
+autosave. Result, notes and completion are greyed out. Added and WH ID are plain,
+readable values with no checkbox or textbox. Warehouse references retain a
+different saved ID and show every match; an empty saved ID displays all matches.
+Existing notes, saved references and completion state are preserved. A caller's
+manual In DB checkbox alone does not lock a row before a warehouse match exists.
+This display also applies in the admin's employee perspective.
+
+Admins can use **View work as** on My Work to inspect an active team member's
+assignments, totals, saved updates and details in a read-only employee
+perspective. **My work (me)** restores their own editable assignments. The
+selection persists through filters, status tabs, pagination and refresh; quick
+and saved filter views apply to the currently selected person. Switching people
+resets pagination. Next/Previous reveals and focuses the heading of the updated
+work list, including AI follow-ups below Listings. The `employee` URL parameter
+only selects a perspective for an admin in admin mode. It never changes the
+authenticated actor or grants write access, and details use the selected
+employee's visibility scope.
+
 ## Boundaries
 
 - `src/app/dashboard/my` contains the retained screen and loading layout.

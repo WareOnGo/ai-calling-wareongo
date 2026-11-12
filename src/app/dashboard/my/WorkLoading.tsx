@@ -6,6 +6,8 @@ import { WorkFilters } from "./WorkFilters";
 import { WorkContext } from "./WorkContext";
 import { AiCallStatus } from "./AiCallStatus";
 import { IconClipboard } from "../icons";
+import { useDashboardUI } from "../DashboardUI";
+import { EmployeePerspective } from "./EmployeePerspective";
 function Placeholder({ width = "70%", height = 10, className = "" }: { width?: number | string; height?: number; className?: string }) {
   return <span className={`skeleton ${className}`} style={{ width, height }} />;
 }
@@ -13,17 +15,21 @@ function Placeholder({ width = "70%", height = 10, className = "" }: { width?: n
 function LoadingWork() {
   const params = useSearchParams();
   const filters = parseWorkFilters(Object.fromEntries(params.entries()));
+  const { isAdmin } = useDashboardUI();
+  if (!isAdmin) delete filters.employee;
+  const readOnly = !!filters.employee;
   const sections = [["record", "Listings to call"], ["call", "AI calls to follow up"]].filter(([entity]) => !filters.type || filters.type === entity);
   return <>
-    <WorkStatusBar filters={filters} loading />
+    {isAdmin && <EmployeePerspective employees={[]} filters={filters} loading />}
+    <WorkStatusBar filters={filters} employeeName={filters.employee} loading />
     <WorkFilters filters={filters} loading />
     <WorkResultSummary filters={filters} loading />
-    <WorkLegend />
+    <WorkLegend readOnly={readOnly} />
     <div className="stacked work-content">
       {sections.map(([,title]) => <section className="worklist" key={title}>
         <h2 className="section-head">{title}<span className="count"><Placeholder width={65} /></span></h2>
         <div className="gridwrap"><table className="sheet task-sheet loading-work">
-          <WorkColumns /><WorkHeaders />
+          <WorkColumns /><WorkHeaders readOnly={readOnly} />
           <tbody>{Array.from({ length: 2 }, (_, row) => <tr className="skeleton-row" key={row}>
             <td className="rownum"><Placeholder width={10} /></td>
             <td className="who"><div className="work-person-heading"><span className="who-name"><Placeholder width="85%" height={14} /></span><span className="btn-row details-trigger loading-detail-button">Details</span></div><WorkContext loading /><div className="work-assignment-note"><span className="work-note-label"><IconClipboard size={12} />Assigner&apos;s note</span><span className="brief"><Placeholder width="90%" /></span></div><div className="work-assigned-meta"><Placeholder width="65%" /><Placeholder width={35} /></div></td>

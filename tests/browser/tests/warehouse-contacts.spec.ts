@@ -23,7 +23,10 @@ test.beforeAll(async()=>{
   aiBatchId=(await db.query("insert into call_batches(state,bolna_batch_id,created_by) values('completed','warehouse-browser',$1) returning id",[ADMIN.email])).rows[0].id;
   await db.query("insert into call_batch_items(batch_id,record_id,name,contact_number) values($1,$2,'Already Added Owner','+919876543210')",[aiBatchId,registered]);
   await db.query("insert into bolna_call_logs(id,status,call_type,to_number,batch_id) values($1,'completed','outbound','+919876543210','warehouse-browser')",[callId]);
+  await db.query("insert into bolna_assignments(entity_type,entity_id,assignee,assigned_by,remarks) values('call',$1,$2,$3,'Existing AI follow-up note')",[callId,EMPLOYEE.email,ADMIN.email]);
   await db.query('begin');
+  await db.query("select set_config('bolna.actor',$1,true),set_config('bolna.employee_workflow','classic',true)",[EMPLOYEE.email]);
+  await db.query("update bolna_assignments set state='done',revision=revision+1 where entity_type='call' and entity_id=$1",[callId]);
   await backfillWarehouseContacts(db,[{id:501,contactNumber:'09876543210'},{id:502,alt_phone_number:'+91 (98765) 43210'}],'2026-10-29T00:00:00Z');
   await db.query('commit');
 });
@@ -77,7 +80,7 @@ test('filters and CSVs retain every matched WHID across raw records, calls and b
     [`/api/batches/${aiBatchId}/export?kind=ai&warehouse_match=yes`,'warehouse_ids'],
   ]){
     const response=await page.request.get(url);expect(response.status(),url).toBe(200);
-    expect(response.headers()['x-export-row-count'],url).toBe('1');
+    expect(response.headers()['x-export-row-count'],url).toBe(url.includes('kind=manual')?'2':'1');
     const csv=await response.text();
     expect(csv.split('\r\n')[0],url).toContain(idsHeader);
     expect(csv,url).toContain('501; 502');
@@ -96,12 +99,58 @@ test('filters and CSVs retain every matched WHID across raw records, calls and b
   await expect(page.getByText('WH 501, 502',{exact:true})).toBeVisible();
 });
 
-test('existing employee work keeps its notes and its saved warehouse field',async({context,page})=>{
-  await context.addCookies([sessionCookie(EMPLOYEE.email) as never]);
-  await page.goto('/dashboard/my');
-  await expect(page.getByRole('textbox',{name:'Warehouse ID',exact:true})).toBeVisible();
-  await expect(page.locator('#employee-work')).not.toContainText('DB matches:');
-  await expect(page.getByRole('textbox',{name:'Your notes',exact:true})).toHaveValue('Existing caller note');
+test('matched listings and AI follow-ups are marked and read-only for callers and admin perspectives',async({context,page})=>{
+  const before=(await db.query('select * from bolna_assignments order by id')).rows;
+  const writes:string[]=[];
+  await context.route('**/api/my-work/assignments/**',route=>{
+    if(route.request().method()==='PATCH'){writes.push(route.request().url());return route.abort();}
+    return route.continue();
+  });
+  for(const perspective of [false,true]){
+    await context.addCookies([sessionCookie(perspective?ADMIN.email:EMPLOYEE.email) as never]);
+    await page.goto(`/dashboard/my${perspective?`?employee=${encodeURIComponent(EMPLOYEE.email)}`:''}`);
+    await ready(page);
+    for(const [entity,note] of [['record','Existing caller note'],['call','Existing AI follow-up note']]){
+      const row=page.locator(`[data-entity="${entity}"] tbody tr`);
+      await expect(row.getByText('Already added',{exact:true})).toBeVisible();
+      await expect(row.getByLabel('Result of the call')).toBeDisabled();
+      const notes=row.getByLabel(perspective?'Employee notes':'Your notes');
+      await expect(notes).not.toBeEditable();
+      await expect(notes).toHaveValue(note);
+      await notes.focus();
+      await page.keyboard.type('Must not save');
+      await expect(notes).toHaveValue(note);
+      await expect(row.locator('.warehouse-added-status')).toHaveText('Added');
+      await expect(row.locator('.warehouse-value-cell input')).toHaveCount(0);
+      await expect(row.locator('.warehouse-reference-value')).toHaveText('501, 502');
+      await expect(row.locator('.warehouse-reference-source')).toHaveText('Matched in warehouse DB');
+      await expect(row.getByRole('button',{name:entity==='call'?'Done':'Mark done',exact:true})).toBeDisabled();
+      await expect(row.getByRole('button',{name:`Details for ${entity}`,exact:true})).toBeEnabled();
+    }
+    await page.reload();
+    await ready(page);
+    await expect(page.locator('.row-warehouse-added')).toHaveCount(2);
+  }
+  expect(writes).toEqual([]);
+  expect((await db.query('select * from bolna_assignments order by id')).rows).toEqual(before);
+});
+
+test('a manual In DB flag without a warehouse match keeps caller updates editable',async({context,page})=>{
+  const {id}=(await db.query("insert into bolna_assignments(entity_type,entity_id,assignee,assigned_by,added_to_db,wh_id) values('record',$1,$2,$3,true,'999') returning id",[fresh,EMPLOYEE.email,ADMIN.email])).rows[0];
+  try{
+    await context.addCookies([sessionCookie(EMPLOYEE.email) as never]);
+    await page.goto('/dashboard/my');
+    await ready(page);
+    const row=page.locator('[data-entity="record"] tbody tr').filter({hasText:'Fresh Owner'});
+    await expect(row.getByText('Already added',{exact:true})).toHaveCount(0);
+    await expect(row.getByLabel('Result of the call')).toBeEnabled();
+    await expect(row.getByLabel('Your notes')).toBeEditable();
+    await expect(row.getByRole('checkbox')).toBeEnabled();
+    await expect(row.getByRole('checkbox')).toBeChecked();
+    await expect(row.getByLabel('Warehouse ID')).toBeEditable();
+    await expect(row.getByLabel('Warehouse ID')).toHaveValue('999');
+    await expect(row.getByRole('button',{name:'Mark done',exact:true})).toBeEnabled();
+  }finally{await db.query("update bolna_assignments set state='dropped',revision=revision+1 where id=$1",[id]);}
 });
 
 for(const [width,theme] of [[1366,'light'],[1366,'dark'],[390,'light'],[390,'dark']] as const)
@@ -117,13 +166,13 @@ test(`matched IDs occupy the existing WH ID column at ${width}px in ${theme}`,as
     await page.locator('.column-menu > summary').filter({hasText:/^Columns$/}).click();
     await page.locator('.column-options').getByRole('checkbox',{name:'WH ID',exact:true}).check();
     await page.locator('.column-menu > summary').filter({hasText:/^Columns$/}).click();
-    const assignment=page.locator('.warehouse-reference');
+    const assignment=page.locator('.warehouse-reference').filter({hasText:'Saved: 999'});
     await expect(assignment).toHaveCount(1);
     await expect(assignment).toContainText('Saved: 999');
     await expect(assignment).toContainText('DB matches: 501, 502');
     // The annotation must actually be in the WH ID cell, including on mobile.
     const column=await page.locator('th[data-column="WH ID"]').evaluate(th=>(th as HTMLTableCellElement).cellIndex);
-    await expect(page.locator('tbody tr').first().locator('td').nth(column)).toContainText('DB matches: 501, 502');
+    expect(await assignment.locator('..').evaluate(cell=>(cell as HTMLTableCellElement).cellIndex)).toBe(column);
     await assignment.scrollIntoViewIfNeeded();
     expect(await assignment.locator('..').evaluate(cell=>cell.scrollWidth<=cell.clientWidth+1)).toBe(true);
     await page.screenshot({path:info.outputPath(`warehouse-assignment-${width}-${theme}.png`),fullPage:true});
@@ -143,13 +192,18 @@ test(`matched IDs occupy the existing WH ID column at ${width}px in ${theme}`,as
 
     await context.addCookies([sessionCookie(EMPLOYEE.email) as never]);
     await page.goto('/dashboard/my');
-    const field=page.getByRole('textbox',{name:'Warehouse ID',exact:true}).locator('..');
-    await expect(field.getByRole('textbox',{name:'Warehouse ID',exact:true})).toHaveValue('999');
-    await expect(field).not.toContainText('DB matches:');
+    const row=page.locator('[data-entity="record"] tbody tr');
+    const field=row.locator('.warehouse-reference').locator('..');
+    await expect(field.locator('.warehouse-reference-value')).toHaveText('Saved: 999');
+    await expect(row.locator('.warehouse-value-cell input')).toHaveCount(0);
+    await expect(field).toContainText('DB matches: 501, 502');
+    await expect(row.getByText('Already added',{exact:true})).toBeVisible();
     await expect(page.locator('.who .warehouse-reference-source')).toHaveCount(0);
+    await page.screenshot({path:info.outputPath(`warehouse-my-work-chip-${width}-${theme}.png`),fullPage:true});
     await field.scrollIntoViewIfNeeded();
     expect(await field.evaluate(cell=>cell.scrollWidth<=cell.clientWidth+1)).toBe(true);
     expect(await page.evaluate(()=>document.body.scrollWidth<=innerWidth)).toBe(true);
+    expect(await unreadableText(page,'#employee-work td:is(.who, .edit-cell)')).toEqual([]);
     await page.screenshot({path:info.outputPath(`warehouse-my-work-${width}-${theme}.png`),fullPage:true});
 
   }finally{await db.query('update bolna_assignments set wh_id=null where entity_id=$1',[registered]);}

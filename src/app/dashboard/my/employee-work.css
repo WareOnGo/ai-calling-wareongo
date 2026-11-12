@@ -1093,6 +1093,13 @@
 }
 
 /* My Work: a compact filterable task sheet with clear assignment instructions. */
+#employee-work .work-perspective { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 0 14px 12px; }
+#employee-work .work-perspective label { font-size: 12px; font-weight: 500; }
+#employee-work .work-perspective select { width: 320px; max-width: 100%; min-width: 0; }
+#employee-work .work-perspective > span { color: var(--muted); font-size: 12px; }
+@media (max-width: 600px) {
+  #employee-work .work-perspective select { flex: 1 1 210px; }
+}
 :is(#employee-work, .employee-work-dialog, .employee-work-status, .employee-work-notification) .work-status-bar, :is(#employee-work, .employee-work-dialog, .employee-work-status, .employee-work-notification):is(.work-status-bar) { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 18px; padding: 4px 14px 10px; flex: none; }
 :is(#employee-work, .employee-work-dialog, .employee-work-status, .employee-work-notification) .work-status-bar .work-tabs, :is(#employee-work, .employee-work-dialog, .employee-work-status, .employee-work-notification):is(.work-status-bar .work-tabs) { margin: 0; }
 :is(#employee-work, .employee-work-dialog, .employee-work-status, .employee-work-notification) .work-status-bar .work-tabs a, :is(#employee-work, .employee-work-dialog, .employee-work-status, .employee-work-notification):is(.work-status-bar .work-tabs a) { display: inline-flex; align-items: center; gap: 7px; font-weight: 500; padding: 7px 13px; }
@@ -1152,4 +1159,46 @@
 #employee-work .views-menu > .column-options[data-side="above"] {
   top: auto;
   bottom: calc(100% + 4px);
+}
+
+/* Warehouse matches remain visible, but no longer invite caller updates. */
+#employee-work table.task-sheet tr.row-warehouse-added td.who {
+  opacity: 1;
+}
+#employee-work table.task-sheet tbody tr.row-warehouse-added td.edit-cell {
+  background: var(--fill-gray-bg);
+}
+#employee-work table.task-sheet tr.row-warehouse-added td.edit-cell .field,
+#employee-work table.task-sheet tr.row-warehouse-added td.edit-cell .btn-done {
+  background: var(--fill-gray-bg);
+  color: var(--fill-gray-tx);
+  border-color: var(--border);
+  cursor: default;
+  opacity: 1;
+}
+#employee-work .warehouse-added-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding-top: 6px;
+  color: var(--text);
+  font-size: 12px;
+}
+#employee-work .warehouse-added-status svg { color: var(--green); }
+#employee-work .warehouse-reference { padding-top: 6px; }
+#employee-work .warehouse-reference-value {
+  display: block;
+  color: var(--text);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+#employee-work .warehouse-reference-value .muted { color: var(--fill-gray-tx); }
+#employee-work .warehouse-reference-source {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--fill-gray-tx);
+  white-space: normal;
+  overflow-wrap: anywhere;
 }

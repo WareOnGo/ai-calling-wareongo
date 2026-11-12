@@ -11,6 +11,7 @@ export function WorkFilters({ filters, assigners = [], loading = false }: { filt
   const moreCount = ["city", "assigned_by", "added_to_db", "sort"].filter(key => filters[key as keyof Filters]).length;
   const people = filters.assigned_by && !assigners.some(person => person.email === filters.assigned_by) ? [...assigners, { email: filters.assigned_by, name: null }] : assigners;
   const controls = <>
+    {filters.employee && <input type="hidden" name="employee" value={filters.employee} />}
     {filters.view && <input type="hidden" name="view" value={filters.view} />}
     <div className="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
       <input name="q" defaultValue={filters.q || ""} disabled={loading} aria-label="Search my work" placeholder="Search contact, phone or notes…" />
@@ -23,7 +24,7 @@ export function WorkFilters({ filters, assigners = [], loading = false }: { filt
     </select></label>
     {loading ? <button className={`filters-toggle${moreCount ? " active" : ""}`} type="button" disabled><IconFilter size={15} />More filters{moreCount > 0 && <span className="fbadge">{moreCount}</span>}</button> : <FiltersToggle label="More filters" count={moreCount} />}
     {loading ? <button type="button" className="btn apply-button" disabled>Apply</button> : <ApplyButton />}
-    <span className="spacer" /><a className="btn-text" href={loading ? undefined : workHref({ view: filters.view })}>Reset</a>
+    <span className="spacer" /><a className="btn-text" href={loading ? undefined : workHref({ view: filters.view, employee: filters.employee })}>Reset</a>
     {!loading && <div className="filters-panel work-more-filters" id="filters-panel">
       <label className="work-filter"><span>City</span><input className="field" name="city" aria-label="Filter by city" defaultValue={filters.city || ""} placeholder="Any city" /></label>
       <label className={`work-filter chip${filters.assigned_by ? " active" : ""}`}><span>Assigned by</span><select aria-label="Assigned by" name="assigned_by" defaultValue={filters.assigned_by || ""}>
@@ -37,7 +38,7 @@ export function WorkFilters({ filters, assigners = [], loading = false }: { filt
       </select></label>
     </div>}
   </>;
-  if (!loading) return <FilterForm action="/dashboard/my" className="work-filters" applied={filters} preserveKeys={["view"]} labels={WORK_FILTER_LABELS} formatValue={workFilterValue}>{controls}</FilterForm>;
+  if (!loading) return <FilterForm action="/dashboard/my" className="work-filters" applied={filters} preserveKeys={["view", "employee"]} labels={WORK_FILTER_LABELS} formatValue={workFilterValue}>{controls}</FilterForm>;
   const active = Object.entries(filters).filter(([key]) => WORK_FILTER_LABELS[key]);
   return <><div className="filterbar work-filters">{controls}<details className="column-menu views-menu"><summary>Views</summary></details></div>
     {!!active.length && <div className="applied-filters">{active.map(([key, value]) => <button className="filter-tag" type="button" key={key} disabled>{WORK_FILTER_LABELS[key]}: {workFilterValue(key, value)}<span>×</span></button>)}<button className="btn-text" type="button" disabled>Clear filters</button></div>}

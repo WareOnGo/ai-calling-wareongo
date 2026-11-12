@@ -1,7 +1,7 @@
-export function WarehouseNotice({ ids }: { ids?: number[] }) {
+export function WarehouseNotice({ ids, compact = false }: { ids?: number[]; compact?: boolean }) {
   if (!ids?.length) return null;
-  return <span className="pill pill-available" style={{display:'inline-flex',flexWrap:'wrap',gap:'0.3rem',whiteSpace:'normal'}} title={`Warehouse IDs: ${ids.join(', ')}`}>
-    Warehouse already added to DB <small>WH {ids.join(', ')}</small>
+  return <span className="pill pill-available" style={{display:'inline-flex',flexWrap:'wrap',gap:'0.3rem',whiteSpace:'normal'}} title={`${compact ? 'Warehouse already added to DB. Updates are disabled. ' : ''}Warehouse IDs: ${ids.join(', ')}`}>
+    {compact ? 'Already added' : <>Warehouse already added to DB <small>WH {ids.join(', ')}</small></>}
   </span>;
 }
 
