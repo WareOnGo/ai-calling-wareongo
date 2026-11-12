@@ -15,6 +15,10 @@
 [data-stage="junk"] { --stage-bg: var(--fill-gray-bg); --stage-tx: var(--fill-gray-tx); --stage-edge: var(--border-strong); }
 
 .board-summary { font-size: var(--text-support); color: var(--muted); }
+.board-perspective { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); padding: var(--space-2) var(--page-gutter); border-bottom: 1px solid var(--border); }
+.board-perspective label { color: var(--text); font-size: var(--text-support); font-weight: 600; }
+.board-perspective select { max-width: 100%; min-width: 0; width: min(100%, 360px); padding: 7px 10px; background: var(--field-bg); color: var(--text); border: 1px solid var(--field-border); border-radius: var(--radius-input); font: inherit; }
+.board-perspective > span { color: var(--muted); font-size: var(--text-caption); }
 /* My Work-style filter dropdowns: wrap onto further rows instead of running under Views. */
 .board-filters .toolbar-search { flex-wrap: wrap; row-gap: var(--space-2); }
 .board-filters .toolbar-search .search { flex: 1 1 240px; }

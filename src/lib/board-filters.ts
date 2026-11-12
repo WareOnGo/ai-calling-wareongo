@@ -12,13 +12,15 @@ export const WORK_TYPES = { record: "Listings", call: "AI follow-ups" } as const
 export const FOLLOW_UPS = { overdue: "Overdue", upcoming: "Upcoming", none: "Not set" } as const;
 
 export type BoardFilters = {
+  /** Set only after the server authorizes an employee perspective. */
+  employee?: string;
   q?: string; city?: string[]; region?: string[]; assigned_by?: string[];
   batch?: string[]; updated?: UpdatedWindow; assignee?: string[];
   type?: keyof typeof WORK_TYPES; follow_up?: keyof typeof FOLLOW_UPS;
 };
 export type ColumnLimits = Partial<Record<Stage, number>>;
 
-export const BOARD_FILTER_LABELS: Record<keyof BoardFilters, string> = {
+export const BOARD_FILTER_LABELS: Record<Exclude<keyof BoardFilters, "employee">, string> = {
   q: "Search", city: "City", region: "State", assigned_by: "Assigned by", batch: "Assignment batch", updated: "Last updated", assignee: "Assigned to",
   type: "Work type", follow_up: "Follow-up",
 };
@@ -74,7 +76,7 @@ export function nextColumnLimit(limit: number, total: number): number | null {
   return Math.min(BOARD_MAX_CARDS, limit + BOARD_PAGE_SIZE);
 }
 
-export const hasBoardCriteria = (filters: BoardFilters) => Object.values(filters).some(value => Array.isArray(value) ? value.length > 0 : !!value);
+export const hasBoardCriteria = (filters: BoardFilters) => Object.entries(filters).some(([key, value]) => key !== "employee" && (Array.isArray(value) ? value.length > 0 : !!value));
 
 export function boardSearchValues(filters: BoardFilters, limits: ColumnLimits = {}): SearchValues {
   const values: SearchValues = { ...filters };

@@ -44,7 +44,8 @@ export function BoardFilters({ applied, options, showAssignee = false, action = 
   const moreCount = countFilters(applied, MORE_KEYS);
   const [more, setMore] = useState(moreCount > 0);
   const moreId = useId();
-  return <FilterForm key={JSON.stringify(applied)} action={action} applied={applied} className="board-filters" labels={BOARD_FILTER_LABELS} formatValue={formatValue}>
+  return <FilterForm key={JSON.stringify(applied)} action={action} applied={applied} preserveKeys={["employee"]} className="board-filters" labels={BOARD_FILTER_LABELS} formatValue={formatValue}>
+    {firstValue(applied.employee) && <input type="hidden" name="employee" value={firstValue(applied.employee)} />}
     {search && <div className="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
       <input type="search" name="q" defaultValue={firstValue(applied.q) || ""} aria-label="Search the board" placeholder="Search names, phones, notes…" />
     </div>}

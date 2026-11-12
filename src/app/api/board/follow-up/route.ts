@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
-import { ownWork } from "@/lib/board";
 import { apiError, bigintId, jsonBody, revision } from "@/lib/api";
 import { setFollowUp } from "@/lib/board-moves";
 
@@ -19,6 +18,6 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   try {
     const body = await jsonBody(req, schema);
-    return NextResponse.json({ tasks: await setFollowUp(ownWork(user), { tasks: body.tasks, nextDueAt: body.next_due_at }) });
+    return NextResponse.json({ tasks: await setFollowUp(user, { tasks: body.tasks, nextDueAt: body.next_due_at }, req.nextUrl.searchParams.get("employee")) });
   } catch (error) { return apiError(error); }
 }

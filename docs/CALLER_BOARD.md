@@ -30,7 +30,7 @@ has a warehouse in the DB or open work with another caller.
 
 | Topic | Decision |
 | --- | --- |
-| Whose work | The board is a personal view like My Work: everyone, admins included, sees and edits only their own work there, and the board's APIs change only the signed-in person's tasks. Admins oversee callers in the Funnel, where a caller's name opens Assignments filtered to them. |
+| Whose work | Own work by default, for admins too. Admins can select an active team member with **View work as**; normal edit controls are available immediately. The first change to each card asks for confirmation; later changes to that entry do not prompt again. Cards, counts, filters and history retain employee visibility. Write APIs require an admin for another employee's scope and bind every task to that assignee, while recording the signed-in admin as the actor. The Funnel remains the admin overview. |
 | Card | One card per caller and phone. It sits in the stage of its most recently worked open task (or latest task, if all are finished). Allocation already keeps one caller per phone. |
 | What the board shows | Open tasks in every column, plus finished tasks only in 2B, 4 and 5. Finished tasks in other stages count only in the funnel. |
 | Moving a card | Moves its open tasks, or every task of a finished card, all or nothing, checking each task's revision first. |
@@ -81,6 +81,7 @@ warehouse ID; they are hidden from the board and appear only in the funnel.
 - [x] **5. Drag and drop**, with the panel's buttons as the keyboard path.
 - [x] **6. Strikes and Junk review:** strike dots, `/api/board/no-answer`, banner and review dialog.
 - [x] **7. Admin funnel** (`/dashboard/board/funnel`).
+- [x] **Admin employee perspective.** The `employee` URL parameter is resolved on the server for admins only. Filters, saved views, refresh and column paging retain the selected person; switching people resets column sizes and closes the panel. The first save, drag move or Junk decision for each entry asks for confirmation. That confirmation covers its listing and AI tasks, stage changes, notes, follow-ups, warehouse details and call logging. Other entries require their own confirmation. Filters, in-app refresh and reopening the same card retain it; switching employees or reloading resets it. There is no global edit toggle. Unsaved admin notes block navigation; conflicts preserve the draft until discarded and reloaded. Writes retain assignment ownership, revision checks, warehouse guards and the admin's audit identity. Manual/Callyzer history stays hidden just as it is for the employee. Selecting **My work (me)** restores the admin's own board.
 - [x] **Apply 020 to production.** Applied 5 November 2026, 21:21 IST, from main `8a03fbd`; see `database/README.md`.
 - [x] **Migration 021: My Work keeps the stage in step.** While both views run, a non-board write (My Work, admin edits, logged calls) re-places a task with 019's inference when its result or warehouse changes, or when a task still in Inbound gets notes or is finished. Notes-only edits and completing a task past Inbound keep the column chosen on the board. A one-off catch-up re-placed 36 tasks the board never moved. Applied 6 November 2026, 15:04 IST, from main `c67e515`; see main's `database/README.md`.
 - [ ] **8. Retire My Work:** point employees at the board, then remove `src/app/dashboard/my/classic`, `employee-work*.ts`, `/api/my-work` and their browser tests.
@@ -91,7 +92,7 @@ warehouse ID; they are hidden from the board and appear only in the funnel.
 | --- | --- |
 | Unit | `src/lib/board-stages.test.ts`, `board-filters.test.ts`, `board.test.ts`, `board-timeline.test.ts`, `board-funnel.test.ts` |
 | Integration (PostgreSQL) | `tests/integration/caller-board.test.ts`, `caller-board-moves.test.ts`, `caller-board-strikes.test.ts`, `caller-board-funnel.test.ts`, `caller-board-stage-sync.test.ts` |
-| Browser | `tests/browser/tests/45-caller-board` to `49-board-funnel` specs: scope, grouping, filters, paging, moves, drag and drop, strikes, funnel, keyboard and focus, contrast and overflow at 1366 and 390 px in both themes |
+| Browser | `tests/browser/tests/45-caller-board` to `51-board-employee-edit` specs: scope, grouping, filters, paging, moves, drag and drop, strikes, funnel, employee perspectives and confirmed editing, keyboard and focus, contrast and overflow at 1366 and 390 px in both themes |
 
 ## Open decisions
 

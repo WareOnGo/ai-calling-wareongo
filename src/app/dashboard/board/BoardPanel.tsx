@@ -18,6 +18,7 @@ import { AiTimeline } from "../AiTimeline";
 import { ManualCallTimeline } from "../ManualCallTimeline";
 import type { ManualCallHistory } from "@/lib/manual-attempts";
 import { IconX } from "../icons";
+import type { ConfirmBoardEntry } from "./BoardEntryConfirmation";
 
 // The panel reads top-down: who the lead is, the next step, the selected task
 // (its notes, details and calls), then the card's activity.
@@ -40,12 +41,15 @@ const sizeOf = (tasks: BoardTask[]) => tasks.map(areaText).find(value => value !
 const taskOrder = (tasks: BoardTask[]) => [...tasks].sort((a, b) => (a.entity === b.entity ? 0 : a.entity === "record" ? -1 : 1) || Number(a.id) - Number(b.id));
 
 /** `request` opens the panel at a stage's input step, e.g. after a card is dropped on Junk. */
-export function BoardPanel({ card, onClose, request, showCalls }: {
+export function BoardPanel({ card, onClose, request, showCalls, employee, readOnly, confirmEntry }: {
   card: BoardCard; onClose: () => void; request?: { stage: InputStage; token: number } | null;
   /** Manual and Callyzer call records are for admins only. */
   showCalls: boolean;
+  employee?: string;
+  readOnly: boolean;
+  confirmEntry: ConfirmBoardEntry;
 }) {
-  const { refresh, pending } = useDashboardUI();
+  const { refresh, pending, hasDrafts, notify } = useDashboardUI();
   const titleId = useId();
   const heading = useRef<HTMLHeadingElement>(null);
   // The stage chosen in the dropdown; a move happens only when it is confirmed.
@@ -72,6 +76,9 @@ export function BoardPanel({ card, onClose, request, showCalls }: {
   useEffect(() => { setTarget(request?.stage ?? card.stage); setMoved(null); }, [card.key, card.stage, request?.token, request?.stage]);
 
   async function run(action: () => Promise<unknown>) {
+    if (readOnly) return;
+    if (hasDrafts()) { notify("Save or discard the notes before changing this lead."); return; }
+    if (!(await confirmEntry(card))) return;
     setSaving(true); setError(""); setNote("");
     try { await action(); refresh(); }
     catch (failure) {
@@ -82,14 +89,15 @@ export function BoardPanel({ card, onClose, request, showCalls }: {
   }
   /** Notes save through the same lock; the field reports its own outcome. */
   async function saveNotes(target: BoardTask, remarks: string) {
+    if (readOnly || !(await confirmEntry(card))) return false;
     setSaving(true);
-    try { await send(`/api/board/tasks/${target.id}`, "PATCH", { revision: target.revision, remarks }); refresh(); }
+    try { await send(`/api/board/tasks/${target.id}`, "PATCH", { revision: target.revision, remarks }, employee); return true; }
     finally { setSaving(false); }
   }
   const move = (to: Stage, extra: { reason?: string | null; wh_id?: string | null } = {}) =>
-    run(async () => { await requestMove(card, to, extra); setMoved(to); });
+    run(async () => { await requestMove(card, to, extra, employee); setMoved(to); });
   const logNoAnswer = () => run(async () => {
-    const result = await send("/api/board/no-answer", "POST", { tasks: refsOf(card.tasks) }) as { logged: number; strikes: number };
+    const result = await send("/api/board/no-answer", "POST", { tasks: refsOf(card.tasks) }, employee) as { logged: number; strikes: number };
     setNote(result.logged ? `Logged. ${result.strikes} of ${STRIKE_LIMIT} strikes.` : "Already counted today. Strikes count days, not calls.");
   });
 
@@ -115,7 +123,7 @@ export function BoardPanel({ card, onClose, request, showCalls }: {
     </header>
 
     <div className="board-panel-body">
-      <Section title="Next step" id={`${titleId}-next`}>
+      {!readOnly && <Section title="Next step" id={`${titleId}-next`}>
         <div className="board-steps">
           {/* Choosing a stage never moves the card by itself: arrow keys change a closed
               select, so the move waits for an explicit confirmation. */}
@@ -127,7 +135,7 @@ export function BoardPanel({ card, onClose, request, showCalls }: {
             {target !== current && <MoveForm key={target} stage={target} card={card} busy={busy} onCancel={() => setTarget(current)} onMove={extra => move(target, extra)} />}
           </div>
           {openTasks.length > 0 && <FollowUp key={`${card.key}:${version}`} id={`${titleId}-follow-up`} card={card} busy={busy}
-            onSave={day => run(() => send("/api/board/follow-up", "POST", { tasks: refsOf(openTasks), next_due_at: day ? followUpAt(day) : null }))} />}
+            onSave={day => run(() => send("/api/board/follow-up", "POST", { tasks: refsOf(openTasks), next_due_at: day ? followUpAt(day) : null }, employee))} />}
           {openTasks.length > 0 && <>
             <span className="board-step-label">Call</span>
             <div className="board-step board-step-inline">
@@ -137,14 +145,17 @@ export function BoardPanel({ card, onClose, request, showCalls }: {
           </>}
         </div>
         {error && <p className="board-panel-error" role="alert">{error}</p>}
-      </Section>
+      </Section>}
 
-      {tasks.length > 1 && <TaskTabs tasks={tasks} selected={task.id} onSelect={setSelected} idPrefix={titleId} />}
+      {tasks.length > 1 && <TaskTabs tasks={tasks} selected={task.id} onSelect={id => {
+        if (hasDrafts()) { notify("Save or discard the notes before changing tasks."); return; }
+        setSelected(id);
+      }} idPrefix={titleId} />}
       <div className="board-task" key={task.id} {...(tasks.length > 1 ? { role: "tabpanel", id: `${titleId}-task`, "aria-labelledby": `${titleId}-tab-${task.id}` } : {})}>
-        <TaskDetails task={task} idPrefix={`${titleId}-${task.id}`} busy={busy} onSaveNotes={remarks => saveNotes(task, remarks)} showCalls={showCalls} />
+        <TaskDetails task={task} idPrefix={`${titleId}-${task.id}`} busy={busy} onSaveNotes={remarks => saveNotes(task, remarks)} showCalls={showCalls} employee={employee} readOnly={readOnly} />
       </div>
 
-      <Timeline taskIds={card.tasks.map(candidate => candidate.id)} version={version} labelledBy={`${titleId}-activity`} />
+      <Timeline taskIds={card.tasks.map(candidate => candidate.id)} version={version} labelledBy={`${titleId}-activity`} employee={employee} />
     </div>
   </aside>;
 }
@@ -176,8 +187,8 @@ function TaskTabs({ tasks, selected, onSelect, idPrefix }: { tasks: BoardTask[];
 }
 
 /** Everything My Work shows for one task, grouped: instructions, your notes, details, calls. */
-function TaskDetails({ task, idPrefix, busy, onSaveNotes, showCalls }: {
-  task: BoardTask; idPrefix: string; busy: boolean; onSaveNotes: (remarks: string) => Promise<void>; showCalls: boolean;
+function TaskDetails({ task, idPrefix, busy, onSaveNotes, showCalls, employee, readOnly }: {
+  task: BoardTask; idPrefix: string; busy: boolean; onSaveNotes: (remarks: string) => Promise<boolean>; showCalls: boolean; employee?: string; readOnly: boolean;
 }) {
   const kind = KIND[task.entity];
   const assigner = who(task.assignedByName, task.assignedBy);
@@ -185,11 +196,12 @@ function TaskDetails({ task, idPrefix, busy, onSaveNotes, showCalls }: {
   // manual or Callyzer call history.
   const fullRecord = showCalls
     ? <RecordDetails id={task.entityId} entity={task.entity} label="Open full record" className="btn-row" ariaLabel={`Details for this ${kind.noun}`} />
-    : <EmployeeRecordDetails id={task.entityId} entity={task.entity} label="Open full record" ariaLabel={`Details for this ${kind.noun}`} />;
+    : <EmployeeRecordDetails id={task.entityId} entity={task.entity} employee={employee} label="Open full record" ariaLabel={`Details for this ${kind.noun}`} />;
   const areaValue = areaText(task), rentValue = rent(task.rent);
   return <>
     {task.note?.trim() && <Brief note={task.note} label={`Note from ${assigner}`} />}
-    <Notes task={task} id={`${idPrefix}-notes`} busy={busy} onSave={onSaveNotes} />
+    {readOnly ? <Section title="Employee notes" id={`${idPrefix}-notes`}><p className="detail-text">{task.remarks || "No notes yet"}</p></Section>
+      : <Notes task={task} id={`${idPrefix}-notes`} busy={busy} onSave={onSaveNotes} employee={employee} />}
     <Section title={`${kind.title} details`} id={`${idPrefix}-details`}>
       <dl className="board-facts">
         <Fact label="Assigned"><span title={dateTime(task.assignedAt)}>{assigner} · {shortDate(task.assignedAt)}</span></Fact>
@@ -203,7 +215,7 @@ function TaskDetails({ task, idPrefix, busy, onSaveNotes, showCalls }: {
       </dl>
       <div className="board-section-foot">{fullRecord}</div>
     </Section>
-    <Calls task={task} idPrefix={idPrefix} showCalls={showCalls} />
+    <Calls task={task} idPrefix={idPrefix} showCalls={showCalls} employee={employee} />
   </>;
 }
 
@@ -211,7 +223,7 @@ function TaskDetails({ task, idPrefix, busy, onSaveNotes, showCalls }: {
  * AI and manual call summaries whose full history expands in place, so the caller
  * never leaves the panel. Uses the same timelines as the full record.
  */
-function Calls({ task, idPrefix, showCalls }: { task: BoardTask; idPrefix: string; showCalls: boolean }) {
+function Calls({ task, idPrefix, showCalls, employee }: { task: BoardTask; idPrefix: string; showCalls: boolean; employee?: string }) {
   const [open, setOpen] = useState<{ ai: boolean; manual: boolean }>({ ai: false, manual: false });
   const toggle = (which: "ai" | "manual", label: string) => <button type="button" className="btn-row" aria-expanded={open[which]} aria-controls={`${idPrefix}-${which}-calls`}
     onClick={() => setOpen(current => ({ ...current, [which]: !current[which] }))}>{open[which] ? `Hide ${label}` : `Show ${label}`}</button>;
@@ -224,7 +236,7 @@ function Calls({ task, idPrefix, showCalls }: { task: BoardTask; idPrefix: strin
       </span></Fact>}
     </dl>
     {open.ai && <div id={`${idPrefix}-ai-calls`} className="board-call-history">
-      <AiTimeline entity={task.entity} id={task.entityId} initialOpen><SavedAiSummary entity={task.entity} id={task.entityId} /></AiTimeline>
+      <AiTimeline entity={task.entity} id={task.entityId} employee={employee} initialOpen><SavedAiSummary entity={task.entity} id={task.entityId} employee={employee} /></AiTimeline>
     </div>}
     {showCalls && open.manual && <div id={`${idPrefix}-manual-calls`} className="board-call-history"><ManualHistory key={task.revision} task={task} /></div>}
   </Section>;
@@ -264,28 +276,56 @@ function Brief({ note, label }: { note: string; label: string }) {
   </div>;
 }
 
-function Notes({ task, id, busy, onSave }: { task: BoardTask; id: string; busy: boolean; onSave: (remarks: string) => Promise<void> }) {
+function Notes({ task, id, busy, onSave, employee }: { task: BoardTask; id: string; busy: boolean; onSave: (remarks: string) => Promise<boolean>; employee?: string }) {
+  const { reportSave, refresh } = useDashboardUI();
   const saved = task.remarks ?? "";
   const [notes, setNotes] = useState(saved);
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [conflict, setConflict] = useState(false);
   // Take newer server notes only while there is no unsaved local draft.
   const baseline = useRef(saved);
   useEffect(() => {
     if (notes === baseline.current) setNotes(saved);
     baseline.current = saved;
   }, [saved]); // Only a new saved value should replace the field; typing must not.
+  const dirty = notes.trim() !== baseline.current;
+  const saveId = `board-notes-${task.id}-${employee || "me"}`;
+  const actions = useRef({ save: () => {}, discard: () => {} });
+  function discard() {
+    setNotes(saved); baseline.current = saved; setStatus(""); setFailed(false); setConflict(false);
+    reportSave(saveId, null);
+    if (conflict) refresh();
+  }
   async function save() {
-    setSaving(true); setStatus("");
-    try { await onSave(notes); setStatus("Saved"); }
-    catch (failure) { setStatus(failure instanceof Error ? failure.message : "Couldn't save notes."); }
+    const value = notes.trim();
+    setSaving(true); setStatus(""); setFailed(false);
+    try {
+      if (!(await onSave(value))) return;
+      baseline.current = value; setNotes(value); setStatus("Saved"); setConflict(false);
+      reportSave(saveId, null); refresh();
+    }
+    catch (failure) {
+      setFailed(true); setConflict(failure instanceof RequestError && failure.code === "ASSIGNMENT_CONFLICT");
+      setStatus(failure instanceof Error ? failure.message : "Couldn't save notes.");
+    }
     finally { setSaving(false); }
   }
-  return <Section title="Your notes" id={id}>
-    <textarea aria-labelledby={id} className="board-notes" rows={3} value={notes} placeholder="What did the owner say?" onChange={event => { setNotes(event.target.value); setStatus(""); }} />
+  actions.current = { save, discard };
+  // An employee switch, filter or refresh must not discard an admin's draft.
+  useEffect(() => {
+    if (!employee) return;
+    reportSave(saveId, dirty || saving ? { dirty: true, status: saving ? "saving" : failed ? "error" : "dirty", label: "Employee notes",
+      retry: () => actions.current.save(), discard: () => actions.current.discard() } : null);
+  }, [employee, saveId, dirty, saving, failed, reportSave]);
+  useEffect(() => () => { if (employee) reportSave(saveId, null); }, [employee, saveId, reportSave]);
+  return <Section title={employee ? "Employee notes" : "Your notes"} id={id}>
+    <textarea aria-labelledby={id} className="board-notes" rows={3} value={notes} disabled={busy || saving} placeholder="What did the owner say?" onChange={event => { setNotes(event.target.value); setStatus(""); setFailed(false); }} />
     <div className="board-move-actions">
       <span role="status" className="board-task-status">{status}</span>
-      <button type="button" className="btn secondary" disabled={busy || saving || notes.trim() === saved} onClick={save}>Save notes</button>
+      {employee && (dirty || conflict) && <button type="button" className="btn-text" disabled={busy || saving} onClick={discard}>{conflict ? "Discard draft and reload" : "Discard draft"}</button>}
+      <button type="button" className="btn secondary" disabled={busy || saving || !dirty || (!!employee && conflict)} onClick={save}>Save notes</button>
     </div>
   </Section>;
 }
@@ -303,14 +343,14 @@ function MoveForm({ stage, card, busy, onCancel, onMove }: {
     event.preventDefault();
     if (ready) onMove(stage === "warehouse_created" ? { wh_id: whId.trim() } : { reason: reason || null });
   }}>
-    {reasons && <fieldset>
+    {reasons && <fieldset disabled={busy}>
       <legend>{stage === "junk" ? "Why is this lead junk?" : "Reason (optional)"}</legend>
       {stage === "rejected" && <label><input type="radio" name="reason" value="" checked={!reason} onChange={() => setReason("")} />No reason given</label>}
       {Object.entries(reasons).map(([value, label]) => <label key={value}><input type="radio" name="reason" value={value} checked={reason === value} onChange={() => setReason(value)} />{label}</label>)}
     </fieldset>}
     {stage === "warehouse_created" && <div className="board-field">
       <label htmlFor={fieldId}>Warehouse ID</label>
-      <input id={fieldId} type="text" inputMode="numeric" autoComplete="off" value={whId} onChange={event => setWhId(event.target.value)} aria-describedby={`${fieldId}-hint`} />
+      <input id={fieldId} type="text" inputMode="numeric" autoComplete="off" value={whId} disabled={busy} onChange={event => setWhId(event.target.value)} aria-describedby={`${fieldId}-hint`} />
       <small id={`${fieldId}-hint`}>{card.warehouseIds.length > 1 ? `This number matches warehouses ${card.warehouseIds.join(", ")}. Enter the one this lead created.` : "The ID of the listing this lead created."}</small>
     </div>}
     <div className="board-move-actions">
@@ -325,17 +365,17 @@ function FollowUp({ id, card, busy, onSave }: { id: string; card: BoardCard; bus
   return <>
     <label className="board-step-label" htmlFor={id}>Next follow-up</label>
     <form className="board-step board-step-inline" onSubmit={event => { event.preventDefault(); onSave(day || null); }}>
-      <input id={id} className="board-date" type="date" value={day} onChange={event => setDay(event.target.value)} />
+      <input id={id} className="board-date" type="date" value={day} disabled={busy} onChange={event => setDay(event.target.value)} />
       <button type="submit" className="btn-row" disabled={busy || day === istDay(card.nextDueAt)} aria-label="Save follow-up">Save</button>
       {card.nextDueAt && <button type="button" className="btn-text" disabled={busy} onClick={() => onSave(null)}>Clear</button>}
     </form>
   </>;
 }
 
-function Timeline({ taskIds, version, labelledBy }: { taskIds: string[]; version: string; labelledBy: string }) {
+function Timeline({ taskIds, version, labelledBy, employee }: { taskIds: string[]; version: string; labelledBy: string; employee?: string }) {
   const [events, setEvents] = useState<TimelineEvent[] | null>(null);
   const [error, setError] = useState("");
-  const query = taskIds.map(id => `task=${encodeURIComponent(id)}`).join("&");
+  const query = taskIds.map(id => `task=${encodeURIComponent(id)}`).join("&") + (employee ? `&employee=${encodeURIComponent(employee)}` : "");
   useEffect(() => {
     const controller = new AbortController();
     setError("");

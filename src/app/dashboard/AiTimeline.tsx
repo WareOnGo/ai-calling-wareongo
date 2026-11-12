@@ -8,13 +8,14 @@ import { useDashboardUI } from './DashboardUI';
 import { ResultBadge } from './ResultBadge';
 import { Transcript } from './Transcript';
 
-export function AiTimeline({ entity, id, initialOpen = false, initialBatch = '', initialScope, initialPhone, children }: {
+export function AiTimeline({ entity, id, initialOpen = false, initialBatch = '', initialScope, initialPhone, children, employee }: {
   initialBatch?: string; initialScope?: 'contact' | 'execution'; initialPhone?: string | null;
-  entity: 'record' | 'call'; id: string; initialOpen?: boolean; children?: ReactNode;
+  entity: 'record' | 'call'; id: string; initialOpen?: boolean; children?: ReactNode; employee?: string;
 }) {
   const { isAdmin } = useDashboardUI();
+  const adminHistory = isAdmin && !employee;
   const [open, setOpen] = useState(initialOpen);
-  const [scope, setScope] = useState(initialScope || (entity === 'record' || isAdmin ? 'contact' : 'execution'));
+  const [scope, setScope] = useState(initialScope || (entity === 'record' || adminHistory ? 'contact' : 'execution'));
   const [batch, setBatch] = useState(initialBatch), [draft, setDraft] = useState(initialBatch);
   const digits = initialPhone?.replace(/\D/g, '').slice(-10);
   const [phone, setPhone] = useState(digits?.length === 10 ? digits : '');
@@ -27,11 +28,12 @@ export function AiTimeline({ entity, id, initialOpen = false, initialBatch = '',
     if (!open) return;
     const controller = new AbortController(); setData(null); setError('');
     const params = new URLSearchParams({ scope, batch, phone, page: String(page) });
+    if (employee) params.set('employee', employee);
     requestJson<AiHistory>(`/api/details/${entity}/${id}/ai?${params}`, { signal: controller.signal })
       .then(value => { if (!controller.signal.aborted) { setData(value); setPhones(value.phones); } })
       .catch(e => { if (!controller.signal.aborted) setError(e.message); });
     return () => controller.abort();
-  }, [entity, id, scope, batch, phone, page, open, retry]);
+  }, [entity, id, scope, batch, phone, page, open, retry, employee]);
 
   return <section className="ai-timeline" aria-label="AI call history">
     <div className="history-heading"><h3>AI calls{data && <span className="history-count" aria-label={`${data.total} ${data.total === 1 ? 'call' : 'calls'}`}>{data.total}</span>}</h3>
@@ -40,7 +42,7 @@ export function AiTimeline({ entity, id, initialOpen = false, initialBatch = '',
     {!open ? <button type="button" className="btn-row" onClick={() => setOpen(true)}>Load AI attempt history</button> : <>
       {optionsOpen && <div className="history-options-panel">
         <form className="history-filters" onSubmit={event => { event.preventDefault(); setBatch(draft.trim()); setPage(1); setOptionsOpen(false); }}>
-          {entity === 'call' && isAdmin && <label>Show calls <select aria-label="AI history scope" value={scope} onChange={e => { setScope(e.target.value === 'contact' ? 'contact' : 'execution'); setPage(1); }}><option value="contact">All calls for this number</option><option value="execution">This execution only</option></select></label>}
+          {entity === 'call' && adminHistory && <label>Show calls <select aria-label="AI history scope" value={scope} onChange={e => { setScope(e.target.value === 'contact' ? 'contact' : 'execution'); setPage(1); }}><option value="contact">All calls for this number</option><option value="execution">This execution only</option></select></label>}
           <label>Provider batch <input aria-label="AI history batch" value={draft} onChange={e => setDraft(e.target.value)} placeholder="All batches" maxLength={1000}/></label><button type="submit" className="btn-row">Filter AI history</button>
         </form>
         {data && <p className="history-scope">{data.outbound} outbound · {data.inbound} inbound · {data.conversations} confirmed {data.conversations === 1 ? 'conversation' : 'conversations'}{data.total > data.outbound + data.inbound && <> · {data.total - data.outbound - data.inbound} unknown direction</>}</p>}

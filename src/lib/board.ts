@@ -47,8 +47,8 @@ const TASK_FROM = `from bolna_assignments a
   ${ASSIGNMENT_SOURCE_JOIN} ${ASSIGNMENT_PHONE_JOIN}`;
 
 /**
- * The board is a personal view like My Work: everyone, admins included, sees and
- * edits only their own work there. Admins oversee callers through the funnel.
+ * Narrow reads to one person's tasks, including an authorized employee perspective.
+ * Writes resolve the assignee separately and retain the authenticated actor.
  */
 export const ownWork = (user: Viewer): Viewer => ({ email: user.email, isAdmin: false });
 

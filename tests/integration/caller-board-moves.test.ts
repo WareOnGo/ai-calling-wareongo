@@ -6,6 +6,8 @@ import { POST as move } from "@/app/api/board/move/route";
 import { POST as followUp } from "@/app/api/board/follow-up/route";
 import { PATCH as editNotes } from "@/app/api/board/tasks/[id]/route";
 import { GET as timeline } from "@/app/api/board/timeline/route";
+import { GET as ai } from "@/app/api/details/[entity]/[id]/ai/route";
+import { POST as noAnswer } from "@/app/api/board/no-answer/route";
 import { seedLegacyAssignments } from "./fixtures";
 
 const caller = { email: "caller@moves.test", name: null, isAdmin: false };
@@ -206,7 +208,100 @@ describe("editing a card", () => {
   });
 });
 
+describe("admin employee board edits", () => {
+  const scoped = (path: string, email = caller.email) => `${path}?employee=${encodeURIComponent(email)}`;
+  const notes = (id: string, revision: number, remarks: string, email = caller.email) => editNotes(new NextRequest(`http://localhost${scoped(`/api/board/tasks/${id}`, email)}`, { method: "PATCH", body: JSON.stringify({ revision, remarks }) }), { params: Promise.resolve({ id }) });
+  const writes = async (id: string, email: string) => [
+    () => notes(id, 0, "Admin note", email),
+    () => post(move, scoped("/api/board/move", email), { tasks: [{ id, revision: 0 }], stage: "awaiting_details" }),
+    () => post(followUp, scoped("/api/board/follow-up", email), { tasks: [{ id, revision: 0 }], next_due_at: null }),
+    () => post(noAnswer, scoped("/api/board/no-answer", email), { tasks: [{ id, revision: 0 }] }),
+  ];
+
+  it("saves the selected employee's notes, stages, follow-ups and calls as the admin", async () => {
+    const id = await task(await listing("9811700030"));
+    auth.user = { ...admin };
+    expect((await notes(id, 0, "Admin correction")).status).toBe(200);
+    expect((await post(move, scoped("/api/board/move"), { tasks: await refs(id), stage: "awaiting_details" })).status).toBe(200);
+    const due = new Date(Date.now() + 86400_000).toISOString();
+    expect((await post(followUp, scoped("/api/board/follow-up"), { tasks: await refs(id), next_due_at: due })).status).toBe(200);
+    expect((await post(noAnswer, scoped("/api/board/no-answer"), { tasks: await refs(id) })).status).toBe(200);
+    expect(await row(id)).toMatchObject({ assignee: caller.email, remarks: "Admin correction", stage: "awaiting_details", disposition: "no_answer" });
+    expect(new Date((await row(id)).next_due_at).toISOString()).toBe(due);
+    expect((await query("select actor,assignee from bolna_manual_attempts where assignment_id=$1", [id])).rows).toEqual([{ actor: admin.email, assignee: caller.email }]);
+    expect((await query("select distinct actor from bolna_assignment_changes where assignment_id=$1 and before_values<>'{}'::jsonb", [id])).rows).toEqual([{ actor: admin.email }]);
+    expect((await post(move, scoped("/api/board/move"), { tasks: await refs(id), stage: "warehouse_created", wh_id: "4532" })).status).toBe(200);
+    expect(await row(id)).toMatchObject({ assignee: caller.email, stage: "warehouse_created", state: "done", wh_id: "4532" });
+    await warehouse("9811700030", 4532);
+    expect((await post(move, scoped("/api/board/move"), { tasks: await refs(id), stage: "inbound" })).status).toBe(409);
+  });
+
+  it("rejects another employee scope for callers, employee mode and unavailable targets", async () => {
+    const id = await task(await listing("9811700031"));
+    for (const user of [other, { ...admin, isAdmin: false }]) {
+      auth.user = { ...user };
+      for (const write of await writes(id, caller.email)) expect((await write()).status).toBe(403);
+    }
+    auth.user = { ...admin };
+    await query("update bolna_app_users set active=false where email=$1", [caller.email]);
+    for (const email of [caller.email, "missing@moves.test"]) {
+      for (const write of await writes(id, email)) expect((await write()).status).toBe(404);
+    }
+    expect(await row(id)).toMatchObject({ revision: 0, remarks: null, stage: "inbound" });
+    expect(await attempts(id)).toEqual([]);
+  });
+
+  it("binds all edits to the chosen assignee and retains stale/reassigned task protection", async () => {
+    const id = await task(await listing("9811700032"));
+    const otherId = await task(await listing("9811700033"), { assignee: other.email });
+    auth.user = { ...admin };
+    for (const write of await writes(otherId, caller.email)) expect((await write()).status).toBe(409);
+    expect((await post(move, scoped("/api/board/move"), { tasks: await refs(id, otherId), stage: "rnr" })).status).toBe(409);
+    expect(await row(id)).toMatchObject({ revision: 0, stage: "inbound" });
+    expect((await notes(id, 0, "First save")).status).toBe(200);
+    expect((await notes(id, 0, "Stale save")).status).toBe(409);
+    expect((await post(followUp, scoped("/api/board/follow-up"), { tasks: [{ id, revision: 0 }], next_due_at: null })).status).toBe(409);
+    await query("update bolna_assignments set state='dropped',revision=revision+1 where id=$1", [id]);
+    const replacement = await task((await row(id)).entity_id, { assignee: other.email });
+    expect((await notes(id, (await row(id)).revision, "Wrong employee")).status).toBe(409);
+    expect((await notes(replacement, 0, "Wrong employee")).status).toBe(409);
+    expect(await row(id)).toMatchObject({ state: "dropped", assignee: caller.email, remarks: "First save" });
+    expect(await row(replacement)).toMatchObject({ assignee: other.email, remarks: null });
+  });
+});
+
 describe("card timeline", () => {
+  it("lets admins read the selected employee's activity and AI with employee visibility", async () => {
+    const record = await listing("9811700020"), id = await task(record);
+    await moveCard({ tasks: await refs(id), stage: "rnr" });
+    const otherId = await task(await listing("9811700021"), { assignee: other.email });
+    const employee = `employee=${encodeURIComponent(caller.email)}`;
+    auth.user = { ...admin };
+    const response = await timeline(new NextRequest(`http://localhost/api/board/timeline?task=${id}&task=${otherId}&${employee}`));
+    expect(response.status).toBe(200);
+    // The employee sees their stage history, without the admin-only call log.
+    expect((await response.json()).events).toMatchObject([{ kind: "stage", text: "Moved to 2A RnR" }]);
+    const readAi = (recordId: string, selected: string) => ai(new NextRequest(`http://localhost/api/details/record/${recordId}/ai?employee=${encodeURIComponent(selected)}`), { params: Promise.resolve({ entity: "record", id: recordId }) });
+    expect((await readAi(record, caller.email)).status).toBe(200);
+    expect((await readAi(record, other.email)).status).toBe(404);
+    for (const selected of ["missing@moves.test", caller.email]) {
+      if (selected === caller.email) await query("update bolna_app_users set active=false where email=$1", [selected]);
+      expect((await timeline(new NextRequest(`http://localhost/api/board/timeline?task=${id}&employee=${encodeURIComponent(selected)}`))).status).toBe(404);
+      expect((await readAi(record, selected)).status).toBe(404);
+    }
+  });
+
+  it("ignores employee selection for callers and admins in employee mode", async () => {
+    const record = await listing("9811700022"), id = await task(record);
+    await moveCard({ tasks: await refs(id), stage: "rnr" });
+    const url = `http://localhost/api/board/timeline?task=${id}&employee=${encodeURIComponent(caller.email)}`;
+    for (const user of [other, { ...admin, isAdmin: false }]) {
+      auth.user = { ...user };
+      expect((await (await timeline(new NextRequest(url))).json()).events).toEqual([]);
+      expect((await ai(new NextRequest(`http://localhost/api/details/record/${record}/ai?employee=${encodeURIComponent(caller.email)}`), { params: Promise.resolve({ entity: "record", id: record }) })).status).toBe(404);
+    }
+  });
+
   it("lists stage moves and note edits newest first, only for visible tasks, without calls for employees", async () => {
     const id = await task(await listing("9811700013"));
     await moveCard({ tasks: await refs(id), stage: "rnr" });

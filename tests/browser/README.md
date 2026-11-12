@@ -14,6 +14,18 @@ to editable own work, and desktop/mobile layouts in both themes. Pagination
 checks verify that the updated list and first row actually enter the viewport,
 with focus on that list's heading, for both admins and employees.
 
+`50-board-perspective.spec.ts` covers the beta board's admin employee selector:
+matching the employee's cards and counts, scoped details/AI/activity, normal edit
+controls with entry confirmation, Junk review, filter/saved-view continuity,
+column paging, switching back to editable own work, role boundaries, and both
+themes at desktop and mobile widths.
+
+`51-board-employee-edit.spec.ts` covers one confirmation per entry, independent
+confirmations for other cards, cancellation and focus, admin audit identity,
+scoped notes/stages/follow-ups/calls/Junk decisions, retention through filters and
+in-app refresh, reset on employee changes or reload, failed/stale saves and draft
+preservation, role changes, and confirmation layouts in both themes.
+
 `warehouse-contacts.spec.ts` also covers the Already added chip and disabled
 updates in caller My Work and admin employee perspectives, for open listings and
 completed AI follow-ups. It checks preserved notes/references, multiple matched

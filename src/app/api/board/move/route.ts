@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
-import { ownWork } from "@/lib/board";
 import { apiError, bigintId, jsonBody, revision } from "@/lib/api";
 import { STAGE_SLUGS, type Stage } from "@/lib/board-stages";
 import { moveCard } from "@/lib/board-moves";
@@ -22,7 +21,7 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   try {
     const body = await jsonBody(req, schema);
-    const tasks = await moveCard(ownWork(user), { tasks: body.tasks, stage: body.stage, reason: body.reason, whId: body.wh_id });
+    const tasks = await moveCard(user, { tasks: body.tasks, stage: body.stage, reason: body.reason, whId: body.wh_id }, req.nextUrl.searchParams.get("employee"));
     return NextResponse.json({ tasks });
   } catch (error) { return apiError(error); }
 }

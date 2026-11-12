@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useId, useRef, useState, type DragEvent } from "react";
-import type { Board, BoardCard, BoardColumn } from "@/lib/board";
-import { BOARD_MAX_CARDS, BOARD_PAGE_SIZE, boardHref, nextColumnLimit, type BoardFilters, type ColumnLimits } from "@/lib/board-filters";
+import type { Board, BoardCard, BoardColumn, BoardFilterOptions } from "@/lib/board";
+import { BOARD_MAX_CARDS, BOARD_PAGE_SIZE, boardHref, boardSearchValues, nextColumnLimit, type BoardFilters, type ColumnLimits } from "@/lib/board-filters";
 import { STRIKE_LIMIT, stageInfo, type Stage } from "@/lib/board-stages";
 import { shortDate } from "@/lib/display";
 import { useDashboardUI } from "../DashboardUI";
@@ -9,19 +9,27 @@ import { RequestError } from "../requests";
 import { BoardPanel } from "./BoardPanel";
 import { NEEDS_INPUT, cardId, requestMove, type InputStage } from "./board-requests";
 import { JunkDigest } from "./JunkReview";
+import { BoardEmployeePerspective } from "./BoardEmployeePerspective";
+import { BoardFilters as Filters } from "./BoardFilters";
+import type { WorkEmployee } from "../my/EmployeePerspective";
+import { useBoardEntryConfirmation } from "./BoardEntryConfirmation";
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
 // Admins see several callers' cards for one phone, so the caller is part of the identity.
 const DRAG_TYPE = "application/x-callongo-card";
 
 type Drag = { onStart: (card: BoardCard) => void; onEnd: () => void; onOver: (stage: Stage) => void; onDrop: (stage: Stage, event: DragEvent) => void;
-  dragging: string | null; target: Stage | null; moving: string | null };
+  dragging: string | null; target: Stage | null; moving: string | null; disabled: boolean };
 
-/** The signed-in person's own board; every card here is theirs, so cards never name a caller. */
-export function BoardView({ board, proposals, filters, limits, showCalls }: {
+/** Keyed by the selected person: entry confirmations survive filters, but never person changes. */
+export function BoardView({ board, proposals, filters, limits, showCalls, employees, options }: {
   board: Board; proposals: { total: number; cards: BoardCard[] }; filters: BoardFilters; limits: ColumnLimits; showCalls: boolean;
+  employees?: WorkEmployee[]; options: BoardFilterOptions;
 }) {
-  const { refresh, notify, navigate } = useDashboardUI();
+  const { refresh, notify, navigate, hasDrafts } = useDashboardUI();
+  const employee = employees?.find(person => person.email === filters.employee);
+  const readOnly = !!filters.employee && !employee;
+  const { confirmEntry, confirmation } = useBoardEntryConfirmation(employee);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [request, setRequest] = useState<{ stage: InputStage; token: number } | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
@@ -45,28 +53,34 @@ export function BoardView({ board, proposals, filters, limits, showCalls }: {
     navigate(boardHref(filters, merged), { replace: true });
   }, [filters, filterKey, limits, navigate]);
 
-  const select = (id: string) => { setSelectedId(id); setRequest(null); };
+  const select = (id: string) => {
+    if (hasDrafts()) { notify("Save or discard the notes before changing leads."); return; }
+    setSelectedId(id); setRequest(null);
+  };
   const close = useCallback(() => {
+    if (hasDrafts()) { notify("Save or discard the notes before closing this lead."); return; }
     const id = selectedId;
     setSelectedId(null); setRequest(null);
     // Return focus to the card that opened the panel, wherever it now sits.
     requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-card-id="${CSS.escape(id ?? "")}"]`)?.focus());
-  }, [selectedId]);
+  }, [selectedId, hasDrafts, notify]);
 
   // Drag and drop is a shortcut for the panel's stage buttons, which stay the keyboard path.
   const drag: Drag = {
-    dragging, target, moving,
-    onStart: card => { setDragging(cardId(card)); setTarget(null); },
+    dragging, target, moving, disabled: readOnly,
+    onStart: card => { if (readOnly || hasDrafts()) return; setDragging(cardId(card)); setTarget(null); },
     onEnd: () => { setDragging(null); setTarget(null); },
     onOver: stage => setTarget(stage),
     onDrop: async (stage, event) => {
+      if (readOnly || hasDrafts()) return;
       const id = event.dataTransfer.getData(DRAG_TYPE) || dragging;
       setDragging(null); setTarget(null);
       const card = cards.find(candidate => cardId(candidate) === id);
       if (!card || card.stage === stage) return;
       if (NEEDS_INPUT.includes(stage)) { setSelectedId(cardId(card)); setRequest({ stage: stage as InputStage, token: Date.now() }); return; }
+      if (!(await confirmEntry(card))) return;
       setMoving(cardId(card));
-      try { await requestMove(card, stage); refresh(); }
+      try { await requestMove(card, stage, {}, filters.employee); refresh(); }
       catch (failure) {
         notify(failure instanceof Error ? failure.message : "Couldn't move the card. Try again.");
         if (failure instanceof RequestError && failure.code === "ASSIGNMENT_CONFLICT") refresh();
@@ -75,14 +89,17 @@ export function BoardView({ board, proposals, filters, limits, showCalls }: {
   };
 
   return <>
-    <JunkDigest total={proposals.total} cards={proposals.cards} />
+    {employees && <BoardEmployeePerspective employees={employees} filters={filters} />}
+    <Filters applied={boardSearchValues(filters)} options={options} />
+    <JunkDigest total={proposals.total} cards={proposals.cards} readOnly={readOnly} employee={filters.employee} confirmEntry={confirmEntry} />
     <div className={`board-body${selected ? " has-panel" : ""}${dragging ? " is-dragging" : ""}`}>
       <div className="board-scroller" role="region" aria-label="Board columns" tabIndex={0}>
         <div className="board-columns">{board.columns.map(column => <Column key={column.stage} column={column} onGrow={grow}
           selectedId={selected ? selectedId : null} onSelect={select} drag={drag} />)}</div>
       </div>
-      {selected && <BoardPanel card={selected} onClose={close} request={request} showCalls={showCalls} />}
+      {selected && <BoardPanel card={selected} onClose={close} request={request} showCalls={showCalls} employee={filters.employee} readOnly={readOnly} confirmEntry={confirmEntry} />}
     </div>
+    {confirmation}
   </>;
 }
 
@@ -98,7 +115,7 @@ function Column({ column, onGrow, selectedId, onSelect, drag }: {
   const next = nextColumnLimit(column.limit, column.total);
   const { list, end, near } = useNearEnd(next !== null);
   useEffect(() => { if (near && next !== null && !pending) onGrow(column.stage, next); }, [near, next, pending, onGrow, column.stage]);
-  const accepts = (event: DragEvent) => !!drag.dragging || event.dataTransfer.types.includes(DRAG_TYPE);
+  const accepts = (event: DragEvent) => !drag.disabled && (!!drag.dragging || event.dataTransfer.types.includes(DRAG_TYPE));
   return <section id={`board-${column.stage}`} className={`board-column${drag.target === column.stage ? " drop-target" : ""}`}
     data-stage={column.stage} data-code={stage.code} aria-labelledby={`${id}-title`} aria-describedby={`${id}-count`}
     onDragOver={event => { if (!accepts(event)) return; event.preventDefault(); event.dataTransfer.dropEffect = "move"; if (drag.target !== column.stage) drag.onOver(column.stage); }}
@@ -109,7 +126,7 @@ function Column({ column, onGrow, selectedId, onSelect, drag }: {
     </div>
     <p className="board-column-hint">{stage.hint}</p>
     {column.cards.length ? <ol ref={list} className="board-cards">{column.cards.map(card => <li key={cardId(card)}>
-      <Card card={card} selected={cardId(card) === selectedId} moving={drag.moving === cardId(card)}
+      <Card card={card} selected={cardId(card) === selectedId} moving={drag.moving === cardId(card)} readOnly={drag.disabled}
         onSelect={() => onSelect(cardId(card))} onDragStart={() => drag.onStart(card)} onDragEnd={drag.onEnd} />
     </li>)}{next !== null && <li ref={end} className="board-cards-end" aria-hidden="true" />}</ol> : <p className="board-empty">No cards</p>}
     {remaining > 0 && <p className="board-column-progress" role="status">
@@ -136,15 +153,15 @@ function useNearEnd(enabled: boolean) {
   return { list, end, near: enabled && near };
 }
 
-function Card({ card, selected, moving, onSelect, onDragStart, onDragEnd }: {
-  card: BoardCard; selected: boolean; moving: boolean; onSelect: () => void; onDragStart: () => void; onDragEnd: () => void;
+function Card({ card, selected, moving, readOnly, onSelect, onDragStart, onDragEnd }: {
+  card: BoardCard; selected: boolean; moving: boolean; readOnly: boolean; onSelect: () => void; onDragStart: () => void; onDragEnd: () => void;
 }) {
   const name = card.name?.trim() || "Unnamed owner";
   const meta = [card.city, card.tasks.length > 1 ? plural(card.tasks.length, "task") : null].filter(Boolean).join(" · ");
   const followUp = card.nextDueAt && !card.closed;
   return <button type="button" className={`board-card${card.closed ? " closed" : ""}${selected ? " selected" : ""}`} data-card-id={cardId(card)}
     aria-expanded={selected} aria-controls={selected ? "board-panel" : undefined} aria-busy={moving} onClick={onSelect}
-    draggable={!moving} onDragEnd={onDragEnd} onDragStart={event => {
+    draggable={!readOnly && !moving} onDragEnd={readOnly ? undefined : onDragEnd} onDragStart={readOnly ? undefined : event => {
       event.dataTransfer.setData(DRAG_TYPE, cardId(card));
       event.dataTransfer.setData("text/plain", name);
       event.dataTransfer.effectAllowed = "move";

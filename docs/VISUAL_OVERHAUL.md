@@ -236,6 +236,45 @@ warehouse match, preserved saved values and locked controls. Direct database
 comparison queries ran in a read-only transaction; the browser sent zero write
 requests. No real contact data or screenshots were saved in this repository.
 
+## Beta board employee perspective — 13 November 2026
+
+The beta Kanban now has the same admin-only **View work as** selector as My Work.
+The selected employee's cards, counts, filters, details, AI calls, activity and
+Junk proposals share their visibility scope. Normal edit controls are available
+immediately, with no global editing toggle. The first save, move or Junk decision
+for each card opens a confirmation naming the entry and employee. Further edits
+to that card, including its listing and AI tasks, do not prompt again; other cards
+require their own confirmation. Assignments stay with the employee, and the admin
+is the audit actor. Filters, saved views, in-app refresh and reopening a card
+retain confirmation; switching people or reloading resets it. Switching people
+also resets column paging and closes the lead panel. Unsaved admin notes block navigation, and stale
+saves keep the draft until the admin discards it and reloads the latest value.
+
+The initial employee-editing validation passed: type checking, 246 unit tests, 38 board
+mutation/strike/stage-sync integration tests, the production build, and 70 board
+browser tests across targeted runs. Tests cover audit attribution, wrong employee
+scopes, inactive users, employee mode, stale/reassigned tasks, warehouse guards,
+failed saves, confirmation resets and caller compatibility. Follow-up inputs now
+wait for save refreshes before accepting edits. Desktop/mobile captures were
+inspected in both themes. Tests use an isolated disposable database to avoid
+another worktree's concurrently running fixtures.
+
+The per-entry confirmation update passed type checking, 246 unit tests, a
+production build and all 71 board browser tests in one run. Coverage includes
+independent card confirmations, repeated edits and task tabs without another
+prompt, filters and in-app refresh, cancel/Escape without writes, employee
+switch/reload resets, and desktop/mobile layouts in both themes.
+
+A read-only check on localhost:3000 compared three real employees' own boards
+with the admin perspectives, including database counts, filter options, details,
+activity, paging in three columns, refresh and returning to own work. All matched;
+the browser sent zero write requests. No real contact data or screenshots were
+saved in the repository. The per-entry confirmation was also checked on
+localhost:3000 with an existing employee: normal edit controls were available,
+the modal named the card and employee, and Cancel/Escape kept the draft without
+saving. All writes were blocked, and the browser attempted zero write requests.
+Actual saves were tested only against synthetic data.
+
 ## Repeatable screenshots
 
 From the sibling `bolna-eval` directory, `npm run render:dashboard` delegates to this checkout's versioned renderer using `APP_DIR`. The command creates an HTML gallery with page/theme/width filters and a JSON manifest of captures. It includes every page type and the main filter, assignment, history, details, queue and manual-call interaction states, in both themes at 1366 × 768 and 390 × 844. Batch member tables receive separate captures after scrolling. Team Performance, Access control and the add-member form each have their own captures.

@@ -17,22 +17,29 @@ type TaskRow = {
   outcome: string | null; wh_id: string | null; added_to_db: boolean; disposition: string | null; warehouse_ids: number[];
 };
 
-const conflict = () => new ApiError(409, "This card changed or is no longer yours to edit. Refresh to see its latest state.", "ASSIGNMENT_CONFLICT");
+const conflict = () => new ApiError(409, "This card changed or is no longer available to edit. Refresh to see its latest state.", "ASSIGNMENT_CONFLICT");
 
-async function startBoardWrite(client: PoolClient, viewer: Viewer) {
+async function startBoardWrite(client: PoolClient, viewer: Viewer, employee?: string | null) {
+  const actor = viewer.email.toLowerCase();
+  const assignee = employee?.trim().toLowerCase() || actor;
+  if (assignee !== actor && !viewer.isAdmin) throw new ApiError(403, "Only admins can edit another employee's work.");
   // Same lock as allocation and reopening, taken before any row lock.
   await client.query("select pg_advisory_xact_lock(81620404)");
-  await client.query("select set_config('bolna.actor',$1,true), set_config('bolna.employee_workflow','board',true)", [viewer.email.toLowerCase()]);
+  if (assignee !== actor && !(await client.query("select 1 from bolna_app_users where email=$1 and active for share", [assignee])).rowCount) {
+    throw new ApiError(404, "This employee is no longer available.");
+  }
+  await client.query("select set_config('bolna.actor',$1,true), set_config('bolna.employee_workflow','board',true)", [actor]);
+  return assignee;
 }
 
-/** Locks the requested tasks the viewer may edit; any missing or stale task is a conflict. */
-async function lockTasks(client: PoolClient, viewer: Viewer, refs: TaskRef[]): Promise<TaskRow[]> {
+/** Bind every task to the authorized assignee, including for admins. */
+async function lockTasks(client: PoolClient, assignee: string, refs: TaskRef[]): Promise<TaskRow[]> {
   const rows = (await client.query<TaskRow>(`select a.id::text, a.revision, a.entity_type, a.entity_id::text, a.assignee, a.stage, a.state,
         a.outcome, a.wh_id, a.added_to_db, a.disposition,
         array(select distinct w.warehouse_id from bolna_warehouse_matches w where w.entity_type = a.entity_type and w.entity_id = a.entity_id order by 1) as warehouse_ids
       from bolna_assignments a
-     where a.id = any($1::bigint[]) and a.state <> 'dropped' and ($2::boolean or a.assignee = $3)
-     order by a.id for update of a`, [refs.map(ref => ref.id), viewer.isAdmin, viewer.email.toLowerCase()])).rows;
+     where a.id = any($1::bigint[]) and a.state <> 'dropped' and a.assignee = $2
+     order by a.id for update of a`, [refs.map(ref => ref.id), assignee])).rows;
   const revisions = new Map(refs.map(ref => [ref.id, ref.revision]));
   if (rows.length !== revisions.size || rows.some(row => revisions.get(row.id) !== row.revision)) throw conflict();
   return rows;
@@ -69,10 +76,10 @@ export async function recordNoAnswer(client: PoolClient, viewer: Viewer, task: P
     [id, task.id, viewer.email.toLowerCase(), task.assignee, allocationHash({ source: "board", assignmentId: task.id, attempt: id })]);
 }
 
-export async function moveCard(viewer: Viewer, input: { tasks: TaskRef[]; stage: Stage; reason?: string | null; whId?: string | null }): Promise<MovedTask[]> {
+export async function moveCard(viewer: Viewer, input: { tasks: TaskRef[]; stage: Stage; reason?: string | null; whId?: string | null }, employee?: string | null): Promise<MovedTask[]> {
   return transaction(async client => {
-    await startBoardWrite(client, viewer);
-    const tasks = await lockTasks(client, viewer, input.tasks);
+    const assignee = await startBoardWrite(client, viewer, employee);
+    const tasks = await lockTasks(client, assignee, input.tasks);
     const plans = tasks.map(task => {
       try { return { task, plan: planMove({ ...task, warehouseIds: task.warehouse_ids }, input) }; }
       catch (error) { if (error instanceof MoveError) throw new ApiError(422, error.message, error.code, error.field); throw error; }
@@ -102,13 +109,13 @@ export async function moveCard(viewer: Viewer, input: { tasks: TaskRef[]; stage:
   });
 }
 
-export async function updateTaskNotes(viewer: Viewer, id: string, input: { revision: number; remarks: string | null }) {
+export async function updateTaskNotes(viewer: Viewer, id: string, input: { revision: number; remarks: string | null }, employee?: string | null) {
   return transaction(async client => {
-    await startBoardWrite(client, viewer);
+    const assignee = await startBoardWrite(client, viewer, employee);
     const result = await client.query<{ id: string; revision: number; remarks: string | null }>(`update bolna_assignments
         set remarks = $2, revision = revision + 1
-      where id = $1 and revision = $3 and state <> 'dropped' and ($4::boolean or assignee = $5)
-      returning id::text, revision, remarks`, [id, input.remarks, input.revision, viewer.isAdmin, viewer.email.toLowerCase()]);
+      where id = $1 and revision = $3 and state <> 'dropped' and assignee = $4
+      returning id::text, revision, remarks`, [id, input.remarks, input.revision, assignee]);
     if (!result.rowCount) throw conflict();
     return result.rows[0];
   });
@@ -118,10 +125,10 @@ export async function updateTaskNotes(viewer: Viewer, id: string, input: { revis
  * Records another unanswered call on each open task of a card. Strikes count IST
  * days, so a task already called today is skipped and `logged` says how many counted.
  */
-export async function logNoAnswer(viewer: Viewer, input: { tasks: TaskRef[] }) {
+export async function logNoAnswer(viewer: Viewer, input: { tasks: TaskRef[] }, employee?: string | null) {
   return transaction(async client => {
-    await startBoardWrite(client, viewer);
-    const tasks = (await lockTasks(client, viewer, input.tasks)).filter(task => task.state === "open");
+    const assignee = await startBoardWrite(client, viewer, employee);
+    const tasks = (await lockTasks(client, assignee, input.tasks)).filter(task => task.state === "open");
     if (!tasks.length) throw new ApiError(422, "Finished work takes no more calls. Move the card to an open stage first.", "TASK_FINISHED");
     let logged = 0;
     for (const task of tasks) {
@@ -138,10 +145,10 @@ export async function logNoAnswer(viewer: Viewer, input: { tasks: TaskRef[] }) {
 }
 
 /** Follow-ups apply to the card's open tasks; finished tasks keep none. */
-export async function setFollowUp(viewer: Viewer, input: { tasks: TaskRef[]; nextDueAt: string | null }) {
+export async function setFollowUp(viewer: Viewer, input: { tasks: TaskRef[]; nextDueAt: string | null }, employee?: string | null) {
   return transaction(async client => {
-    await startBoardWrite(client, viewer);
-    const tasks = await lockTasks(client, viewer, input.tasks);
+    const assignee = await startBoardWrite(client, viewer, employee);
+    const tasks = await lockTasks(client, assignee, input.tasks);
     const open = tasks.filter(task => task.state === "open").map(task => task.id);
     if (!open.length) throw new ApiError(422, "Finished work has no follow-up date. Move the card to an open stage first.", "TASK_FINISHED", "next_due_at");
     return (await client.query<{ id: string; revision: number }>(`update bolna_assignments set next_due_at = $2, revision = revision + 1

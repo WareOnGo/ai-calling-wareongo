@@ -32,7 +32,14 @@ describe("board filters", () => {
 
   it("reports whether any criteria narrow the board", () => {
     expect(hasBoardCriteria({})).toBe(false);
+    expect(hasBoardCriteria({ employee: "priya@eval.test" })).toBe(false);
     expect(hasBoardCriteria({ city: ["Delhi"] })).toBe(true);
+  });
+
+  it("leaves employee selection to the server's authorized perspective resolver", () => {
+    for (const viewer of [admin, employee]) {
+      expect(parseBoardFilters({ employee: "priya@eval.test", q: "Owner" }, viewer)).toEqual({ q: "Owner" });
+    }
   });
 });
 
@@ -74,5 +81,10 @@ describe("board links", () => {
 
   it("omits default limits and empty filters", () => {
     expect(boardHref({}, { inbound: 50 })).toBe("/dashboard/board");
+  });
+
+  it("retains the authorized employee when a column grows", () => {
+    expect(boardHref({ employee: "priya@eval.test", type: "record" }, { inbound: 100 }))
+      .toBe("/dashboard/board?employee=priya%40eval.test&type=record&inbound_cards=100");
   });
 });

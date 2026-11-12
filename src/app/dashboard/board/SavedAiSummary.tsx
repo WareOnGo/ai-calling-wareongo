@@ -12,17 +12,17 @@ import { Transcript } from "../Transcript";
  * transcript. The panel's AI history offers it when no provider attempts exist,
  * as the full record does, using the same endpoint and markup.
  */
-export function SavedAiSummary({ entity, id }: { entity: "record" | "call"; id: string }) {
+export function SavedAiSummary({ entity, id, employee }: { entity: "record" | "call"; id: string; employee?: string }) {
   const [row, setRow] = useState<(RawRow & CallRow) | null>(null);
   const [error, setError] = useState("");
   const [audioFailed, setAudioFailed] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
-    requestJson<{ row: RawRow & CallRow }>(`/api/details/${entity}/${encodeURIComponent(id)}?section=overview`, { signal: controller.signal })
+    requestJson<{ row: RawRow & CallRow }>(`/api/details/${entity}/${encodeURIComponent(id)}?section=overview${employee ? `&employee=${encodeURIComponent(employee)}` : ""}`, { signal: controller.signal })
       .then(value => setRow(value.row))
       .catch(failure => { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Couldn't load the saved summary."); });
     return () => controller.abort();
-  }, [entity, id]);
+  }, [entity, id, employee]);
   if (error) return <p role="alert">{error}</p>;
   if (!row) return <p role="status" className="history-loading">Loading the saved summary…</p>;
   const record = entity === "record";

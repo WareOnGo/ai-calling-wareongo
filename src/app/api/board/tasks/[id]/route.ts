@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
-import { ownWork } from "@/lib/board";
 import { apiError, bigintId, jsonBody, nullableText, revision } from "@/lib/api";
 import { updateTaskNotes } from "@/lib/board-moves";
 
@@ -17,6 +16,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   try {
     const id = bigintId.parse((await params).id);
     const body = await jsonBody(req, schema);
-    return NextResponse.json(await updateTaskNotes(ownWork(user), id, { revision: body.revision, remarks: body.remarks?.trim() || null }));
+    return NextResponse.json(await updateTaskNotes(user, id, { revision: body.revision, remarks: body.remarks?.trim() || null }, req.nextUrl.searchParams.get("employee")));
   } catch (error) { return apiError(error); }
 }

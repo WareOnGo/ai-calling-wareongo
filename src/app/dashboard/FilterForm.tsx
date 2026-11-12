@@ -96,7 +96,7 @@ export function FilterForm({ action, applied, children, className = "", preserve
       new FormData(e.currentTarget).forEach((value,key) => { if (String(value).trim()) params.append(key, String(value).trim()); });
       e.currentTarget.querySelector<HTMLDialogElement>('.filter-panel[open]')?.close();
       apply(params);
-    }} aria-busy={pending}><div className="toolbar-search">{children}</div>{(viewTools || savedViews) && <div className="toolbar-view">{viewTools}{savedViews && <SavedViews path={action} applied={applied}/>}</div>}{actions && <div className="toolbar-actions">{actions}</div>}</form>
+    }} aria-busy={pending}><div className="toolbar-search">{children}</div>{(viewTools || savedViews) && <div className="toolbar-view">{viewTools}{savedViews && <SavedViews path={action} applied={applied} preserveKeys={preserveKeys}/>}</div>}{actions && <div className="toolbar-actions">{actions}</div>}</form>
     {(active.length > 0 || dirty || transitioning) && <div className="applied-filters" aria-label="Applied filters">
       {active.map(([key,value]) => <button type="button" className="filter-tag" key={`${key}:${value}`} disabled={pending} onClick={() => remove(key,value)} aria-label={`Remove ${labelFor(key)} filter: ${value}`}>{labelFor(key)}: {formatValue(key, value!)}<span aria-hidden="true">×</span></button>)}
       {active.length > 0 && <button type="button" className="btn-text" disabled={pending} onClick={() => remove()}>Clear filters</button>}

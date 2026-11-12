@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { ownWork } from "@/lib/board";
 import { apiError, bigintId } from "@/lib/api";
 import { cardTimeline } from "@/lib/board-moves";
+import { employeeWorkPerspective } from "@/lib/employee-work-perspective";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,7 +17,9 @@ export async function GET(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   try {
+    const viewer = await employeeWorkPerspective(user, req.nextUrl.searchParams.get("employee"));
+    if (!viewer) return NextResponse.json({ error: "Employee not found" }, { status: 404 });
     const tasks = ids.parse([...new Set(req.nextUrl.searchParams.getAll("task"))]);
-    return NextResponse.json({ events: await cardTimeline(ownWork(user), tasks, { includeCalls: user.isAdmin }) }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ events: await cardTimeline(ownWork(viewer), tasks, { includeCalls: viewer.isAdmin }) }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return apiError(error); }
 }

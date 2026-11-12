@@ -219,6 +219,24 @@ test('notes and the follow-up date save from the panel', async ({ employeePage: 
   await expect(cardButton(page, 'Raghav Sharma')).toContainText('Follow up');
 });
 
+test('a caller can refresh a notes conflict and explicitly save their retained draft', async ({ employeePage: page }) => {
+  await page.goto('/dashboard/board');
+  await cardButton(page, 'Raghav Sharma').click();
+  const notes = panel(page).getByRole('textbox', { name: 'Your notes' });
+  await notes.fill('Retained caller draft');
+  expect((await page.request.patch('/api/board/tasks/1', { data: { revision: 0, remarks: 'Updated in another tab' } })).status()).toBe(200);
+  const conflict = page.waitForResponse(r => r.url().endsWith('/api/board/tasks/1') && r.request().method() === 'PATCH');
+  await panel(page).getByRole('button', { name: 'Save notes' }).click();
+  expect((await conflict).status()).toBe(409);
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await expect(panel(page).locator('.board-timeline')).toContainText('Updated in another tab');
+  await expect(notes).toHaveValue('Retained caller draft');
+  const saved = page.waitForResponse(r => r.url().endsWith('/api/board/tasks/1') && r.request().method() === 'PATCH');
+  await panel(page).getByRole('button', { name: 'Save notes' }).click();
+  expect((await saved).status()).toBe(200);
+  await expect(panel(page).locator('.board-task-status')).toHaveText('Saved');
+});
+
 test('the keyboard opens a card, Escape closes the panel and focus returns to the card', async ({ employeePage: page }) => {
   await page.goto('/dashboard/board');
   await cardButton(page, 'Raghav Sharma').focus();
