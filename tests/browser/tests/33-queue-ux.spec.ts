@@ -79,7 +79,7 @@ test('outcome and language changes update eligibility and require a fresh confir
   await dialog.getByLabel('Call language', { exact: true }).selectOption('hindi');
   await expect(ready(1)).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Yes, place calls', exact: true })).toHaveCount(0);
-  await dialog.locator('.queue-previous summary').click();
+  await expect(dialog.getByRole('region', { name: 'Previous AI calls', exact: true })).toBeVisible();
   await dialog.getByRole('checkbox', { name: 'Unclear', exact: false }).uncheck();
   await expect(dialog.getByRole('heading', { name: 'No contacts ready to call' })).toBeVisible();
   await expect(dialog.getByRole('button', { name: /Send to Bolna|Download CSV/ })).toHaveCount(0);

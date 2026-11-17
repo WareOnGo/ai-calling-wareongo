@@ -1,0 +1,20 @@
+{
+  "checkedAt": "2026-11-17T13:22:13.304Z",
+  "migration": "023_assignment_ai_exclusions.sql",
+  "checksum": "64e908f0102f3e43cee37dc2666c225f84b0cba9241ee89d9bd2b7366f92b2f3",
+  "appliedAt": "2026-11-17T13:22:12.389Z",
+  "elapsedMs": 929,
+  "tlsVerified": true,
+  "allLedgerChecksumsMatch": true,
+  "ledgerEntries": 24,
+  "previousLedgerEntriesPreserved": true,
+  "triggersPreserved": true,
+  "constraintValidated": true,
+  "constraintDefinition": "CHECK ((disposition = ANY (ARRAY['assign'::text, 'reassign'::text, 'owned'::text, 'duplicate'::text, 'missing_phone'::text, 'warehouse_exists'::text, 'excluded_ai'::text])))",
+  "secondRunNoOp": true,
+  "businessRowWrites": false,
+  "beforePending": [
+    "023_assignment_ai_exclusions.sql"
+  ],
+  "afterPending": []
+}

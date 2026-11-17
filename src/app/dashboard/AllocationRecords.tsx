@@ -4,7 +4,7 @@ import { dateTime } from "@/lib/display";
 import { ResultBadge } from "./ResultBadge";
 import { DISPOSITION_LABELS, type Disposition } from "@/lib/manual-dispositions";
 
-const actions = { assign: "Assign", reassign: "Reassign", owned: "Keep current owner", duplicate: "Duplicate contact", missing_phone: "No valid phone", warehouse_exists: 'Warehouse already in DB' };
+const actions = { assign: "Assign", reassign: "Reassign", owned: "Keep current owner", duplicate: "Duplicate contact", missing_phone: "No valid phone", warehouse_exists: 'Warehouse already in DB', excluded_ai: 'Excluded by AI history' };
 const disposition = (value: string | null) => value ? DISPOSITION_LABELS[value as Disposition] || value : "No recorded disposition";
 
 export function AllocationRecords({ items }: { items: AllocationItem[] }) {

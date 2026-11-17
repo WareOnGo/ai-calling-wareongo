@@ -55,12 +55,14 @@
 .assignment-options > summary, .allocation-inspection > summary, .evidence-details > summary { cursor: pointer; color: var(--accent); padding: 10px 0; font-size: var(--text-support); }
 .assignment-options[open] > summary { margin-bottom: 8px; }
 .assignment-options .assign-check { margin-bottom: 12px; }
-.assignment-preview { border-top: 1px solid var(--border); padding-top: 20px; }
+.assignment-preview { margin-bottom: 16px; }
 .allocation-summary { font-size: var(--text-body); color: var(--muted); }
 .allocation-summary strong { display: inline-block; color: var(--heading); font-size: var(--text-title); font-weight: 600; margin-right: 5px; }
-.allocation-impact { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 8px 0; font-size: var(--text-support); color: var(--muted); }
-.allocation-impact:empty { display: none; }
-.allocation-recipient { margin: 12px 0; overflow-wrap: anywhere; }
+.allocation-notes { display: grid; gap: 8px; list-style: disc; padding-left: 20px; margin: 12px 0 0; font-size: var(--text-support); line-height: 1.5; }
+.allocation-notes:empty { display: none; }
+.allocation-notes > li { padding-left: 2px; overflow-wrap: anywhere; }
+.allocation-notes > li::marker { color: var(--muted); }
+.allocation-note { display: block; margin-top: 4px; color: var(--muted); font-size: var(--text-caption); }
 .allocation-inspection { border-top: 1px solid var(--border); margin-top: 18px; padding-top: 4px; }
 .allocation-records { display: grid; gap: 12px; margin-top: 12px; }
 .allocation-record { padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-panel); background: var(--surface-subtle); overflow-wrap: anywhere; }

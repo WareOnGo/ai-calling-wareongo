@@ -50,7 +50,7 @@ The subsequent UX requests expand this beyond a theme swap. Existing report URLs
 - **AI history:** a timeline drawer replaces an expanded table row. Attempt time, direction, status and duration are readable first; provider identifiers and counting limitations remain available in disclosures. Dismissing the drawer restores focus and the list position.
 - **Assignment dialog:** One caller and Split across callers are visible choices in the main form. Split mode shows a checklist, current workloads and the new call count beside each selected person, with search for longer caller lists. The action says “Split X calls across Y callers” using the eligible task count. At least two callers are required for a split. Reassignment and detailed inspection remain separate options. Inspection uses named record cards instead of a cramped multi-column table. Full ownership, completion and provider evidence remain accessible. A zero-eligible selection cannot submit an empty assignment batch.
 - **Record details:** contact information remains above Overview, AI activity and Manual activity tabs. Property facts and the latest AI call have separate sections; source listings sharing the phone retain their own property facts in an expandable group. AI history loads on first visiting its tab, and retains its state across tab switches. Notes, recording and transcript sit together; manual calls and verification history form separate groups. Arrow keys, Home/End and focus return support keyboard navigation. Numeric rents including decimal strings use readable Indian currency grouping.
-- **Queue for calling:** one ready-to-call count and nonzero skip reasons replace the count chain and overlapping warning blocks. Language stays visible when it can affect eligibility. Previous outcomes, contact review, detailed accounting and balance metadata open on demand. Contact review shows name/phone/context beside one eligibility reason, with pagination for long selections. Empty batches offer Close and, when relevant, Recent batches. CSV export rechecks ownership; live calls retain an explicit confirmation that resets when language or outcome choices change. The action footer stays outside the scrollable content.
+- **Queue for calling:** one ready-to-call count and nonzero skip reasons replace the count chain and overlapping warning blocks. Language stays visible when it can affect eligibility. Previous-AI-call exclusions stay visible above language settings, with an included count and one-click removal. Contact review, detailed accounting and balance metadata open on demand. Contact review shows name/phone/context beside one eligibility reason, with pagination for long selections. Empty batches offer Close and, when relevant, Recent batches. CSV export rechecks ownership; live calls retain an explicit confirmation that resets when language or outcome choices change. The action footer stays outside the scrollable content.
 - **Empty history:** zero-count AI/manual history buttons are omitted from record rows; result/count text and Details remain. A zero known AI count does not establish that no historical call ever happened. Legacy and incomplete evidence remain in Details.
 - **Calling assignments:** shared typography, compact property facts, labeled mobile cards, clearer manual-result/latest-call grouping and reachable controls. Further restructuring of this screen is deferred at the user's request.
 - **Navigation and headers:** compact section links with an active underline; identity, view switching and sign-out live in an account menu. Page context and balance sit together. Raw/call toolbars group search, display choices and record actions. Pagination uses one centered Previous / Page / Next group.
@@ -251,3 +251,28 @@ npm run dev:preview -- ../bolna-processing/.env.local
 ```
 
 Run that from this worktree with Node 22. The launcher loads the selected environment file before spawning Next, preserving authentication configuration; it defaults to `.env.local` when no file argument is supplied. The current preview is already running with hot reload on port 3000, using the original checkout's local configuration. The `.next-preview` directory keeps it independent of production builds in `.next` used by the browser harness on port 3129. No changes have been pushed, merged or deployed.
+
+## AI-history exclusion controls — 17 November 2026
+
+Restored immediately visible previous-AI-call outcome controls and Exclude all
+called above AI language settings and above manual caller settings. The included
+count reflects eligible work, while outcome counts stay stable as exclusions
+change. Open-owner exclusions are visible in the manual form.
+
+Shared/alternate numbers retain all applicable outcome categories; no-answer and
+busy executions use the No answer bucket. Manual preview and commit enforce the
+same choices, including retained-phone evidence, stale-preview protection, split
+counts, idempotent retries and persisted exclusion reasons. Apply migration 023
+before deploying the manual exclusion flow.
+
+Release validation in an isolated checkout: 195 unit tests, 434 integration
+tests and 24 production browser tests passed. The shared-schema upgrade rehearsal
+passed its 24 compatibility checks; a repeated migration run was a no-op.
+Type checking and the production build passed. Browser suites: `04-assign-flow`,
+`33-queue-ux`, and `47-ai-exclusions`. The eight generated `ai-exclusions-*` and
+`manual-exclusions-*` screenshots under `tests/browser/shots` were reviewed at
+1366 × 768 and 390 × 844 in light and dark themes. Exclusion actions are initially
+in view, text contrast checks pass, and the action footer remains reachable.
+Migration 023 was applied to the shared database before the main release on
+17 November 2026 at 18:52 IST. Checksums, trigger preservation and the validated
+constraint are recorded in `database/reviews/023-ai-exclusions-2026-11-17.json`.

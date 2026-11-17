@@ -24,7 +24,7 @@ export function BatchMemberFilters({path,applied,kind,options}:{path:string;appl
         <label><span>City</span><input name="city" placeholder="Any city" defaultValue={firstValue(applied.city)||""} /></label>
         <YesNoFilter name="warehouse_match" label="Warehouse DB match" applied={applied} yes="Warehouse already added" no="No warehouse match" />
         <label><span>WH ID</span><input name="wh_id" placeholder="Exact warehouse ID" defaultValue={firstValue(applied.wh_id)||""} /></label>
-        {manual&&<><MultiSelect name="allocation" label="Allocation" value={applied.allocation} options={['assign','reassign','owned','duplicate','missing_phone','warehouse_exists','legacy'].map(value=>({value,label:allocationLabel(value)}))}/>
+        {manual&&<><MultiSelect name="allocation" label="Allocation" value={applied.allocation} options={['assign','reassign','owned','duplicate','missing_phone','warehouse_exists','excluded_ai','legacy'].map(value=>({value,label:allocationLabel(value)}))}/>
 <MultiSelect name="assignee" label="Original caller" value={applied.assignee} options={[...options.callers,{value:"none",label:"Not assigned"}]} />
           <MultiSelect name="current_owner" label="Current owner" value={applied.current_owner} options={[...options.owners,{value:"none",label:"Unassigned"}]} />
           <YesNoFilter name="onboarded" label="Added to DB with WH ID" applied={applied} /></>}

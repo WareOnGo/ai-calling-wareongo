@@ -175,9 +175,8 @@ for (const width of [1366, 390]) for (const theme of ['light', 'dark']) {
     await expect(page.getByRole('region', { name: 'Calling summary' })).toBeVisible();
     await expect(page.locator('dialog .wallet-readout')).toContainText('42.42');
     await capture(page, 'queue-ready', 'Queue for calling: eligibility summary');
-    await page.locator('.queue-previous summary').click();
-    await capture(page, 'queue-outcomes', 'Queue for calling: optional previous outcomes');
-    await page.locator('.queue-previous summary').click();
+    await page.getByRole('region', { name: 'Previous AI calls', exact: true }).scrollIntoViewIfNeeded();
+    await capture(page, 'queue-outcomes', 'Queue for calling: visible previous-outcome exclusions');
     await page.locator('.queue-contacts summary').click();
     await page.locator('.queue-contact').first().scrollIntoViewIfNeeded();
     await capture(page, 'queue-contacts', 'Queue for calling: optional contact review');

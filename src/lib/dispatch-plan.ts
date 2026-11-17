@@ -1,4 +1,4 @@
-import { type QueueSel, type CallCat, dedupByNumber, normNum } from "./queue";
+import { type QueueSel, type CallCat, dedupByNumber, excludedByCategory, normNum } from "./queue";
 import { routeLanguage, type RoutingMode, type CallLanguage } from "./routing";
 
 export const KNOWN_CATS: CallCat[] = ["dead", "unclear", "available", "unavailable"];
@@ -28,7 +28,7 @@ export function assembleBatch(rows: QueueSel[], excludeCats: CallCat[] = [],
   const excl = new Set(excludeCats.filter((c): c is CallCat => KNOWN_CATS.includes(c)));
   const unregistered=deduped.filter(r=>!r.warehouseIds?.length);
   const unowned=unregistered.filter(r=>!r.owners?.some(owner=>owner.state==='open'));
-  const afterCat = unowned.filter((r) => !(r.cat && excl.has(r.cat)));
+  const afterCat = unowned.filter((r) => !excludedByCategory(r, excl));
   const routable = afterCat.filter((r) => { const language = routeLanguage(r.state, mode); return language !== null && available.has(language); });
   const notQueued = routable.filter((r) => !r.queued);
   const callable = notQueued.filter((r) => /^\d{10}$/.test(normNum(r.contact)));
