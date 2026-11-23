@@ -1,13 +1,13 @@
 // Board writes: card moves, notes and follow-up dates. Each runs in one transaction
-// under the allocation lock, checks every task's revision before changing any,
-// and uses the board workflow exception from migration 020.
+// checks every task's revision before changing any, and uses the board workflow
+// exception from migration 020. Only stage moves need the allocation lock.
 import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import { ApiError } from "./api";
 import { query, transaction } from "./db";
 import { contactTargets, type EntityType, type Viewer } from "./scope";
 import { allocationHash } from "./assignment-allocation";
-import { MoveError, STRIKE_DISPOSITIONS, planMove, type Stage } from "./board-stages";
+import { MoveError, STRIKE_DISPOSITIONS, planMove, type MovePlan, type Stage } from "./board-stages";
 import { timelineEvents, type AttemptRow, type AuditRow, type TimelineEvent } from "./board-timeline";
 
 export type TaskRef = { id: string; revision: number };
@@ -19,24 +19,25 @@ type TaskRow = {
 
 const conflict = () => new ApiError(409, "This card changed or is no longer available to edit. Refresh to see its latest state.", "ASSIGNMENT_CONFLICT");
 
-async function startBoardWrite(client: PoolClient, viewer: Viewer, employee?: string | null) {
+async function startBoardWrite(client: PoolClient, viewer: Viewer, employee?: string | null, allocationLock = false) {
   const actor = viewer.email.toLowerCase();
   const assignee = employee?.trim().toLowerCase() || actor;
   if (assignee !== actor && !viewer.isAdmin) throw new ApiError(403, "Only admins can edit another employee's work.");
-  // Same lock as allocation and reopening, taken before any row lock.
-  await client.query("select pg_advisory_xact_lock(81620404)");
+  // Moves retain the same lock order as allocation/reopening. Notes, dates and
+  // call logging cannot change ownership; their row locks/revisions suffice.
+  await client.query(`select ${allocationLock ? "pg_advisory_xact_lock(81620404), " : ""}
+    set_config('bolna.actor',$1,true), set_config('bolna.employee_workflow','board',true)`, [actor]);
   if (assignee !== actor && !(await client.query("select 1 from bolna_app_users where email=$1 and active for share", [assignee])).rowCount) {
     throw new ApiError(404, "This employee is no longer available.");
   }
-  await client.query("select set_config('bolna.actor',$1,true), set_config('bolna.employee_workflow','board',true)", [actor]);
   return assignee;
 }
 
 /** Bind every task to the authorized assignee, including for admins. */
-async function lockTasks(client: PoolClient, assignee: string, refs: TaskRef[]): Promise<TaskRow[]> {
+async function lockTasks(client: PoolClient, assignee: string, refs: TaskRef[], warehouses = false): Promise<TaskRow[]> {
   const rows = (await client.query<TaskRow>(`select a.id::text, a.revision, a.entity_type, a.entity_id::text, a.assignee, a.stage, a.state,
         a.outcome, a.wh_id, a.added_to_db, a.disposition,
-        array(select distinct w.warehouse_id from bolna_warehouse_matches w where w.entity_type = a.entity_type and w.entity_id = a.entity_id order by 1) as warehouse_ids
+        ${warehouses ? "array(select distinct w.warehouse_id from bolna_warehouse_matches w where w.entity_type = a.entity_type and w.entity_id = a.entity_id order by 1)" : "array[]::integer[]"} as warehouse_ids
       from bolna_assignments a
      where a.id = any($1::bigint[]) and a.state <> 'dropped' and a.assignee = $2
      order by a.id for update of a`, [refs.map(ref => ref.id), assignee])).rows;
@@ -45,67 +46,78 @@ async function lockTasks(client: PoolClient, assignee: string, refs: TaskRef[]):
   return rows;
 }
 
-/** A number whose warehouse is in the DB keeps its finished work, and its stage 4 credit. */
-async function assertNoWarehouse(client: PoolClient, task: TaskRow, message: string) {
-  const registered = await client.query("select 1 from bolna_warehouse_matches where entity_type = $1 and entity_id = $2 limit 1", [task.entity_type, task.entity_id]);
-  if (registered.rowCount) throw new ApiError(409, message, "WAREHOUSE_ALREADY_ADDED");
-}
-
 // The shared deployment can run with the ownership trigger disabled, so reopening
-// is checked here, as updateAssignment does.
-async function assertCanReopen(client: PoolClient, task: TaskRow, cardTaskIds: string[]) {
-  await assertNoWarehouse(client, task, "This number already has a warehouse in the DB, so its finished work cannot be reopened.");
-  const owner = await client.query(`select 1 from (${contactTargets("$1::text", "$2::uuid")}) contacts
-      join bolna_assignments a using(entity_type, entity_id)
-     where a.state = 'open' and a.id <> all($3::bigint[]) limit 1`, [task.entity_type, task.entity_id, cardTaskIds]);
-  if (owner.rowCount) throw new ApiError(409, "This phone number already has open work. Ask an admin to reassign it before reopening.");
+// is checked here, as updateAssignment does. Validate a whole card in bounded
+// statements, including warehouse guards, before any of its tasks are changed.
+async function assertMovesAllowed(client: PoolClient, plans: { task: TaskRow; plan: MovePlan }[]) {
+  const guarded = plans.filter(({ plan }) => plan.reopen || plan.leavesWarehouse);
+  if (guarded.length) {
+    const registered = await client.query(`select 1 from bolna_assignments t
+      join bolna_warehouse_matches w on w.entity_type = t.entity_type and w.entity_id = t.entity_id
+      where t.id = any($1::bigint[]) limit 1`, [guarded.map(({ task }) => task.id)]);
+    if (registered.rowCount) throw new ApiError(409, "This number already has a warehouse in the DB, so its finished work cannot be reopened or moved out of 4 Warehouse ID.", "WAREHOUSE_ALREADY_ADDED");
+  }
+  const reopening = plans.filter(({ plan }) => plan.reopen);
+  if (reopening.length) {
+    const owner = await client.query(`select 1 from bolna_assignments t
+      cross join lateral (${contactTargets("t.entity_type", "t.entity_id")}) contacts
+      join bolna_assignments a on a.entity_type = contacts.entity_type and a.entity_id = contacts.entity_id
+      where t.id = any($1::bigint[]) and a.state = 'open' and a.id <> all($2::bigint[]) limit 1`,
+      [reopening.map(({ task }) => task.id), plans.map(({ task }) => task.id)]);
+    if (owner.rowCount) throw new ApiError(409, "This phone number already has open work. Ask an admin to reassign it before reopening.");
+  }
 }
 
-async function calledToday(client: PoolClient, taskId: string) {
-  const result = await client.query(`select 1 from bolna_effective_manual_attempts
-     where assignment_id = $1 and disposition = any($2::text[])
-       and (occurred_at at time zone 'Asia/Kolkata')::date = (now() at time zone 'Asia/Kolkata')::date limit 1`, [taskId, STRIKE_DISPOSITIONS]);
-  return !!result.rowCount;
+async function calledToday(client: PoolClient, taskIds: string[]): Promise<Set<string>> {
+  if (!taskIds.length) return new Set();
+  const result = await client.query<{ id: string }>(`select distinct assignment_id::text as id from bolna_effective_manual_attempts
+     where assignment_id = any($1::bigint[]) and disposition = any($2::text[])
+       and occurred_at >= (date_trunc('day', now() at time zone 'Asia/Kolkata') at time zone 'Asia/Kolkata')
+       and occurred_at < ((date_trunc('day', now() at time zone 'Asia/Kolkata') + interval '1 day') at time zone 'Asia/Kolkata')`, [taskIds, STRIKE_DISPOSITIONS]);
+  return new Set(result.rows.map(row => row.id));
 }
 
 /** Records the unanswered call that a move into RnR stands for, once per task per IST day. */
-export async function recordNoAnswer(client: PoolClient, viewer: Viewer, task: Pick<TaskRow, "id" | "assignee">) {
-  const id = randomUUID();
+async function recordNoAnswers(client: PoolClient, viewer: Viewer, tasks: Pick<TaskRow, "id" | "assignee">[]) {
+  if (!tasks.length) return;
+  const rows = tasks.map(task => {
+    const id = randomUUID();
+    return { id, assignment_id: task.id, assignee: task.assignee, request_hash: allocationHash({ source: "board", assignmentId: task.id, attempt: id }) };
+  });
   await client.query(`insert into bolna_manual_attempts(id, assignment_id, actor, assignee, occurred_at, disposition, request_hash)
-    values ($1, $2, $3, $4, now(), 'no_answer', $5)`,
-    [id, task.id, viewer.email.toLowerCase(), task.assignee, allocationHash({ source: "board", assignmentId: task.id, attempt: id })]);
+    select x.id, x.assignment_id, $2, x.assignee, now(), 'no_answer', x.request_hash
+    from jsonb_to_recordset($1::jsonb) x(id uuid, assignment_id bigint, assignee text, request_hash text)`, [JSON.stringify(rows), viewer.email.toLowerCase()]);
 }
 
 export async function moveCard(viewer: Viewer, input: { tasks: TaskRef[]; stage: Stage; reason?: string | null; whId?: string | null }, employee?: string | null): Promise<MovedTask[]> {
   return transaction(async client => {
-    const assignee = await startBoardWrite(client, viewer, employee);
-    const tasks = await lockTasks(client, assignee, input.tasks);
+    const assignee = await startBoardWrite(client, viewer, employee, true);
+    const tasks = await lockTasks(client, assignee, input.tasks, true);
     const plans = tasks.map(task => {
       try { return { task, plan: planMove({ ...task, warehouseIds: task.warehouse_ids }, input) }; }
       catch (error) { if (error instanceof MoveError) throw new ApiError(422, error.message, error.code, error.field); throw error; }
     });
-    for (const { task, plan } of plans) {
-      if (plan.reopen) await assertCanReopen(client, task, tasks.map(t => t.id));
-      else if (plan.leavesWarehouse) await assertNoWarehouse(client, task, "This number already has a warehouse in the DB, so it stays in 4 Warehouse ID.");
-    }
-    const moved: MovedTask[] = [];
-    for (const { task, plan } of plans) {
-      if (plan.unchanged) { moved.push({ id: task.id, revision: task.revision, stage: task.stage, state: task.state }); continue; }
-      const logCall = plan.logNoAnswer && plan.state === "open" && !(await calledToday(client, task.id));
-      const row = (await client.query<MovedTask>(`update bolna_assignments set
-          stage = $2, state = $3, outcome = $4, wh_id = $5, added_to_db = $6, disposition = $7, closure_reason = $8,
-          outcome_attempt_id = case when outcome is distinct from $4 then null else outcome_attempt_id end,
-          next_due_at = case when $9 then null else next_due_at end,
-          completed_at = case when $3 = 'open' then null when state <> 'done' then now() else completed_at end,
-          last_attempt_at = case when $10 then now() else last_attempt_at end,
-          revision = revision + 1
-        where id = $1 returning id::text, revision, stage, state`,
-        [task.id, plan.stage, plan.state, plan.outcome, plan.whId, plan.addedToDb, logCall ? "no_answer" : plan.disposition,
-          plan.closureReason, plan.clearFollowUp, logCall])).rows[0];
-      if (logCall) await recordNoAnswer(client, viewer, task);
-      moved.push(row);
-    }
-    return moved;
+    await assertMovesAllowed(client, plans);
+    const changed = plans.filter(({ plan }) => !plan.unchanged);
+    const candidates = changed.filter(({ plan }) => plan.logNoAnswer && plan.state === "open").map(({ task }) => task);
+    const called = await calledToday(client, candidates.map(task => task.id));
+    const logged = candidates.filter(task => !called.has(task.id));
+    const logIds = new Set(logged.map(task => task.id));
+    const updates = changed.map(({ task, plan }) => ({ id: task.id, ...plan, disposition: logIds.has(task.id) ? "no_answer" : plan.disposition, logCall: logIds.has(task.id) }));
+    const moved = updates.length ? (await client.query<MovedTask>(`update bolna_assignments a set
+        stage = p.stage, state = p.state, outcome = p.outcome, wh_id = p."whId", added_to_db = p."addedToDb",
+        disposition = p.disposition, closure_reason = p."closureReason",
+        outcome_attempt_id = case when a.outcome is distinct from p.outcome then null else a.outcome_attempt_id end,
+        next_due_at = case when p."clearFollowUp" then null else a.next_due_at end,
+        completed_at = case when p.state = 'open' then null when a.state <> 'done' then now() else a.completed_at end,
+        last_attempt_at = case when p."logCall" then now() else a.last_attempt_at end,
+        revision = a.revision + 1
+      from jsonb_to_recordset($1::jsonb) p(id bigint, stage text, state text, outcome text, "whId" text, "addedToDb" boolean,
+        disposition text, "closureReason" text, "clearFollowUp" boolean, "logCall" boolean)
+      where a.id = p.id returning a.id::text, a.revision, a.stage, a.state`, [JSON.stringify(updates)])).rows : [];
+    await recordNoAnswers(client, viewer, logged);
+    const byId = new Map(moved.map(row => [row.id, row]));
+    return tasks.map(task => byId.get(task.id) ?? { id: task.id, revision: task.revision, stage: task.stage, state: task.state });
   });
 }
 
@@ -130,17 +142,14 @@ export async function logNoAnswer(viewer: Viewer, input: { tasks: TaskRef[] }, e
     const assignee = await startBoardWrite(client, viewer, employee);
     const tasks = (await lockTasks(client, assignee, input.tasks)).filter(task => task.state === "open");
     if (!tasks.length) throw new ApiError(422, "Finished work takes no more calls. Move the card to an open stage first.", "TASK_FINISHED");
-    let logged = 0;
-    for (const task of tasks) {
-      if (await calledToday(client, task.id)) continue;
-      await client.query("update bolna_assignments set disposition = 'no_answer', last_attempt_at = now(), revision = revision + 1 where id = $1", [task.id]);
-      await recordNoAnswer(client, viewer, task);
-      logged++;
-    }
+    const called = await calledToday(client, tasks.map(task => task.id));
+    const logged = tasks.filter(task => !called.has(task.id));
+    if (logged.length) await client.query("update bolna_assignments set disposition = 'no_answer', last_attempt_at = now(), revision = revision + 1 where id = any($1::bigint[])", [logged.map(task => task.id)]);
+    await recordNoAnswers(client, viewer, logged);
     const strikes = (await client.query<{ strikes: number }>(`select count(distinct (occurred_at at time zone 'Asia/Kolkata')::date)::int as strikes
       from bolna_effective_manual_attempts where assignment_id = any($1::bigint[]) and disposition = any($2::text[])`,
       [input.tasks.map(task => task.id), STRIKE_DISPOSITIONS])).rows[0].strikes;
-    return { logged, strikes };
+    return { logged: logged.length, strikes };
   });
 }
 

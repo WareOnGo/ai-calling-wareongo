@@ -1,12 +1,15 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { getPool, query } from "@/lib/db";
-import { loadBoard, boardFilterOptions, type BoardCard } from "@/lib/board";
+import { loadBoard as separateBoard, loadJunkProposals, loadBoardSnapshot, boardFilterOptions, type BoardCard } from "@/lib/board";
 import { seedLegacyAssignments } from "./fixtures";
 
 const caller = { email: "caller@board.test", isAdmin: false };
 const other = { email: "other@board.test", isAdmin: false };
 const admin = { email: "admin@board.test", isAdmin: true };
+// Exercise the combined reader used by pages and save responses through the
+// existing grouping, filters, ordering, warehouse and scope contract tests.
+const loadBoard = async (...args: Parameters<typeof separateBoard>) => (await loadBoardSnapshot(...args)).board;
 
 type Task = { assignee?: string; stage?: string; state?: string; remarks?: string | null; outcome?: string | null; nextDue?: string | null;
   updated?: string; batch?: string | null; whId?: string | null; added?: boolean; assignedBy?: string };
@@ -48,6 +51,48 @@ beforeEach(async () => {
 afterAll(async () => { await getPool().end(); });
 
 describe("caller board read model", () => {
+  it("returns every empty column and an empty digest", async () => {
+    const snapshot = await loadBoardSnapshot(caller, {});
+    expect(snapshot.board.total).toBe(0);
+    expect(snapshot.board.columns).toHaveLength(7);
+    expect(snapshot.board.columns.every(column => !column.cards.length && column.total === 0)).toBe(true);
+    expect(snapshot.proposals).toEqual({ total: 0, cards: [] });
+    expect(await boardFilterOptions(caller)).toEqual({ cities: [], regions: [], assigners: [], assignees: [], batches: [] });
+  });
+
+  it("keeps proposal totals and paging independent of column limits without duplicating cards", async () => {
+    await query(`insert into raw_records(id,source,source_record_id,owner_name)
+      select md5('snapshot-'||i)::uuid,'snapshot',i::text,'Snapshot '||i from generate_series(1,205) i`);
+    await query(`insert into bolna_assignments(entity_type,entity_id,assignee,assigned_by,stage)
+      select 'record',id,$1,$2,'rnr' from raw_records`, [caller.email, admin.email]);
+    await query(`insert into bolna_manual_attempts(id,assignment_id,actor,assignee,occurred_at,disposition,request_hash)
+      select gen_random_uuid(),a.id,a.assignee,a.assignee,now()-d*interval '1 day','no_answer','fixture'
+      from bolna_assignments a cross join generate_series(1,5) d`);
+    const snapshot = await loadBoardSnapshot(caller, {}, { rnr: 3 });
+    expect(snapshot.board).toEqual(await separateBoard(caller, {}, { rnr: 3 }));
+    expect(snapshot.proposals).toEqual(await loadJunkProposals(caller, {}));
+    expect(column(snapshot.board, "rnr")).toMatchObject({ total: 205, limit: 3 });
+    expect(column(snapshot.board, "rnr").cards).toHaveLength(3);
+    expect(snapshot.proposals.total).toBe(205);
+    expect(snapshot.proposals.cards).toHaveLength(200);
+    expect(new Set(snapshot.proposals.cards.map(card => card.key)).size).toBe(200);
+    expect((await loadBoardSnapshot(other, {})).proposals.total).toBe(0);
+  });
+
+  it("returns one card in both views and keeps criteria identical to the separate readers", async () => {
+    const id = await task(await listing("9811600991", { owner: "Proposal", city: "Pune" }), { stage: "rnr" });
+    await task(await listing("9811600992", { owner: "Different", city: "Delhi" }));
+    await query(`insert into bolna_manual_attempts(id,assignment_id,actor,assignee,occurred_at,disposition,request_hash)
+      select gen_random_uuid(),$1,$2,$2,now()-d*interval '1 day','no_answer','fixture' from generate_series(1,5) d`, [id, caller.email]);
+    for (const filters of [{}, { city: ["Pune"] }, { city: ["Delhi"] }, { follow_up: "upcoming" as const }, { q: "Proposal" }]) {
+      const result = await loadBoardSnapshot(caller, filters);
+      expect(result.board).toEqual(await separateBoard(caller, filters));
+      expect(result.proposals).toEqual(await loadJunkProposals(caller, filters));
+    }
+    const result = await loadBoardSnapshot(caller, {});
+    expect(column(result.board, "rnr").cards[0]).toEqual(result.proposals.cards[0]);
+  });
+
   it("groups a caller's open listings that share a phone into one card", async () => {
     await task(await listing("9811600001", { owner: "Gowda Estates", city: "Hoskote" }));
     await task(await listing("9811600001", { owner: "Gowda Estates", city: "Hoskote" }));

@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { apiError, bigintId, jsonBody, revision } from "@/lib/api";
 import { STAGE_SLUGS, type Stage } from "@/lib/board-stages";
 import { moveCard } from "@/lib/board-moves";
+import { boardResponse } from "@/lib/board-response";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,6 +23,6 @@ export async function POST(req: NextRequest) {
   try {
     const body = await jsonBody(req, schema);
     const tasks = await moveCard(user, { tasks: body.tasks, stage: body.stage, reason: body.reason, whId: body.wh_id }, req.nextUrl.searchParams.get("employee"));
-    return NextResponse.json({ tasks });
+    return boardResponse(req, user, { tasks });
   } catch (error) { return apiError(error); }
 }

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth";
 import { apiError, bigintId, jsonBody, revision } from "@/lib/api";
 import { logNoAnswer } from "@/lib/board-moves";
+import { boardResponse } from "@/lib/board-response";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,6 +15,6 @@ export async function POST(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   try {
-    return NextResponse.json(await logNoAnswer(user, await jsonBody(req, schema), req.nextUrl.searchParams.get("employee")));
+    return boardResponse(req, user, await logNoAnswer(user, await jsonBody(req, schema), req.nextUrl.searchParams.get("employee")));
   } catch (error) { return apiError(error); }
 }

@@ -3,13 +3,11 @@
 // their current revisions.
 import type { BoardCard, BoardTask } from "@/lib/board";
 import { movableTasks, type Stage } from "@/lib/board-stages";
-import { requestJson } from "../requests";
+import type { BoardWrite } from "./BoardData";
 
 export const NEEDS_INPUT: readonly Stage[] = ["rejected", "junk", "warehouse_created"];
 export type InputStage = "rejected" | "junk" | "warehouse_created";
 
-export const sendJson = (url: string, method: string, body: unknown, employee?: string) =>
-  requestJson(url + (employee ? `?${new URLSearchParams({ employee })}` : ""), { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 export const taskRefs = (tasks: BoardTask[]) => tasks.map(task => ({ id: task.id, revision: task.revision }));
 
 /** A card's identity on the board: one per caller and phone. */
@@ -21,6 +19,6 @@ export const istDay = (value: string | null) => value ? new Date(value).toLocale
 /** The IST calendar day `days` from now as YYYY-MM-DD. */
 export const istDayIn = (days: number) => istDay(new Date(Date.now() + days * 86400_000).toISOString());
 
-export function requestMove(card: BoardCard, stage: Stage, extra: { reason?: string | null; wh_id?: string | null } = {}, employee?: string) {
-  return sendJson("/api/board/move", "POST", { tasks: taskRefs(movableTasks(card.tasks)), stage, ...extra }, employee);
+export function requestMove(write: BoardWrite, card: BoardCard, stage: Stage, extra: { reason?: string | null; wh_id?: string | null } = {}) {
+  return write("/api/board/move", "POST", { tasks: taskRefs(movableTasks(card.tasks)), stage, ...extra });
 }

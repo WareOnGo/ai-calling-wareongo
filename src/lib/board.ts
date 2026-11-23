@@ -26,6 +26,7 @@ export type BoardCard = {
 };
 export type BoardColumn = { stage: Stage; total: number; limit: number; cards: BoardCard[] };
 export type Board = { columns: BoardColumn[]; total: number };
+export type BoardSnapshot = { board: Board; proposals: { total: number; cards: BoardCard[] } };
 export type BoardFilterOptions = {
   cities: string[]; regions: string[]; assigners: { email: string; name: string | null }[];
   batches: { id: string; createdAt: string; createdBy: string; creatorName: string | null; tasks: number }[];
@@ -151,13 +152,14 @@ export const cardWarehouseIds = (row: string) => `array(select v from (
  * The complete board statement; exported so plans can be inspected with the exact SQL.
  * "board" returns a page of cards per column; "proposals" returns cards proposed for Junk.
  */
-export function boardQuery(viewer: Viewer, filters: BoardFilters, limits: Record<string, number>, mode: "board" | "proposals" = "board") {
+export function boardQuery(viewer: Viewer, filters: BoardFilters, limits: Record<string, number>, mode: "board" | "proposals" | "snapshot" = "board") {
   const params: unknown[] = [];
   const where = boardWhere(viewer, filters, params);
   // Column limits only apply to the board; the proposals statement binds no limit.
-  if (mode === "board") params.push(JSON.stringify(limits));
+  if (mode !== "proposals") params.push(JSON.stringify(limits));
   const limitParam = `$${params.length}`;
-  const sql = `${cardsCte(where)}, ranked as (
+  const inPage = `r.rn <= coalesce((${limitParam}::jsonb ->> r.stage)::int, ${BOARD_PAGE_SIZE})`;
+  const sql = `${cardsCte(where)}, ranked as ${mode === "snapshot" ? "materialized " : ""}(
       -- Five strikes propose Junk, unless the card is finished or the caller set a future follow-up.
       select c.*, coalesce(c.next_due_at < now(), false) and not c.closed as overdue, s.strikes,
              s.strikes >= ${STRIKE_LIMIT} and c.stage <> 'junk' and not c.closed and coalesce(c.next_due_at <= now(), true) as proposed,
@@ -169,13 +171,19 @@ export function boardQuery(viewer: Viewer, filters: BoardFilters, limits: Record
           select count(distinct (e.occurred_at at time zone 'Asia/Kolkata')::date)::int as strikes
             from bolna_effective_manual_attempts e where e.assignment_id = any(c.ids) and e.disposition = any(${STRIKES_SQL})
         ) s
-    )
+    )${mode === "snapshot" ? `, proposal_page as (
+      select assignee, card_key, count(*) over ()::int as proposal_total,
+             row_number() over (order by strikes desc, updated_at asc, assignee, card_key) as proposal_rank
+        from ranked where proposed order by strikes desc, updated_at asc, assignee, card_key limit ${PROPOSAL_LIMIT}
+    )` : ""}
     select r.stage, r.stage_total::int as total, r.assignee, u.name as assignee_name, r.card_key as key, r.name, r.phone, r.city, r.region,
            r.tasks, r.next_due_at::text as next_due_at, r.overdue, r.updated_at::text as updated_at, r.closed,
            r.strikes, r.proposed, count(*) over () as matching, ${cardWarehouseIds("r")} as warehouse_ids, ${taskDetails("r")} as task_details
+           ${mode === "snapshot" ? `, (${inPage}) as on_board, p.proposal_rank, p.proposal_total` : ""}
       from ranked r left join bolna_app_users u on u.email = r.assignee
-     ${mode === "board"
-       ? `where r.rn <= coalesce((${limitParam}::jsonb ->> r.stage)::int, ${BOARD_PAGE_SIZE})
+      ${mode === "snapshot" ? "left join proposal_page p on p.assignee = r.assignee and p.card_key = r.card_key" : ""}
+     ${mode !== "proposals"
+       ? `where (${inPage})${mode === "snapshot" ? " or p.card_key is not null" : ""}
           order by array_position(${STAGE_ORDER_SQL}, r.stage), r.rn`
        : `where r.proposed order by r.strikes desc, r.updated_at asc, r.assignee, r.card_key limit ${PROPOSAL_LIMIT}`}`;
   return { sql, params };
@@ -186,6 +194,7 @@ type CardRow = {
   city: string | null; region: string | null; tasks: BoardTask[]; next_due_at: string | null; overdue: boolean;
   updated_at: string; closed: boolean; warehouse_ids: string[]; strikes: number; proposed: boolean; matching: string;
   task_details: Record<string, Partial<BoardTask>> | null;
+  on_board?: boolean; proposal_rank?: string | null; proposal_total?: number | null;
 };
 const PROPOSAL_LIMIT = 200;
 
@@ -196,10 +205,9 @@ const toCard = (row: CardRow): BoardCard => ({
   strikes: row.strikes, proposedJunk: row.proposed,
 });
 
-export async function loadBoard(viewer: Viewer, filters: BoardFilters, limits: ColumnLimits = {}): Promise<Board> {
-  const effective = Object.fromEntries(STAGE_SLUGS.map(stage => [stage, Math.max(1, Math.min(BOARD_MAX_CARDS, Math.floor(limits[stage] ?? BOARD_PAGE_SIZE)))]));
-  const { sql, params } = boardQuery(viewer, filters, effective);
-  const rows = (await query<CardRow>(sql, params)).rows;
+const effectiveLimits = (limits: ColumnLimits) => Object.fromEntries(STAGE_SLUGS.map(stage => [stage, Math.max(1, Math.min(BOARD_MAX_CARDS, Math.floor(limits[stage] ?? BOARD_PAGE_SIZE)))]));
+
+function toBoard(rows: CardRow[], effective: Record<string, number>): Board {
   const columns = STAGE_SLUGS.map(stage => {
     const cards = rows.filter(row => row.stage === stage);
     return {
@@ -208,6 +216,22 @@ export async function loadBoard(viewer: Viewer, filters: BoardFilters, limits: C
     };
   });
   return { columns, total: columns.reduce((sum, column) => sum + column.total, 0) };
+}
+
+export async function loadBoard(viewer: Viewer, filters: BoardFilters, limits: ColumnLimits = {}): Promise<Board> {
+  const effective = effectiveLimits(limits);
+  const { sql, params } = boardQuery(viewer, filters, effective);
+  return toBoard((await query<CardRow>(sql, params)).rows, effective);
+}
+
+/** One statement and one grouping pass for both the columns and the Junk digest. */
+export async function loadBoardSnapshot(viewer: Viewer, filters: BoardFilters, limits: ColumnLimits = {}): Promise<BoardSnapshot> {
+  const effective = effectiveLimits(limits);
+  const { sql, params } = boardQuery(viewer, filters, effective, "snapshot");
+  const rows = (await query<CardRow>(sql, params)).rows;
+  const proposals = rows.filter(row => row.proposal_rank != null).sort((a, b) => Number(a.proposal_rank) - Number(b.proposal_rank));
+  return { board: toBoard(rows.filter(row => row.on_board), effective),
+    proposals: { total: proposals[0]?.proposal_total ?? 0, cards: proposals.map(toCard) } };
 }
 
 /** Cards with five strikes awaiting a decision, across every column; nothing moves until someone confirms. */
@@ -221,25 +245,22 @@ export async function loadJunkProposals(viewer: Viewer, filters: BoardFilters): 
 export async function boardFilterOptions(viewer: Viewer): Promise<BoardFilterOptions> {
   const params: unknown[] = [];
   const { task } = boardWhere(viewer, {}, params);
-  const distinctText = (expression: string) => query<{ v: string }>(
-    `select min(v) as v from (select trim(${expression}) as v ${TASK_FROM} where ${task}) values
-      where nullif(v, '') is not null group by lower(v) order by lower(min(v))`, params);
-  const [cities, regions, assigners, batches, assignees] = await Promise.all([
-    distinctText(ASSIGNMENT_CITY),
-    distinctText(ASSIGNMENT_REGION),
-    query<{ email: string; name: string | null }>(`select distinct lower(a.assigned_by) as email, u.name from bolna_assignments a
-      left join bolna_app_users u on u.email = lower(a.assigned_by) where ${task} order by u.name nulls last, email`, params),
-    query<BoardFilterOptions["batches"][number]>(`select b.id::text as id, b.created_at::text as "createdAt", b.created_by as "createdBy",
-        u.name as "creatorName", count(*)::int as tasks
-      from bolna_assignments a join bolna_assignment_batches b on b.id = a.batch_id left join bolna_app_users u on u.email = b.created_by
-      where ${task} group by b.id, b.created_at, b.created_by, u.name order by b.created_at desc limit 200`, params),
-    viewer.isAdmin
-      ? query<{ email: string; name: string | null }>(`select distinct a.assignee as email, u.name from bolna_assignments a
-          left join bolna_app_users u on u.email = a.assignee where ${task} order by u.name nulls last, email`, params)
-      : Promise.resolve({ rows: [] as { email: string; name: string | null }[] }),
-  ]);
-  return {
-    cities: cities.rows.map(row => row.v), regions: regions.rows.map(row => row.v),
-    assigners: assigners.rows, batches: batches.rows, assignees: assignees.rows,
-  };
+  const choices = (column: string) => `coalesce((select json_agg(v order by lower(v)) from
+    (select min(trim(${column})) v from scoped where nullif(trim(${column}), '') is not null group by lower(trim(${column}))) values), '[]'::json)`;
+  return (await query<BoardFilterOptions>(`with scoped as materialized (
+      select a.assigned_by, a.assignee, a.batch_id, ${ASSIGNMENT_CITY} as city, ${ASSIGNMENT_REGION} as region
+      ${TASK_FROM} where ${task}
+    ) select ${choices("city")} as cities, ${choices("region")} as regions,
+      coalesce((select json_agg(v order by name nulls last, email) from (
+        select distinct lower(a.assigned_by) as email, u.name from scoped a
+        left join bolna_app_users u on u.email = lower(a.assigned_by)
+      ) v), '[]'::json) as assigners,
+      coalesce((select json_agg(v order by "createdAt" desc) from (
+        select b.id::text as id, b.created_at::text as "createdAt", b.created_by as "createdBy", u.name as "creatorName", count(*)::int as tasks
+        from scoped a join bolna_assignment_batches b on b.id = a.batch_id left join bolna_app_users u on u.email = b.created_by
+        group by b.id, b.created_at, b.created_by, u.name order by b.created_at desc limit 200
+      ) v), '[]'::json) as batches,
+      ${viewer.isAdmin ? `coalesce((select json_agg(v order by name nulls last, email) from (
+        select distinct a.assignee as email, u.name from scoped a left join bolna_app_users u on u.email = a.assignee
+      ) v), '[]'::json)` : "'[]'::json"} as assignees`, params)).rows[0];
 }

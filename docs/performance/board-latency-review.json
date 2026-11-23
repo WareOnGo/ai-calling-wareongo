@@ -1,0 +1,271 @@
+{
+  "recordedAt": "2026-11-23T23:16:19.460559+00:00",
+  "baselineCommit": "aabf626f5cf0c1be86c2d319faa66863ce1099c3",
+  "scope": "Beta board saves, moves and reads in bolna-visual-overhaul. Existing unrelated working changes retained.",
+  "deployed": false,
+  "schemaMigrationRequired": false,
+  "productionDataWrites": false,
+  "readComparison": {
+    "readOnly": true,
+    "generatedAt": "2026-11-23T22:57:23.090Z",
+    "note": "Both versions run in the same read-only repeatable-read transaction. Server execution totals are EXPLAIN ANALYZE sums, not browser or parallel request wall times.",
+    "samples": [
+      {
+        "version": "before",
+        "run": 1,
+        "queries": 6,
+        "identicalResults": true,
+        "resultBytes": 237229,
+        "totalServerExecutionMs": 250.66,
+        "plans": [
+          {
+            "executionMs": 97.77,
+            "planningMs": 6.442,
+            "rows": 244
+          },
+          {
+            "executionMs": 47.187,
+            "planningMs": 0.98,
+            "rows": 187
+          },
+          {
+            "executionMs": 28.343,
+            "planningMs": 1.012,
+            "rows": 21
+          },
+          {
+            "executionMs": 3.062,
+            "planningMs": 0.242,
+            "rows": 1
+          },
+          {
+            "executionMs": 1.554,
+            "planningMs": 0.449,
+            "rows": 14
+          },
+          {
+            "executionMs": 72.745,
+            "planningMs": 5.82,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "version": "after",
+        "run": 1,
+        "queries": 2,
+        "identicalResults": true,
+        "resultBytes": 237229,
+        "totalServerExecutionMs": 135.59,
+        "plans": [
+          {
+            "executionMs": 95.678,
+            "planningMs": 5.974,
+            "rows": 244
+          },
+          {
+            "executionMs": 39.912,
+            "planningMs": 1.316,
+            "rows": 1
+          }
+        ]
+      },
+      {
+        "version": "before",
+        "run": 2,
+        "queries": 6,
+        "identicalResults": true,
+        "resultBytes": 237229,
+        "totalServerExecutionMs": 243.68,
+        "plans": [
+          {
+            "executionMs": 91.925,
+            "planningMs": 5.976,
+            "rows": 244
+          },
+          {
+            "executionMs": 46.491,
+            "planningMs": 1.03,
+            "rows": 187
+          },
+          {
+            "executionMs": 27.983,
+            "planningMs": 1.009,
+            "rows": 21
+          },
+          {
+            "executionMs": 2.948,
+            "planningMs": 0.241,
+            "rows": 1
+          },
+          {
+            "executionMs": 1.512,
+            "planningMs": 0.467,
+            "rows": 14
+          },
+          {
+            "executionMs": 72.816,
+            "planningMs": 5.798,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "version": "after",
+        "run": 2,
+        "queries": 2,
+        "identicalResults": true,
+        "resultBytes": 237229,
+        "totalServerExecutionMs": 132.01,
+        "plans": [
+          {
+            "executionMs": 92.208,
+            "planningMs": 5.84,
+            "rows": 244
+          },
+          {
+            "executionMs": 39.805,
+            "planningMs": 1.339,
+            "rows": 1
+          }
+        ]
+      },
+      {
+        "version": "before",
+        "run": 3,
+        "queries": 6,
+        "identicalResults": true,
+        "resultBytes": 237229,
+        "totalServerExecutionMs": 240.57,
+        "plans": [
+          {
+            "executionMs": 91.052,
+            "planningMs": 5.847,
+            "rows": 244
+          },
+          {
+            "executionMs": 45.593,
+            "planningMs": 0.989,
+            "rows": 187
+          },
+          {
+            "executionMs": 28.012,
+            "planningMs": 0.989,
+            "rows": 21
+          },
+          {
+            "executionMs": 3.026,
+            "planningMs": 0.278,
+            "rows": 1
+          },
+          {
+            "executionMs": 1.552,
+            "planningMs": 0.432,
+            "rows": 14
+          },
+          {
+            "executionMs": 71.339,
+            "planningMs": 5.785,
+            "rows": 0
+          }
+        ]
+      },
+      {
+        "version": "after",
+        "run": 3,
+        "queries": 2,
+        "identicalResults": true,
+        "resultBytes": 237229,
+        "totalServerExecutionMs": 130.74,
+        "plans": [
+          {
+            "executionMs": 90.876,
+            "planningMs": 5.808,
+            "rows": 244
+          },
+          {
+            "executionMs": 39.866,
+            "planningMs": 1.308,
+            "rows": 1
+          }
+        ]
+      }
+    ],
+    "visibleTasks": 1031
+  },
+  "poolRetention": {
+    "maxConnections": 6,
+    "idleTimeoutMillis": {
+      "before": 10000,
+      "after": 60000
+    },
+    "probe": "Six connections released, then checked after eleven idle seconds. Checkout time is not total save latency.",
+    "before": {
+      "measuredAt": "2026-11-23T22:26:54.112Z",
+      "afterIdle": {
+        "total": 0,
+        "idle": 0
+      },
+      "checkoutMs": 815
+    },
+    "after": {
+      "measuredAt": "2026-11-23T22:58:09.799Z",
+      "afterIdle": {
+        "total": 6,
+        "idle": 6
+      },
+      "checkoutMs": 1
+    }
+  },
+  "writeStatementBudget": {
+    "taskCount": 12,
+    "includes": [
+      "BEGIN",
+      "COMMIT"
+    ],
+    "excludes": [
+      "authentication",
+      "optional board snapshot read"
+    ],
+    "moveToRnr": 7,
+    "moveToDetails": 5,
+    "noAnswerAlreadyCountedToday": 6,
+    "verifiedBy": "tests/integration/caller-board-moves.test.ts"
+  },
+  "validation": {
+    "database": "Disposable PostgreSQL 17 container. All migrations through 023. Live database measurements were read-only.",
+    "unitTestsPassed": 252,
+    "regularIntegrationTestsPassed": 506,
+    "sharedSchemaIntegrationTestsPassed": 8,
+    "sharedSchemaNote": "Verified separately with the two retained-schema triggers disabled in the disposable database and restored afterward.",
+    "finalBoardWriteIntegrationTestsPassed": 29,
+    "browserTestsPassedDistinct": 155,
+    "browserTestsByFile": {
+      "04-assign-flow.spec.ts": 7,
+      "05-employee-work.spec.ts": 14,
+      "11-ux-recovery.spec.ts": 23,
+      "14-my-work-filters.spec.ts": 19,
+      "44-loading-efficiency.spec.ts": 3,
+      "45-caller-board.spec.ts": 11,
+      "46-board-panel.spec.ts": 18,
+      "47-board-drag.spec.ts": 5,
+      "48-board-strikes.spec.ts": 7,
+      "49-board-funnel.spec.ts": 6,
+      "50-board-perspective.spec.ts": 11,
+      "51-board-employee-edit.spec.ts": 13,
+      "52-board-save-efficiency.spec.ts": 8,
+      "warehouse-contacts.spec.ts": 10
+    },
+    "browserNote": "153 checks in the broad run; all 79 board checks rerun after the final history-cache fix, including two new cases. Chromium against the production build.",
+    "productionBuild": "passed",
+    "typecheck": "passed",
+    "visualReview": "Board/panel screenshots at 1366 and 390 px in light and dark themes; contrast and overflow browser assertions passed.",
+    "preexistingTrackedDiffsUnchanged": 38,
+    "buildWarning": "The existing Next.js 16.4.3 dependency reports a security advisory. Build completed on retry; no dependency upgrade was included."
+  },
+  "limits": [
+    "Read measurements are sums of EXPLAIN ANALYZE execution times, not browser or parallel request wall times.",
+    "Each successful save reads a full authoritative snapshot at the current column limits; expanded columns still increase response size.",
+    "No deployment or live mutation latency measurement was performed."
+  ]
+}

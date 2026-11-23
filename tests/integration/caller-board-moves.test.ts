@@ -9,6 +9,8 @@ import { GET as timeline } from "@/app/api/board/timeline/route";
 import { GET as ai } from "@/app/api/details/[entity]/[id]/ai/route";
 import { POST as noAnswer } from "@/app/api/board/no-answer/route";
 import { seedLegacyAssignments } from "./fixtures";
+import * as boardReaders from "@/lib/board";
+import { moveCard as writeMove, logNoAnswer as writeNoAnswer } from "@/lib/board-moves";
 
 const caller = { email: "caller@moves.test", name: null, isAdmin: false };
 const other = { email: "other@moves.test", name: null, isAdmin: false };
@@ -186,6 +188,92 @@ describe("moving board cards", () => {
 });
 
 describe("editing a card", () => {
+  it("returns saved revisions in a scoped snapshot with the current filters and column limits", async () => {
+    const id = await task(await listing("9811700040"));
+    await task(await listing("9811700041"), { assignee: other.email });
+    const response = await editNotes(new NextRequest(`http://localhost/api/board/tasks/${id}`, {
+      method: "PATCH", headers: { "X-Board-View": `q=retained&inbound_cards=100&employee=${other.email}&assignee=${other.email}` },
+      body: JSON.stringify({ revision: 0, remarks: "retained" }),
+    }), { params: Promise.resolve({ id }) });
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result).toMatchObject({ id, revision: 1, remarks: "retained" });
+    expect(result.boardView.board.total).toBe(1);
+    expect(result.boardView.board.columns[0]).toMatchObject({ total: 1, limit: 100 });
+    expect(result.boardView.board.columns[0].cards[0]).toMatchObject({ assignee: caller.email, tasks: [{ id, revision: 1, remarks: "retained" }] });
+  });
+
+  it("reports a committed save as successful even if reading the snapshot fails", async () => {
+    const id = await task(await listing("9811700042"));
+    const read = vi.spyOn(boardReaders, "loadBoardSnapshot").mockRejectedValueOnce(new Error("temporary read failure"));
+    try {
+      const response = await editNotes(new NextRequest(`http://localhost/api/board/tasks/${id}`, {
+        method: "PATCH", headers: { "X-Board-View": "" }, body: JSON.stringify({ revision: 0, remarks: "Saved once" }),
+      }), { params: Promise.resolve({ id }) });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ id, revision: 1, remarks: "Saved once", boardRefreshFailed: true });
+      expect(await row(id)).toMatchObject({ revision: 1, remarks: "Saved once" });
+    } finally { read.mockRestore(); }
+  });
+
+  it("allows notes, follow-ups and calls while unrelated allocation holds the global lock", async () => {
+    const id = await task(await listing("9811700043"));
+    const holder = await getPool().connect();
+    let work: Promise<void> | undefined, timeout: ReturnType<typeof setTimeout> | undefined;
+    let completed = false;
+    try {
+      await holder.query("begin"); await holder.query("select pg_advisory_xact_lock(81620404)");
+      work = (async () => {
+        expect((await editNotes(new NextRequest("http://localhost/api/board/tasks", { method: "PATCH", body: JSON.stringify({ revision: 0, remarks: "Independent note" }) }), { params: Promise.resolve({ id }) })).status).toBe(200);
+        expect((await post(followUp, "/api/board/follow-up", { tasks: [{ id, revision: 1 }], next_due_at: null })).status).toBe(200);
+        expect((await post(noAnswer, "/api/board/no-answer", { tasks: [{ id, revision: 2 }] })).status).toBe(200);
+        completed = true;
+      })();
+      await Promise.race([work, new Promise(resolve => { timeout = setTimeout(resolve, 1500); })]);
+      expect(completed).toBe(true);
+    } finally {
+      if (timeout) clearTimeout(timeout);
+      await holder.query("rollback"); holder.release();
+      await work;
+    }
+  });
+
+  it("serializes concurrent notes/moves on their row and rejects the stale revision", async () => {
+    const id = await task(await listing("9811700044"));
+    const responses = await Promise.all([
+      editNotes(new NextRequest("http://localhost/api/board/tasks", { method: "PATCH", body: JSON.stringify({ revision: 0, remarks: "Race note" }) }), { params: Promise.resolve({ id }) }),
+      moveCard({ tasks: [{ id, revision: 0 }], stage: "rnr" }),
+    ]);
+    expect(responses.map(r => r.status).sort()).toEqual([200, 409]);
+    expect((await row(id)).revision).toBe(1);
+    expect(await attempts(id)).toHaveLength(responses[1].status === 200 ? 1 : 0);
+  });
+
+  it("does not double-log concurrent no-answer requests without the global lock", async () => {
+    const id = await task(await listing("9811700045"));
+    const responses = await Promise.all([1, 2].map(() => post(noAnswer, "/api/board/no-answer", { tasks: [{ id, revision: 0 }] })));
+    expect(responses.map(r => r.status).sort()).toEqual([200, 409]);
+    expect(await attempts(id)).toHaveLength(1);
+  });
+
+  it("keeps database statement counts constant for large multi-task moves and call logs", async () => {
+    const tasks: { id: string; revision: number }[] = [];
+    for (let i = 0; i < 12; i++) tasks.push({ id: await task(await listing("9811700046")), revision: 0 });
+    const count = async (write: () => Promise<unknown>) => {
+      const client = await getPool().connect();
+      const connect = vi.spyOn(getPool(), "connect").mockResolvedValue(client as never);
+      const statements = vi.spyOn(client, "query");
+      try { await write(); return statements.mock.calls.length; }
+      finally { statements.mockRestore(); connect.mockRestore(); }
+    };
+    expect(await count(() => writeMove(caller, { tasks, stage: "rnr" }))).toBe(7);
+    expect((await query("select count(*)::int n from bolna_manual_attempts")).rows[0].n).toBe(12);
+    const current = tasks.map(t => ({ ...t, revision: 1 }));
+    expect(await count(() => writeMove(caller, { tasks: current, stage: "details_collected" }))).toBe(5);
+    // Already counted today: no updates/inserts, still one bulk daily check.
+    expect(await count(() => writeNoAnswer(caller, { tasks: tasks.map(t => ({ ...t, revision: 2 })) }))).toBe(6);
+  });
+
   it("saves a task's notes with a revision check", async () => {
     const id = await task(await listing("9811700011"));
     const patch = (body: unknown) => editNotes(new NextRequest("http://localhost/api/board/tasks", { method: "PATCH", body: JSON.stringify(body) }), { params: Promise.resolve({ id }) });

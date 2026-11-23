@@ -4,7 +4,9 @@ import type { BoardCard } from "@/lib/board";
 import { STRIKE_LIMIT } from "@/lib/board-stages";
 import { useDashboardUI } from "../DashboardUI";
 import { Dialog } from "../Dialog";
-import { cardId, followUpAt, istDayIn, requestMove, sendJson, taskRefs } from "./board-requests";
+import { cardId, followUpAt, istDayIn, requestMove, taskRefs } from "./board-requests";
+import { useBoardData } from "./BoardData";
+import { RequestError } from "../requests";
 import type { ConfirmBoardEntry } from "./BoardEntryConfirmation";
 
 export const leads = (count: number) => `${count} lead${count === 1 ? "" : "s"}`;
@@ -24,27 +26,31 @@ export function JunkDigest({ total, cards, readOnly = false, employee, confirmEn
 
 function JunkReview({ cards, total, onClose, readOnly, employee, confirmEntry }: { cards: BoardCard[]; total: number; onClose: () => void; readOnly: boolean; employee?: string; confirmEntry: ConfirmBoardEntry }) {
   const { refresh, hasDrafts, notify } = useDashboardUI();
+  const { write, busy: boardBusy } = useBoardData();
   // Decided cards leave the list at once; the board refreshes behind the dialog.
   const [decided, setDecided] = useState<string[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
   const remaining = cards.filter(card => !decided.includes(cardId(card)));
   async function decide(card: BoardCard, action: () => Promise<unknown>) {
-    if (readOnly) return;
+    if (readOnly || boardBusy) return;
     if (hasDrafts()) { notify("Save or discard the notes before deciding a Junk proposal."); return; }
     if (!(await confirmEntry(card))) return;
     setBusy(cardId(card)); setError("");
-    try { await action(); setDecided(current => [...current, cardId(card)]); refresh(); }
-    catch (failure) { setError(`${card.name || "This lead"}: ${failure instanceof Error ? failure.message : "Couldn't save the decision."}`); }
+    try { await action(); setDecided(current => [...current, cardId(card)]); }
+    catch (failure) {
+      setError(`${card.name || "This lead"}: ${failure instanceof Error ? failure.message : "Couldn't save the decision."}`);
+      if (failure instanceof RequestError && failure.code === "ASSIGNMENT_CONFLICT") refresh();
+    }
     finally { setBusy(null); }
   }
   return <Dialog title="Review Junk proposals" wide onClose={onClose} busy={!!busy}>
     <div className="modal-body board-review">
       <p className="board-review-intro">These leads had no answer on {STRIKE_LIMIT} different days. {readOnly ? "Read-only employee view." : "Move them to Junk, or choose when to try again."}</p>
       {error && <p className="board-panel-error" role="alert">{error}</p>}
-      {remaining.length ? <ul className="board-proposals">{remaining.map(card => <Proposal key={cardId(card)} card={card} busy={busy === cardId(card)} readOnly={readOnly}
-        onJunk={() => decide(card, () => requestMove(card, "junk", { reason: "owner_unresponsive" }, employee))}
-        onKeep={day => decide(card, () => sendJson("/api/board/follow-up", "POST", { tasks: taskRefs(card.tasks.filter(task => task.state === "open")), next_due_at: followUpAt(day) }, employee))} />)}
+      {remaining.length ? <ul className="board-proposals">{remaining.map(card => <Proposal key={cardId(card)} card={card} busy={boardBusy || busy === cardId(card)} readOnly={readOnly}
+        onJunk={() => decide(card, () => requestMove(write, card, "junk", { reason: "owner_unresponsive" }))}
+        onKeep={day => decide(card, () => write("/api/board/follow-up", "POST", { tasks: taskRefs(card.tasks.filter(task => task.state === "open")), next_due_at: followUpAt(day) }))} />)}
       </ul> : <p className="board-empty">No leads waiting for review.</p>}
       {total > cards.length && <p className="board-review-intro">Showing the first {cards.length} of {total}.{!readOnly && " The rest appear as these are decided."}</p>}
     </div>

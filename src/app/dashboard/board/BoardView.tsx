@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useId, useRef, useState, type DragEvent } from "react";
-import type { Board, BoardCard, BoardColumn, BoardFilterOptions } from "@/lib/board";
+import type { BoardSnapshot, BoardCard, BoardColumn, BoardFilterOptions } from "@/lib/board";
 import { BOARD_MAX_CARDS, BOARD_PAGE_SIZE, boardHref, boardSearchValues, nextColumnLimit, type BoardFilters, type ColumnLimits } from "@/lib/board-filters";
 import { STRIKE_LIMIT, stageInfo, type Stage } from "@/lib/board-stages";
 import { shortDate } from "@/lib/display";
@@ -13,6 +13,8 @@ import { BoardEmployeePerspective } from "./BoardEmployeePerspective";
 import { BoardFilters as Filters } from "./BoardFilters";
 import type { WorkEmployee } from "../my/EmployeePerspective";
 import { useBoardEntryConfirmation } from "./BoardEntryConfirmation";
+import { BoardData, useBoardData } from "./BoardData";
+import { BoardHeader } from "./BoardHeader";
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
 // Admins see several callers' cards for one phone, so the caller is part of the identity.
@@ -22,10 +24,16 @@ type Drag = { onStart: (card: BoardCard) => void; onEnd: () => void; onOver: (st
   dragging: string | null; target: Stage | null; moving: string | null; disabled: boolean };
 
 /** Keyed by the selected person: entry confirmations survive filters, but never person changes. */
-export function BoardView({ board, proposals, filters, limits, showCalls, employees, options }: {
-  board: Board; proposals: { total: number; cards: BoardCard[] }; filters: BoardFilters; limits: ColumnLimits; showCalls: boolean;
+type Props = {
+  data: BoardSnapshot; updatedAt: string; filters: BoardFilters; limits: ColumnLimits; showCalls: boolean;
   employees?: WorkEmployee[]; options: BoardFilterOptions;
-}) {
+};
+export function BoardView(props: Props) {
+  return <BoardData data={props.data} updatedAt={props.updatedAt} filters={props.filters} limits={props.limits}><BoardContents {...props} /></BoardData>;
+}
+
+function BoardContents({ filters, limits, showCalls, employees, options }: Props) {
+  const { data: { board, proposals }, updatedAt, write, busy } = useBoardData();
   const { refresh, notify, navigate, hasDrafts } = useDashboardUI();
   const employee = employees?.find(person => person.email === filters.employee);
   const readOnly = !!filters.employee && !employee;
@@ -67,12 +75,12 @@ export function BoardView({ board, proposals, filters, limits, showCalls, employ
 
   // Drag and drop is a shortcut for the panel's stage buttons, which stay the keyboard path.
   const drag: Drag = {
-    dragging, target, moving, disabled: readOnly,
-    onStart: card => { if (readOnly || hasDrafts()) return; setDragging(cardId(card)); setTarget(null); },
+    dragging, target, moving, disabled: readOnly || busy,
+    onStart: card => { if (readOnly || busy || hasDrafts()) return; setDragging(cardId(card)); setTarget(null); },
     onEnd: () => { setDragging(null); setTarget(null); },
     onOver: stage => setTarget(stage),
     onDrop: async (stage, event) => {
-      if (readOnly || hasDrafts()) return;
+      if (readOnly || busy || hasDrafts()) return;
       const id = event.dataTransfer.getData(DRAG_TYPE) || dragging;
       setDragging(null); setTarget(null);
       const card = cards.find(candidate => cardId(candidate) === id);
@@ -80,7 +88,7 @@ export function BoardView({ board, proposals, filters, limits, showCalls, employ
       if (NEEDS_INPUT.includes(stage)) { setSelectedId(cardId(card)); setRequest({ stage: stage as InputStage, token: Date.now() }); return; }
       if (!(await confirmEntry(card))) return;
       setMoving(cardId(card));
-      try { await requestMove(card, stage, {}, filters.employee); refresh(); }
+      try { await requestMove(write, card, stage); }
       catch (failure) {
         notify(failure instanceof Error ? failure.message : "Couldn't move the card. Try again.");
         if (failure instanceof RequestError && failure.code === "ASSIGNMENT_CONFLICT") refresh();
@@ -89,6 +97,7 @@ export function BoardView({ board, proposals, filters, limits, showCalls, employ
   };
 
   return <>
+    <BoardHeader view="board" isAdmin={employees !== undefined} employee={filters.employee} updatedAt={updatedAt} status={<span className="board-summary">{board.total} {board.total === 1 ? "card" : "cards"}</span>} />
     {employees && <BoardEmployeePerspective employees={employees} filters={filters} />}
     <Filters applied={boardSearchValues(filters)} options={options} />
     <JunkDigest total={proposals.total} cards={proposals.cards} readOnly={readOnly} employee={filters.employee} confirmEntry={confirmEntry} />

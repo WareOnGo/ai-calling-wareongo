@@ -8,7 +8,8 @@ import { area, rent, resultClass } from "@/lib/employee-display";
 import { dispositionLabel } from "@/lib/manual-dispositions";
 import { useDashboardUI } from "../DashboardUI";
 import { requestJson, RequestError } from "../requests";
-import { followUpAt, istDay, requestMove, sendJson as send, taskRefs as refsOf, type InputStage } from "./board-requests";
+import { followUpAt, istDay, requestMove, taskRefs as refsOf, type InputStage } from "./board-requests";
+import { useBoardData } from "./BoardData";
 import { CopyText } from "../CopyText";
 import { RecordDetails } from "../RecordDetails";
 import { RecordDetails as EmployeeRecordDetails } from "../my/classic/RecordDetails";
@@ -49,38 +50,37 @@ export function BoardPanel({ card, onClose, request, showCalls, employee, readOn
   readOnly: boolean;
   confirmEntry: ConfirmBoardEntry;
 }) {
-  const { refresh, pending, hasDrafts, notify } = useDashboardUI();
+  const { refresh, hasDrafts, notify } = useDashboardUI();
+  const { write: send, busy: boardBusy } = useBoardData();
   const titleId = useId();
   const heading = useRef<HTMLHeadingElement>(null);
   // The stage chosen in the dropdown; a move happens only when it is confirmed.
   const [target, setTarget] = useState<Stage>(request?.stage ?? card.stage);
-  // After a confirmed move, until the refreshed card arrives with its new stage.
-  const [moved, setMoved] = useState<Stage | null>(null);
   const [saving, setSaving] = useState(false);
   // Locked while a write is in flight and until the refreshed card arrives, so the
   // next action never sends a revision the server has already moved past.
-  const busy = saving || pending;
+  const busy = saving || boardBusy;
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
   const tasks = taskOrder(card.tasks);
   const [selected, setSelected] = useState(tasks[0].id);
   const task = tasks.find(candidate => candidate.id === selected) ?? tasks[0];
   const openTasks = tasks.filter(candidate => candidate.state === "open");
-  const current = moved ?? card.stage;
+  const current = card.stage;
   const stage = stageInfo(card.stage);
   const version = card.tasks.map(candidate => `${candidate.id}:${candidate.revision}`).join(",");
 
   // Opening another card starts fresh: focus its name and show its first task.
   // Keyed on the card alone, so a refresh of the same card keeps the chosen task.
   useEffect(() => { heading.current?.focus(); setError(""); setNote(""); setSelected(taskOrder(card.tasks)[0].id); }, [card.key]);
-  useEffect(() => { setTarget(request?.stage ?? card.stage); setMoved(null); }, [card.key, card.stage, request?.token, request?.stage]);
+  useEffect(() => { setTarget(request?.stage ?? card.stage); }, [card.key, card.stage, request?.token, request?.stage]);
 
   async function run(action: () => Promise<unknown>) {
     if (readOnly) return;
     if (hasDrafts()) { notify("Save or discard the notes before changing this lead."); return; }
     if (!(await confirmEntry(card))) return;
     setSaving(true); setError(""); setNote("");
-    try { await action(); refresh(); }
+    try { await action(); }
     catch (failure) {
       setError(failure instanceof Error ? failure.message : "Couldn't save the change. Try again.");
       // A conflict means newer data exists; reload it so the next attempt uses it.
@@ -91,13 +91,13 @@ export function BoardPanel({ card, onClose, request, showCalls, employee, readOn
   async function saveNotes(target: BoardTask, remarks: string) {
     if (readOnly || !(await confirmEntry(card))) return false;
     setSaving(true);
-    try { await send(`/api/board/tasks/${target.id}`, "PATCH", { revision: target.revision, remarks }, employee); return true; }
+    try { await send(`/api/board/tasks/${target.id}`, "PATCH", { revision: target.revision, remarks }); return true; }
     finally { setSaving(false); }
   }
   const move = (to: Stage, extra: { reason?: string | null; wh_id?: string | null } = {}) =>
-    run(async () => { await requestMove(card, to, extra, employee); setMoved(to); });
+    run(() => requestMove(send, card, to, extra));
   const logNoAnswer = () => run(async () => {
-    const result = await send("/api/board/no-answer", "POST", { tasks: refsOf(card.tasks) }, employee) as { logged: number; strikes: number };
+    const result = await send("/api/board/no-answer", "POST", { tasks: refsOf(card.tasks) }) as { logged: number; strikes: number };
     setNote(result.logged ? `Logged. ${result.strikes} of ${STRIKE_LIMIT} strikes.` : "Already counted today. Strikes count days, not calls.");
   });
 
@@ -135,7 +135,7 @@ export function BoardPanel({ card, onClose, request, showCalls, employee, readOn
             {target !== current && <MoveForm key={target} stage={target} card={card} busy={busy} onCancel={() => setTarget(current)} onMove={extra => move(target, extra)} />}
           </div>
           {openTasks.length > 0 && <FollowUp key={`${card.key}:${version}`} id={`${titleId}-follow-up`} card={card} busy={busy}
-            onSave={day => run(() => send("/api/board/follow-up", "POST", { tasks: refsOf(openTasks), next_due_at: day ? followUpAt(day) : null }, employee))} />}
+            onSave={day => run(() => send("/api/board/follow-up", "POST", { tasks: refsOf(openTasks), next_due_at: day ? followUpAt(day) : null }))} />}
           {openTasks.length > 0 && <>
             <span className="board-step-label">Call</span>
             <div className="board-step board-step-inline">
@@ -304,7 +304,7 @@ function Notes({ task, id, busy, onSave, employee }: { task: BoardTask; id: stri
     try {
       if (!(await onSave(value))) return;
       baseline.current = value; setNotes(value); setStatus("Saved"); setConflict(false);
-      reportSave(saveId, null); refresh();
+      reportSave(saveId, null);
     }
     catch (failure) {
       setFailed(true); setConflict(failure instanceof RequestError && failure.code === "ASSIGNMENT_CONFLICT");

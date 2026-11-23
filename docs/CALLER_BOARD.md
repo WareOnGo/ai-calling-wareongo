@@ -92,7 +92,35 @@ warehouse ID; they are hidden from the board and appear only in the funnel.
 | --- | --- |
 | Unit | `src/lib/board-stages.test.ts`, `board-filters.test.ts`, `board.test.ts`, `board-timeline.test.ts`, `board-funnel.test.ts` |
 | Integration (PostgreSQL) | `tests/integration/caller-board.test.ts`, `caller-board-moves.test.ts`, `caller-board-strikes.test.ts`, `caller-board-funnel.test.ts`, `caller-board-stage-sync.test.ts` |
-| Browser | `tests/browser/tests/45-caller-board` to `51-board-employee-edit` specs: scope, grouping, filters, paging, moves, drag and drop, strikes, funnel, employee perspectives and confirmed editing, keyboard and focus, contrast and overflow at 1366 and 390 px in both themes |
+| Browser | `tests/browser/tests/45-caller-board` to `52-board-save-efficiency` specs: scope, grouping, filters, paging, moves, drag and drop, strikes, funnel, employee perspectives and confirmed editing, save responses and stale revisions, keyboard and focus, contrast and overflow at 1366 and 390 px in both themes |
+
+## Save latency changes (24 November 2026)
+
+Board saves return the current filtered and paged board, including Junk proposals,
+in the same response. The snapshot is read after the write commits. Successful
+saves update the cards, counts, panel and revisions without a second page request.
+Requests without the `X-Board-View` header keep the original API response shape.
+The header carries presentation criteria; the authenticated user and validated
+employee parameter still determine ownership. If the snapshot read fails after
+commit, the response reports success and the client refreshes before accepting
+another edit. Conflicts continue to preserve drafts and require fresh revisions.
+Returning through browser history refreshes a cached view that predates a save;
+the tab retains only the last save timestamp for this check.
+
+Columns and proposals share one grouping query, and filter choices share one
+scoped query. Moves and call logging batch their checks, updates and attempt
+inserts across all tasks. Notes, dates and call logging use row locks and revision
+checks without the global allocation lock; stage moves retain that lock and the
+ownership and warehouse guards. Idle connections last 60 seconds instead of 10,
+with the pool still capped at six.
+
+A read-only comparison on 1,031 tasks returned identical board data before and
+after the change. Board/proposal/filter queries fell from six to two; median
+combined database execution time in three samples fell from 244 ms to 132 ms.
+These are summed SQL execution times, not browser latency measurements. Each save
+still reads an authoritative snapshot, so larger expanded columns still increase
+response size and processing. No schema migration is required. Measurements and
+validation are recorded in [the latency review](performance/board-latency-review.json).
 
 ## Open decisions
 

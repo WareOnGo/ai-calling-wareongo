@@ -18,7 +18,10 @@ export function getPool(): Pool {
       connectionString: u.toString(),
       // Small pool: serverless concurrency is handled by Supabase's pooler.
       max: 6,
-      idleTimeoutMillis: 10_000,
+      // Keep sessions through a normal notes/call pause instead of paying for
+      // TLS and session setup again on the save and its reads. Still bounded to six.
+      idleTimeoutMillis: 60_000,
+      allowExitOnIdle: true,
       connectionTimeoutMillis: 10_000,
       ssl: databaseTls(u.hostname),
       statement_timeout: 15_000,
