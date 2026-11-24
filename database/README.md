@@ -563,6 +563,68 @@ classic list; every trigger enable state is unchanged (the quality guard is stil
 disabled); assignment and audit row counts are unchanged (3,433 and 11,919). A
 second runner pass made no changes.
 
+## Caller board stage sync (021)
+
+`021_caller_board_stage_sync.sql` keeps a task's board stage in step with work
+recorded outside the board. Before it, only board writes set `stage`, so a task
+finished in My Work kept its old stage: hidden from the board and missing from the
+funnel's warehouse credit. A `bolna_assignment_stage_sync` trigger now re-places a
+task with 019's `bolna_infer_stage()` on any non-board update (My Work, admin edits,
+logged manual calls) that changes the result, adds or removes a warehouse (valid
+WHID or the Added flag), or gives notes or a completion change to a task still in
+Inbound. Notes-only edits and completing a task past Inbound keep its stage, so My
+Work never pulls a card out of a column chosen on the board. Board writes
+(`bolna.employee_workflow = 'board'`), writers that set `stage` themselves, dropped
+tasks and inserts are left alone. The trigger changes only `stage`; `revision` and
+every other field are untouched, and the write's own audit row carries the new stage
+and its actor. Its name sorts after `bolna_assignment_quality_guard`, so 018's
+classic-edit comparison is unchanged where the guard is enabled.
+
+A one-off catch-up re-places live tasks whose stage only ever came from the 019
+backfill (or the Inbound default) and no longer matches their fields; tasks moved on
+the board keep their stage. `bolna_assignment_touch` is paused for that statement
+only, so `updated_at` keeps the time of the real change. Its audit rows name the
+`stage-sync` actor. All trigger enable states are the same after the migration.
+
+Covered by `tests/integration/caller-board-stage-sync.test.ts` on the board branch
+(with the guard enabled and disabled), main's integration suite, the migration
+rehearsal in all five modes and the shared-schema rehearsal, which reproduces
+production's disabled triggers before running the employee and shared-schema tests.
+A read-only production pre-flight on 6 November 2026 found 21 matching ledger
+entries with 021 the only pending file, and 36 tasks for the catch-up:
+
+| From | To | Open | Done |
+| --- | --- | ---: | ---: |
+| 1 Inbound | 2A RnR | 12 | |
+| 1 Inbound | 3 Details collected | 9 | |
+| 1 Inbound | 2B Rejected | | 8 |
+| 1 Inbound | 2C Awaiting details | 1 | |
+| 1 Inbound | 5 Junk | | 1 |
+| 2C Awaiting details | 4 Warehouse ID | | 2 |
+| 3 Details collected | 4 Warehouse ID | 1 | 2 |
+
+021 was applied to production on 6 November 2026 at 15:04 IST from main commit
+`c67e515` with `database/migrate.mjs`. Verified after commit: 22 ledger entries with
+021's checksum; `bolna_assignment_stage_sync` enabled and every other trigger enable
+state unchanged (`bolna_assignment_quality_guard` and
+`bolna_assignment_contacts_sync` still disabled, `bolna_assignment_touch` enabled);
+36 `stage-sync` audit rows, one per task, matching the pre-flight table and changing
+nothing but `stage` (so `revision` and `updated_at` are unchanged); 3,433 assignments;
+no task left whose stage the catch-up would still change. A second runner pass made
+no changes. Open tasks afterwards: 449 Inbound, 353 RnR, 13 Rejected, 130 Awaiting
+details, 67 Details collected, 20 Warehouse ID, 6 Junk.
+
+To reverse:
+
+```sql
+DROP TRIGGER bolna_assignment_stage_sync ON bolna_assignments;
+DROP FUNCTION bolna_sync_assignment_stage();
+DELETE FROM bolna_schema_migrations WHERE name = '021_caller_board_stage_sync.sql';
+```
+
+The catch-up's `stage-sync` audit rows remain as history; earlier stages can be read
+from their `before_values`.
+
 ## Assignment AI-history exclusions (023)
 
 `023_assignment_ai_exclusions.sql` adds `excluded_ai` to the allocation-item
