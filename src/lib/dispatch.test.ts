@@ -31,6 +31,39 @@ describe("assembleBatch", () => {
     expect(s.excludedCats.sort()).toEqual(["available", "dead"]);
   });
 
+  it.each([false, true])("preserves AI exclusions across shared alternate numbers (reverse=%s)", reverse => {
+    const rows = [
+      sel({ id: "fresh-looking", contact: "9000000001", phones: ["9000000001"], aiCalls: 0 }),
+      sel({ id: "linked", contact: "9000000001", phones: ["9000000001", "9000000002"], cat: "available", aiCalls: 1 }),
+      sel({ id: "fresh", contact: "9000000003" }),
+    ];
+    const result = assembleBatch(reverse ? rows.reverse() : rows, ["available"]);
+    expect(result.excludedByCat).toBe(1);
+    expect(result.callable.map(row => row.id)).toEqual(["fresh"]);
+  });
+
+  it("honors every outcome in a transitive shared-number group", () => {
+    const rows = [
+      sel({ id: "a", contact: "9000000001", phones: ["9000000001"], cat: "available" }),
+      sel({ id: "b", contact: "9000000002", phones: ["9000000001", "9000000002"] }),
+      sel({ id: "c", contact: "9000000003", phones: ["9000000002", "9000000003"], cat: "unavailable" }),
+    ];
+    const grouped = assembleBatch(rows).callable;
+    expect(grouped).toHaveLength(1);
+    expect(grouped[0].cats).toEqual(["available", "unavailable"]);
+    for (const cat of ["available", "unavailable"] as const) {
+      expect(assembleBatch(rows, [cat]).callable).toEqual([]);
+      expect(assembleBatch(grouped, [cat]).callable).toEqual([]);
+    }
+    expect(rows[0].cats).toBeUndefined();
+  });
+
+  it("keeps a contact with known calls and missing outcome in the Unclear bucket", () => {
+    const result = assembleBatch([sel({ aiCalls: 2 })], ["unclear"]);
+    expect(result.excludedByCat).toBe(1);
+    expect(result.callable).toEqual([]);
+  });
+
   it("never excludes fresh (uncalled) rows even if odd cats are passed", () => {
     const s = assembleBatch([sel({ id: "fresh", cat: "" })], ["dead"]);
     expect(s.callable.map((r) => r.id)).toEqual(["fresh"]);

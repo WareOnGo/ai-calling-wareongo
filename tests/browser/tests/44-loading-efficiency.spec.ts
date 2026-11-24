@@ -54,13 +54,35 @@ test('balance is shared across navigation and calling dialogs, with one explicit
   await expect(page.locator('.wallet-balance:visible').first()).toContainText('$48.00 USD');
 });
 
-test('manual batch pages do not immediately repeat the initial fetch, and keep regular live updates', async ({ adminPage: page }) => {
+test('manual polling refreshes visible batch changes and detail notes without reloading an unchanged catalog', async ({ adminPage: page }) => {
   await page.clock.install();
   await page.goto('/dashboard/batches?kind=manual');
   let refreshes = 0;
   page.on('request', request => { const url = new URL(request.url()); if (url.pathname === '/dashboard/batches' && url.searchParams.has('_rsc') && request.headers()['next-router-prefetch'] !== '1') refreshes++; });
   await page.clock.fastForward(2500);
   expect(refreshes).toBe(0);
+  const unchanged=page.waitForResponse(response=>response.url().includes('/api/batches/version?'));
   await page.clock.fastForward(30_000);
+  expect((await unchanged).status()).toBe(200);
+  await expect(page.locator('.batch-live')).toHaveText('Live updates · every 30s');
+  expect(refreshes).toBe(0);
+  sql("update bolna_assignments set remarks='Changed during live polling' where id=1");
+  let response=page.waitForResponse(response=>response.url().includes('/api/batches/version?'));
+  await page.clock.fastForward(30_000);
+  expect((await response).status()).toBe(200);
+  await expect(page.locator('.batch-live')).toHaveText('Live updates · every 30s');
+  expect(refreshes).toBe(0); // The catalog does not display assignment notes.
+  const assigned=await page.request.post('/api/assignments',{data:{entity_type:'record',ids:['a0000000-0000-4000-8000-000000000004'],assignee:'priya@eval.test'}});
+  expect(assigned.status()).toBe(200);
+  response=page.waitForResponse(response=>response.url().includes('/api/batches/version?'));
+  await page.clock.fastForward(30_000);expect((await response).status()).toBe(200);
   await expect.poll(() => refreshes).toBe(1);
+  await expect(page.locator('.batch-card')).toHaveCount(1);
+
+  await page.goto('/dashboard/batches/manual/legacy');
+  await expect(page.locator('.batch-grid')).toContainText('Changed during live polling');
+  sql("update bolna_assignments set remarks='Updated detail note' where id=1");
+  response=page.waitForResponse(response=>response.url().includes('/api/batches/version?'));
+  await page.clock.fastForward(30_000);expect((await response).status()).toBe(200);
+  await expect(page.locator('.batch-grid')).toContainText('Updated detail note');
 });

@@ -5,15 +5,54 @@ export class ApiError extends Error {
   constructor(public status: number, message: string, public code?: string, public field?: string) { super(message); }
 }
 
-export async function jsonBody<S extends z.ZodTypeAny>(req: Request, schema: S): Promise<z.output<S>> {
+// Large enough for the supported 20,000 selected UUIDs plus assignment options.
+// Count actual bytes as well as Content-Length: chunked or dishonest requests
+// must not bypass the limit. This applies to interactive dashboard mutations.
+export const MAX_JSON_BODY_BYTES = 1024 * 1024;
+export async function jsonBody<S extends z.ZodType>(req: Request, schema: S, { allowEmpty = false } = {}): Promise<z.output<S>> {
+  const length = Number(req.headers.get('content-length'));
+  if (length > MAX_JSON_BODY_BYTES) {
+    void req.body?.cancel().catch(() => {});
+    throw new ApiError(413, 'Request body is too large');
+  }
+  const reader = req.body?.getReader();
+  let content = new Uint8Array(0);
+  let bytes = 0;
+  try {
+    if (reader) while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > MAX_JSON_BODY_BYTES) {
+        void reader.cancel().catch(() => {});
+        throw new ApiError(413, 'Request body is too large');
+      }
+      // Grow geometrically: retaining arbitrarily many tiny chunks can itself
+      // use excessive memory, even when the total byte count is small.
+      if (bytes > content.length) {
+        const next = new Uint8Array(Math.min(MAX_JSON_BODY_BYTES, Math.max(bytes, content.length * 2, 8192)));
+        next.set(content);content = next;
+      }
+      content.set(value, bytes - value.byteLength);
+    }
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw new ApiError(400, 'Invalid JSON body');
+  } finally { reader?.releaseLock(); }
+  if (!bytes && !allowEmpty) throw new ApiError(400, 'Invalid JSON body');
   let body: unknown;
-  try { body = await req.json(); } catch { throw new ApiError(400, "Invalid JSON body"); }
+  try { body = bytes ? JSON.parse(new TextDecoder().decode(content.subarray(0, bytes))) : {}; }
+  catch { throw new ApiError(400, 'Invalid JSON body'); }
   return schema.parse(body);
 }
 
 export function apiError(error: unknown): NextResponse {
   if (error instanceof ApiError) return NextResponse.json({ error: error.message, code: error.code, field: error.field }, { status: error.status });
-  if (error instanceof z.ZodError) return NextResponse.json({ error: error.issues.map(i => `${i.path.join(".") || "body"}: ${i.message}`).join("; ") }, { status: 400 });
+  if (error instanceof z.ZodError) {
+    const messages = error.issues.slice(0, 8).map(issue => `${issue.path.join('.') || 'body'}: ${issue.message}`.slice(0, 512));
+    if (error.issues.length > 8) messages.push('Additional validation errors omitted');
+    return NextResponse.json({ error: messages.join('; ') }, { status: 400 });
+  }
   if (error && typeof error === "object" && "code" in error && error.code === "23505") {
     return NextResponse.json({ error: "This item has changed or already has an owner. Refresh before trying again." }, { status: 409 });
   }
@@ -26,7 +65,9 @@ export function apiError(error: unknown): NextResponse {
   return NextResponse.json({ error: "Request failed. Please retry." }, { status: 500 });
 }
 
-export const uuid = z.string().uuid().transform(v => v.toLowerCase());
+// Preserve the existing PostgreSQL UUID / provider-ID contract: Zod 4's uuid()
+// rejects retained identifiers whose version or variant bits are nonstandard.
+export const uuid = z.guid().transform(v => v.toLowerCase());
 export const bigintId = z.string().regex(/^[1-9]\d{0,18}$/).pipe(z.string().refine(v => BigInt(v) <= 9223372036854775807n, "Invalid ID"));
 export const nullableText = z.string().max(10000).nullable().transform(v => v === "" ? null : v);
 export const revision = z.number().int().nonnegative();

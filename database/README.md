@@ -1,5 +1,19 @@
 # Database migrations
 
+## Admin editing in My Work (022)
+
+`022_admin_employee_work.sql` lets active admins use the same My Work editing
+contract for a selected employee after confirming the individual row. Apply it before
+deploying admin employee editing. The API checks the admin role and selected
+employee on every request; assignment ownership stays unchanged and audit
+history records the admin as the actor. The migration preserves the existing
+editable fields, revision checks, warehouse guards, board behavior and trigger
+enable states. It does not update existing assignments.
+
+Applied to the shared database on **13 November 2026 at 01:22 IST**. Verified
+the migration checksum and live function body; prior migration records,
+function permissions and trigger states were preserved.
+
 ## Warehouse phone backfill (014)
 
 `014_warehouse_contacts.sql` adds phone-to-warehouse associations and guards new
@@ -548,3 +562,22 @@ entries with 020's checksum; the function has the board mode and an unchanged
 classic list; every trigger enable state is unchanged (the quality guard is still
 disabled); assignment and audit row counts are unchanged (3,433 and 11,919). A
 second runner pass made no changes.
+
+## Assignment AI-history exclusions (023)
+
+`023_assignment_ai_exclusions.sql` adds `excluded_ai` to the allocation-item
+check constraint. Apply it before deploying the visible AI-history exclusions
+for manual assignment. Existing allocations and ownership are unchanged.
+The migration is compatible with the previous application version.
+
+The assignment preview and commit both re-read AI history and apply the same
+selected outcome exclusions. Excluded rows remain in the batch audit with no
+assignment, and `skippedAi` records their count. Selection metadata and request
+identity include the exclusions; new history that changes eligibility invalidates
+a stale preview. Shared primary/alternate numbers retain every applicable outcome.
+
+Applied to the shared database on **17 November 2026 at 18:52 IST**, after the
+disposable upgrade rehearsal. All 24 ledger checksums match, prior ledger entries
+and trigger states are preserved, and a second run made no changes. The
+constraint is validated; no business rows were updated. See the
+[rollout record](reviews/023-ai-exclusions-2026-11-17.json).

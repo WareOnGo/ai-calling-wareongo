@@ -20,7 +20,7 @@ for (const width of [1366, 390]) for (const theme of ['light', 'dark']) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 768 });
     await page.addInitScript(value => localStorage.setItem('theme', value), theme);
     const requests: object[] = [];
-    page.on('request', request => { if (request.url().endsWith('/api/assignments/preview')) requests.push(request.postDataJSON()); });
+    page.on('request', request => { if (new URL(request.url()).pathname==='/api/assignments/preview') requests.push(request.postDataJSON()); });
     await page.goto('/dashboard/raw');
     await page.getByRole('button', { name: 'Assign', exact: true }).click();
     const dialog = page.getByRole('dialog');

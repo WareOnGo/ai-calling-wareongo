@@ -4,13 +4,14 @@
 // server page, and unit-tested in isolation. See src/lib/queue.test.ts.
 
 export type CallCat = "" | "dead" | "unclear" | "available" | "unavailable";
+export type CalledCat = Exclude<CallCat, "">;
 
 // One record staged for a Bolna call. `cat` flags an already-called number by its
 // last outcome ("" = never called). `state` drives region/language routing. `queued`
 // is true when the number is already in a live (sending/scheduled) batch.
 export type QueueSel = {
   id: string; name: string; contact: string; area: string; state: string;
-  cat: CallCat; queued: boolean; phones?: string[]; warehouseIds?: number[]; owners?: {email:string;name:string|null;state:string;outcome:string|null}[]; aiCalls?: number;
+  cat: CallCat; cats?: CalledCat[]; queued: boolean; phones?: string[]; warehouseIds?: number[]; owners?: {email:string;name:string|null;state:string;outcome:string|null}[]; aiCalls?: number;
 };
 
 // The Bolna batch CSV shape (mirrors the manual Rajkot/Delhi exports).
@@ -40,11 +41,26 @@ export const CAT_TAG_LABEL: Record<Exclude<CallCat, "">, string> = {
 export function deriveCat(
   callCount: number | string | null | undefined,
   lastAvailability: string | null | undefined,
+  lastStatus?: string | null,
 ): CallCat {
   if (!Number(callCount)) return ""; // never called
+  if (lastStatus === "busy" || lastStatus === "no-answer") return "dead";
   const a = (lastAvailability ?? "").toLowerCase();
   if (a === "available" || a === "unavailable" || a === "unclear") return a;
   return a === "dead number - do not call" ? "dead" : "unclear";
+}
+
+// A shared-number group can carry different outcomes from its linked listings.
+// Preserve every category so excluding one cannot be bypassed by row order.
+export function calledCategories(row: Pick<QueueSel, "cat" | "cats" | "aiCalls">): CalledCat[] {
+  const categories = new Set(row.cats);
+  if (row.cat) categories.add(row.cat);
+  if (!categories.size && row.aiCalls) categories.add("unclear");
+  return CALLED_CATS.map(({ key }) => key).filter(key => categories.has(key));
+}
+
+export function excludedByCategory(row: Pick<QueueSel, "cat" | "cats" | "aiCalls">, excluded: ReadonlySet<CallCat>): boolean {
+  return calledCategories(row).some(category => excluded.has(category));
 }
 
 // CSV cell with Excel-safe quoting.
@@ -77,11 +93,13 @@ export function dedupByNumber(rows: QueueSel[]): QueueSel[] {
   const groups=new Map<number,QueueSel>();
   rows.forEach((row,i)=>{
     const key=root(i),first=groups.get(key);
-    if(!first){groups.set(key,{...row,...(row.phones?{phones:[...row.phones]}:{})});return;}
+    if(!first){const cats=calledCategories(row);groups.set(key,{...row,cat:row.cat||cats[0]||"",cats,...(row.phones?{phones:[...row.phones]}:{})});return;}
     // Metadata on a duplicate still constrains the whole shared-contact group.
     if(first.phones||row.phones)first.phones=[...new Set([...(first.phones||[normNum(first.contact)]),...(row.phones||[normNum(row.contact)])])];
     if(first.owners||row.owners)first.owners=[...new Map([...(first.owners||[]),...(row.owners||[])].map(o=>[o.email+':'+o.state,o])).values()];
     if(first.warehouseIds||row.warehouseIds)first.warehouseIds=[...new Set([...(first.warehouseIds||[]),...(row.warehouseIds||[])])].sort((a,b)=>a-b);
+    first.cats=calledCategories({cat:first.cat,cats:[...calledCategories(first),...calledCategories(row)]});
+    first.cat ||= first.cats[0] || "";
     first.queued ||= row.queued;if(first.aiCalls!==undefined||row.aiCalls!==undefined)first.aiCalls=Math.max(first.aiCalls||0,row.aiCalls||0);
   });
   return [...groups.values()];

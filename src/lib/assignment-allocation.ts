@@ -4,7 +4,7 @@ import { ApiError } from "./api";
 import { CONTACT_PHONES_SQL } from "./assignment-contacts";
 import { query, transaction } from "./db";
 import type { EntityType } from "./scope";
-import { warehousesByPhone } from './warehouse-contacts';
+import { calledCategories, dedupByNumber, deriveCat, type CalledCat, type CallCat } from './queue';
 
 export const ASSIGN_CAP = 20000;
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -17,24 +17,25 @@ export const allocationHash = (value: unknown) => createHash("sha256").update(JS
 type Owner = { id: string; entity_type: string; entity_id: string; assignee: string; revision: number; phones: string[];
   state: 'open'; outcome: string | null; disposition: string | null; next_due_at: string | null };
 type CompletedOwner = { assignee: string; state: 'done'; outcome: string | null; disposition: string | null; count: number };
-type PreviewAi = { execution_id: string; status: string | null; result: string | null; known_attempts: number; recorded_at: string | null; scope: 'execution' | 'contact' };
+type PreviewAi = { execution_id: string; status: string | null; result: string | null; category: CallCat; known_attempts: number; recorded_at: string | null; scope: 'execution' | 'contact' };
 export type AllocationItem = {
-  id: string; name: string | null; phones: string[]; warehouseIds: number[]; disposition: "assign" | "reassign" | "owned" | "duplicate" | "missing_phone" | "warehouse_exists";
-  assignee: string | null; owners: Owner[]; completed: number; completed_by: CompletedOwner[]; ai_result: string | null; ai: PreviewAi | null;
+  id: string; name: string | null; phones: string[]; warehouseIds: number[]; disposition: "assign" | "reassign" | "owned" | "duplicate" | "missing_phone" | "warehouse_exists" | "excluded_ai";
+  assignee: string | null; owners: Owner[]; completed: number; completed_by: CompletedOwner[]; ai_result: string | null; ai: PreviewAi | null; ai_categories: CalledCat[];
 };
 export type AssignSummary = {
   requested: number; assigned: number; reassigned: number; skipped: number; capped: boolean;
-  duplicateContacts: number; skippedOwned: number; skippedNoPhone: number; skippedWarehouse: number; retained: number;
+  duplicateContacts: number; skippedOwned: number; skippedNoPhone: number; skippedWarehouse: number; skippedAi: number; retained: number;
   batchId: string; perCaller: Record<string, number>;
 };
 export type AllocationOptions = {
   entity: EntityType; ids: string[]; assignee?: string; assignees?: string[]; assignedBy: string;
-  note?: string | null; reassign?: boolean; intentKey?: string; requestHash?: string;
+  note?: string | null; reassign?: boolean; excludeCats?: CalledCat[]; intentKey?: string; requestHash?: string;
   selection?: unknown; expectedPreview?: string; capped?: boolean;
 };
 export type AllocationPreview = {
   previewHash: string; requested: number; validPhones: number; uniquePhones: number;
   eligible: number; owned: number; duplicateContacts: number; missingPhone: number; warehouseExists: number; warehouseNumbers: number; completedHistory: number;
+  aiCategories: Partial<Record<CalledCat, number>>; aiCalled: number; aiIncluded: number; excludedAi: number;
   ownerCounts: Record<string, number>; completedOwners: Record<string, number>; aiResults: Record<string, number>; aiStatuses: Record<string, number>; perCaller: Record<string, number>;
   capped: boolean; items: AllocationItem[];
 };
@@ -47,17 +48,29 @@ function normalize(opts: AllocationOptions) {
 }
 async function plan(client: PoolClient, opts: AllocationOptions): Promise<AllocationPreview> {
   const { ids, callers, capped } = normalize(opts);
-  const active = await client.query("select email from bolna_app_users where email=any($1::text[]) and active order by email",[callers]);
-  if (active.rowCount !== callers.length) throw new ApiError(400,"Every assignee must be an active user");
   const table = opts.entity === "record" ? "raw_records" : "bolna_call_logs";
-  const found = await client.query<{id:string;name:string|null}>(`select id, ${opts.entity === "record" ? "owner_name" : "context_details->'recipient_data'->>'name'"} as name from ${table} where id=any($1::uuid[]) order by id`,[ids]);
-  if (found.rowCount !== ids.length) throw new ApiError(409,"Some selected rows no longer exist. Refresh the selection.");
-  const names = new Map(found.rows.map(row => [row.id, row.name]));
-  const contacts = (await client.query<{entity_id:string;phone_last10:string}>(`select entity_id,phone_last10 from (${CONTACT_PHONES_SQL}) contacts where entity_type=$1 and entity_id=any($2::uuid[]) order by entity_id,phone_last10`,[opts.entity,ids])).rows;
+  // Resolve independent selection facts together. This also shortens the time
+  // allocation holds the ownership lock; final allocation still rechecks them.
+  const facts=(await client.query<{
+    active:string[];found:{id:string;name:string|null}[];contacts:{entity_id:string;phone_last10:string}[];
+    warehouses:{phone_last10:string;warehouse_ids:number[]}[];prior:number;
+  }>(`with contacts as materialized (
+    select entity_id,phone_last10 from (${CONTACT_PHONES_SQL}) contacts where entity_type=$1 and entity_id=any($2::uuid[])
+  ), found as (select id,${opts.entity === "record" ? "owner_name" : "context_details->'recipient_data'->>'name'"} as name from ${table} where id=any($2::uuid[])), warehouses as (
+    select phone_last10,array_agg(warehouse_id order by warehouse_id) warehouse_ids from bolna_warehouse_contacts
+    where phone_last10 in (select phone_last10 from contacts) group by phone_last10
+  ) select array(select email from bolna_app_users where email=any($3::text[]) and active order by email) active,
+    coalesce((select json_agg(found order by id) from found),'[]'::json) found,
+    coalesce((select json_agg(contacts order by entity_id,phone_last10) from contacts),'[]'::json) contacts,
+    coalesce((select json_agg(warehouses) from warehouses),'[]'::json) warehouses,
+    (select coalesce(sum((summary->>'assigned')::integer),0)::integer from bolna_assignment_batches where assignees=$3::text[]) prior`,[opts.entity,ids,callers])).rows[0];
+  if(facts.active.length!==callers.length)throw new ApiError(400,"Every assignee must be an active user");
+  if(facts.found.length!==ids.length)throw new ApiError(409,"Some selected rows no longer exist. Refresh the selection.");
+  const names=new Map(facts.found.map(row=>[row.id,row.name])),contacts=facts.contacts;
   const byId = new Map<string,string[]>();
   for (const row of contacts) byId.set(row.entity_id,[...(byId.get(row.entity_id)||[]),row.phone_last10]);
   const phones=[...new Set(contacts.map(row=>row.phone_last10))];
-  const warehouses = await warehousesByPhone(client, phones);
+  const warehouses=new Map(facts.warehouses.map(row=>[row.phone_last10,row.warehouse_ids]));
   const owners=(await client.query<Owner>(`select a.id::text,a.entity_type,a.entity_id,a.assignee,a.revision,a.state,a.outcome,a.disposition,a.next_due_at::text,
       coalesce(array_agg(v.phone_last10 order by v.phone_last10) filter(where v.phone_last10 is not null),'{}') as phones
       from bolna_assignments a left join (${CONTACT_PHONES_SQL}) v using(entity_type,entity_id)
@@ -86,14 +99,27 @@ async function plan(client: PoolClient, opts: AllocationOptions): Promise<Alloca
   const aiSource=opts.entity==='call'
     ? `select c.id entity_id,c.* from bolna_call_logs c where c.id=any($1::uuid[])`
     : `select distinct on(v.entity_id) v.entity_id,c.* from (${CONTACT_PHONES_SQL}) v
-       join bolna_call_logs c on c.phone_last10=v.phone_last10 and c.status is distinct from 'balance-low'
+       join (${CONTACT_PHONES_SQL}) call_contact on call_contact.entity_type='call' and call_contact.phone_last10=v.phone_last10
+       join bolna_call_logs c on c.id=call_contact.entity_id and c.status is distinct from 'balance-low'
        where v.entity_type='record' and v.entity_id=any($1::uuid[])
        order by v.entity_id,c.call_created_at desc nulls last,c.id`;
-  const ai=(await client.query<PreviewAi & {entity_id:string}>(`select c.entity_id,c.id execution_id,c.status,
+  const ai=(await client.query<Omit<PreviewAi,'category'> & {entity_id:string;availability:string|null}>(`select c.entity_id,c.id execution_id,c.status,
     case when c.status in ('completed','call-disconnected') then bolna_availability(c.status,c.llm_availability) end result,
+    bolna_availability(c.status,c.llm_availability) availability,
     c.call_created_at::text recorded_at,(select count(*)::int from bolna_ai_attempts a where a.execution_id=c.id) known_attempts,
     '${opts.entity==='call'?'execution':'contact'}'::text scope from (${aiSource}) c`,[ids])).rows;
-  const aiById=new Map(ai.map(({entity_id,...row})=>[entity_id,row]));
+  const aiById=new Map(ai.map(({entity_id,availability,...row})=>[entity_id,{...row,category:deriveCat(row.status==='balance-low'?0:1,availability,row.status)}]));
+  // Exclude the whole shared-phone group, including a listing whose alternate
+  // number supplies the AI evidence. Allocation order must not bypass a choice.
+  const categoriesByPhone = new Map<string, CalledCat[]>();
+  const contactGroups = dedupByNumber(ids.map(id => ({
+    id, name: '', contact: byId.get(id)?.[0] || '', phones: byId.get(id) || [],
+    area: '', state: '', queued: false, cat: aiById.get(id)?.category || '',
+  })));
+  for (const group of contactGroups) {
+    for (const phone of group.phones || []) categoriesByPhone.set(phone, calledCategories(group));
+  }
+  const excluded = new Set(opts.excludeCats || []), aiCategories: Partial<Record<CalledCat, number>> = {};
   const ownerByPhone=new Map<string,Owner[]>(), ownerByEntity=new Map<string,Owner>();
   for(const owner of owners) {
     ownerByEntity.set(`${owner.entity_type}:${owner.entity_id}`,owner);
@@ -101,30 +127,35 @@ async function plan(client: PoolClient, opts: AllocationOptions): Promise<Alloca
   }
   const seen=new Set<string>(), perCaller: Record<string,number>={}, ownerCounts: Record<string,number>={}, aiResults: Record<string,number>={}, aiStatuses: Record<string,number>={};
   // Continue the rotation across batches for this exact caller set.
-  const prior=(await client.query("select coalesce(sum((summary->>'assigned')::integer),0)::integer n from bolna_assignment_batches where assignees=$1::text[]",[callers])).rows[0].n;
+  const prior=facts.prior;
   let cursor=0;
   const items: AllocationItem[]=ids.map(id=>{
     const rowPhones=byId.get(id)||[], same=ownerByEntity.get(`${opts.entity}:${id}`);
     const overlapping=[...new Map([...(same?[same]:[]),...rowPhones.flatMap(phone=>ownerByPhone.get(phone)||[])].map(owner=>[owner.id,owner])).values()];
     for(const email of new Set(overlapping.map(owner=>owner.assignee))) ownerCounts[email]=(ownerCounts[email]||0)+1;
     const ai=aiById.get(id)??null,ai_result=ai?.result??null;
+    const ai_categories=calledCategories({cat:ai?.category||'',cats:rowPhones.flatMap(phone=>categoriesByPhone.get(phone)||[])});
+    for(const category of ai_categories) aiCategories[category]=(aiCategories[category]||0)+1;
     if(ai) {
       aiResults[ai_result||"No result"]=(aiResults[ai_result||"No result"]||0)+1;
       aiStatuses[ai.status||"Unknown status"]=(aiStatuses[ai.status||"Unknown status"]||0)+1;
     }
     const assignee=callers[(Number(prior)+cursor)%callers.length];
     const warehouseIds=[...new Set(rowPhones.flatMap(phone=>warehouses.get(phone)||[]))].sort((a,b)=>a-b);
-    const disposition=!rowPhones.length?"missing_phone":warehouseIds.length?"warehouse_exists":rowPhones.some(phone=>seen.has(phone))?"duplicate":
-      overlapping.length && (!opts.reassign || overlapping.some(owner=>callers.includes(owner.assignee)))?"owned":overlapping.length?"reassign":"assign";
+    const disposition=!rowPhones.length?"missing_phone":warehouseIds.length?"warehouse_exists":
+      overlapping.length && (!opts.reassign || overlapping.some(owner=>callers.includes(owner.assignee)))?"owned":
+      ai_categories.some(category=>excluded.has(category))?"excluded_ai":rowPhones.some(phone=>seen.has(phone))?"duplicate":overlapping.length?"reassign":"assign";
     if(disposition==="assign" || disposition==="reassign") {
       cursor++; perCaller[assignee]=(perCaller[assignee]||0)+1; rowPhones.forEach(phone=>seen.add(phone));
     }
-    return {id,name:names.get(id) || null,phones:rowPhones,warehouseIds,disposition,assignee:disposition==="assign"||disposition==="reassign"?assignee:null,owners:overlapping,completed:completed.get(id)||0,completed_by:completedById.get(id)||[],ai_result,ai};
+    return {id,name:names.get(id) || null,phones:rowPhones,warehouseIds,disposition,assignee:disposition==="assign"||disposition==="reassign"?assignee:null,owners:overlapping,completed:completed.get(id)||0,completed_by:completedById.get(id)||[],ai_result,ai,ai_categories};
   });
   const count=(disposition:string)=>items.filter(item=>item.disposition===disposition).length;
-  return { previewHash:allocationHash({entity:opts.entity,callers,reassign:!!opts.reassign,items:items.map(({id,phones,warehouseIds,disposition,assignee,owners})=>({id,phones,warehouseIds,disposition,assignee,owners:owners.map(({id,assignee,phones})=>({id,assignee,phones}))}))}),
+  return { previewHash:allocationHash({entity:opts.entity,callers,reassign:!!opts.reassign,excludeCats:[...excluded].sort(),items:items.map(({id,phones,warehouseIds,disposition,assignee,owners})=>({id,phones,warehouseIds,disposition,assignee,owners:owners.map(({id,assignee,phones})=>({id,assignee,phones}))}))}),
     requested:ids.length,validPhones:byId.size,uniquePhones:phones.length,eligible:cursor,owned:count("owned"),duplicateContacts:count("duplicate"),missingPhone:count("missing_phone"),
     warehouseExists:count('warehouse_exists'),warehouseNumbers:warehouses.size,
+    aiCategories,aiCalled:items.filter(item=>item.ai_categories.length).length,
+    aiIncluded:items.filter(item=>item.ai_categories.length&&(item.disposition==='assign'||item.disposition==='reassign')).length,excludedAi:count('excluded_ai'),
     completedHistory:completed.size,ownerCounts,completedOwners,aiResults,aiStatuses,perCaller,capped:capped||!!opts.capped,items };
 }
 export async function previewAssignment(opts: AllocationOptions) {
@@ -146,7 +177,7 @@ export async function assignEntities(opts: AllocationOptions): Promise<AssignSum
     const preview=await plan(client,opts);
     if(opts.expectedPreview && opts.expectedPreview!==preview.previewHash) throw new ApiError(409,"Selection or ownership changed. Review the refreshed preview before assigning.");
     const batchId=(await client.query<{id:string}>(`insert into bolna_assignment_batches(intent_key,created_by,entity_type,distribution,assignees,selection,request_hash)
-      values($1,$2,$3,$4,$5,$6::jsonb,$7) returning id`,[key,actor,opts.entity,callers.length>1?"round_robin":"single",callers,JSON.stringify(opts.selection??{ids:opts.ids}),hash])).rows[0].id;
+      values($1,$2,$3,$4,$5,$6::jsonb,$7) returning id`,[key,actor,opts.entity,callers.length>1?"round_robin":"single",callers,JSON.stringify(opts.selection??{ids:opts.ids,excludeCats:opts.excludeCats??[]}),hash])).rows[0].id;
     const eligible=preview.items.filter(item=>item.disposition==="assign"||item.disposition==="reassign");
     const dropped=[...new Set(eligible.flatMap(item=>item.owners.map(owner=>owner.id)))];
     if(dropped.length) await client.query("update bolna_assignments set state='dropped',completed_at=now(),revision=revision+1 where id=any($1::bigint[]) and state='open'",[dropped]);
@@ -157,7 +188,7 @@ export async function assignEntities(opts: AllocationOptions): Promise<AssignSum
       select $1,x.id,x.assignment_id,x.disposition,x.assignee,x.phones,x.owners from jsonb_to_recordset($2::jsonb)
       as x(id uuid,assignment_id bigint,disposition text,assignee text,phones text[],owners jsonb)`,[batchId,JSON.stringify(preview.items.map(item=>({...item,assignment_id:insertedById.get(item.id)??null})))]);
     const result: AssignSummary={requested:preview.requested,assigned:inserted.length,reassigned:dropped.length,skipped:preview.requested-inserted.length,
-      capped:preview.capped,duplicateContacts:preview.duplicateContacts,skippedOwned:preview.owned,skippedNoPhone:preview.missingPhone,skippedWarehouse:preview.warehouseExists,
+      capped:preview.capped,duplicateContacts:preview.duplicateContacts,skippedOwned:preview.owned,skippedNoPhone:preview.missingPhone,skippedWarehouse:preview.warehouseExists,skippedAi:preview.excludedAi,
       retained:preview.items.filter(item=>item.disposition==="owned"&&item.owners.some(owner=>callers.includes(owner.assignee))).length,batchId,perCaller:preview.perCaller};
     await client.query("update bolna_assignment_batches set summary=$2::jsonb where id=$1",[batchId,JSON.stringify(result)]);
     return result;

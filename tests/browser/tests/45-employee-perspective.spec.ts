@@ -6,7 +6,7 @@ const sql = (statement: string) => execFileSync('podman', ['exec', '-i', CONTAIN
 const perspective = (email = EMPLOYEE.email) => `/dashboard/my?${new URLSearchParams({ employee: email })}`;
 const recordId = 'a0000000-0000-4000-8000-000000000001';
 
-test('admins see the same employee assignments and saved values without edit handlers', async ({ adminPage: page, employeePage }) => {
+test('admins see the same employee assignments and can edit without writing on load', async ({ adminPage: page, employeePage }) => {
   await employeePage.goto('/dashboard/my');
   const contacts = await employeePage.locator('.who-name').allTextContents();
   const counts = await employeePage.locator('.work-tabs').innerText();
@@ -17,18 +17,18 @@ test('admins see the same employee assignments and saved values without edit han
   await expect(page.getByLabel('View work as').locator('option')).toHaveText(['My work (me)', 'Priya Eval (priya@eval.test)', 'Raj Eval (raj@eval.test)']);
   await page.getByLabel('View work as').selectOption(EMPLOYEE.email);
   await expect(page.locator('tbody tr')).toHaveCount(3);
-  await expect(page.getByText('Read-only employee view', { exact: true })).toBeVisible();
+  await expect(page.locator('#work-perspective-note')).toHaveText('Confirm once per row');
   expect(await page.locator('.who-name').allTextContents()).toEqual(contacts);
   expect(await page.locator('.work-tabs').innerText()).toBe(counts);
   await expect(page.locator('.work-scope')).toHaveText('All assignments to Priya Eval');
-  await expect(page.locator('.sheet-save-status')).toHaveCount(0);
+  await expect(page.locator('.sheet-save-status')).toHaveText('All changes saved');
   const rows = page.locator('tbody tr');
   for (const row of await rows.all()) {
-    await expect(row.getByLabel('Result of the call')).toBeDisabled();
-    await expect(row.getByLabel('Employee notes')).toHaveAttribute('readonly', '');
-    await expect(row.getByLabel('Warehouse ID')).toHaveAttribute('readonly', '');
-    await expect(row.getByRole('checkbox')).toBeDisabled();
-    await expect(row.locator('.btn-done')).toBeDisabled();
+    await expect(row.getByLabel('Result of the call')).toBeEnabled();
+    await expect(row.getByLabel('Employee notes')).toBeEditable();
+    await expect(row.getByLabel('Warehouse ID')).toBeEditable();
+    await expect(row.getByRole('checkbox')).toBeEnabled();
+    await expect(row.locator('.btn-done')).toBeEnabled();
   }
   const done = rows.filter({ hasText: 'Meera Nair' });
   await expect(done.getByLabel('Result of the call')).toHaveValue('Available');
@@ -36,8 +36,8 @@ test('admins see the same employee assignments and saved values without edit han
   await expect(done.getByLabel('Warehouse ID')).toHaveValue('1008');
   await expect(done).toHaveClass('row-done');
   expect(mutations).toEqual([]);
-  // A forged perspective parameter never changes the actor of the write API.
-  expect((await page.request.patch('/api/my-work/assignments/1?employee=priya%40eval.test', { data: { revision: 0, remarks: 'Must not save' } })).status()).toBe(409);
+  // Admin own-work requests still require ownership; employee edits need explicit scope.
+  expect((await page.request.patch('/api/my-work/assignments/1', { data: { revision: 0, remarks: 'Must not save' } })).status()).toBe(409);
   expect(await (await employeePage.request.get('/api/my-work/assignments/1')).json()).toMatchObject({ revision: 0, remarks: null });
 });
 
@@ -193,7 +193,7 @@ test('admins can return to their editable own work and view employees with no as
   await page.goto('/dashboard/my');
   await expect(page.getByLabel('Result of the call')).toBeEnabled();
   await page.getByLabel('View work as').selectOption(EMPLOYEE.email);
-  await expect(page.getByLabel('Result of the call').first()).toBeDisabled();
+  await expect(page.getByLabel('Result of the call').first()).toBeEnabled();
   await page.getByLabel('View work as').selectOption('');
   await expect(page.locator('tbody tr')).toHaveCount(1);
   await expect(page.getByLabel('Your notes')).toBeEditable();
@@ -203,7 +203,7 @@ test('admins can return to their editable own work and view employees with no as
   expect((await save).status()).toBe(200);
   await page.getByLabel('View work as').selectOption('new@eval.test');
   await expect(page.locator('.work-empty')).toContainText('Nothing is assigned to new@eval.test yet');
-  await expect(page.getByText('Read-only employee view', { exact: true })).toBeVisible();
+  await expect(page.locator('#work-perspective-note')).toHaveText('Confirm once per row');
   await page.getByLabel('View work as').selectOption('');
   await expect(page.getByLabel('Your notes')).toHaveValue('My own admin task');
 });

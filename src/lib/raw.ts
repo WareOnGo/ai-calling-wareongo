@@ -318,7 +318,7 @@ const QUEUE_CAP = 20000; // safety ceiling; Delhi (largest city set) is ~2.5k
 type QueueRowSql = {
   warehouse_ids: number[];
   id: string; name: string; contact: string | null; area: string; state: string;
-  call_count: string; last_avail: string | null; phones:string[]; owners:NonNullable<QueueSel["owners"]>;
+  call_count: string; last_avail: string | null; last_status: string | null; phones:string[]; owners:NonNullable<QueueSel["owners"]>;
 };
 
 // Shared projection: primary phone, name/area/state, and last-call info for cat.
@@ -338,11 +338,13 @@ const QUEUE_SELECT = `
           where a.state in ('open','done') and (a.entity_type,a.entity_id) in (${contactTargets("'record'",'r.id')})
           group by a.assignee,a.state order by a.assignee,a.state) x),'[]') as owners,
          coalesce(c.n, 0)::text as call_count,
-         c.last_avail           as last_avail
+         c.last_avail           as last_avail,
+         c.last_status          as last_status
     from raw_records r
     left join lateral (
       select count(*) n,
-             (array_agg(bolna_availability(cl.status, cl.llm_availability) order by cl.call_created_at desc nulls last))[1] as last_avail
+             (array_agg(bolna_availability(cl.status, cl.llm_availability) order by cl.call_created_at desc nulls last, cl.id))[1] as last_avail,
+             (array_agg(cl.status order by cl.call_created_at desc nulls last, cl.id))[1] as last_status
       from raw_phones rp join bolna_call_logs cl on cl.phone_id = rp.phone_id
       where rp.master_id = r.id and cl.status is distinct from 'balance-low'
     ) c on true`;
@@ -351,7 +353,7 @@ function toQueueSel(r: QueueRowSql, queued: Set<string>): QueueSel {
   const contact = r.contact ?? "";
   return {
     id: r.id, name: r.name, contact, area: r.area, state: r.state,
-    cat: deriveCat(r.call_count, r.last_avail),
+    cat: deriveCat(r.call_count, r.last_avail, r.last_status),
     phones:r.phones,warehouseIds:r.warehouse_ids,owners:r.owners,aiCalls:Number(r.call_count),
     queued: r.phones.some(phone=>queued.has(phone)),
   };

@@ -1,0 +1,527 @@
+{
+  "recordedAt": "2026-11-24T09:57:09.504406+00:00",
+  "decision": "ready_for_production_from_code_and_regression_assessment",
+  "releaseBlockingFindings": [],
+  "branch": "codex/bolna-visual-overhaul",
+  "head": "be87ad5721901f90b507bb9f8b3ba5f9454295b0",
+  "scope": "Current uncommitted working tree, including the site performance work, existing employee-editing / AI-exclusion changes, and the production review fixes.",
+  "previousReview": "docs/performance/site-production-review.json",
+  "committed": false,
+  "deployed": false,
+  "productionDataWrites": false,
+  "newSchemaMigrationRequired": false,
+  "resolvedFindings": [
+    {
+      "id": "initial_batch_version_latency",
+      "resolution": "Removed physical-row fingerprints and the separate initial version query. The page hashes its already-loaded data. Polls run the same filtered page readers and return only the hash. Visible changes, deletions and due-time transitions invalidate it; unrelated edits and physical row rewrites do not.",
+      "initialBatchReaderQueries": {
+        "original": 3,
+        "rejected": 3,
+        "fixed": 2,
+        "excludes": "unchanged authentication and catalog user lookup"
+      },
+      "correctness": "Exact filters, repeated values, metrics and page bounds are retained. Tokens represent the values actually rendered, so an edit after a page read cannot be acknowledged without being displayed. Existing draft, hidden-tab and pending-navigation guards remain active."
+    },
+    {
+      "id": "validation_resource_limits",
+      "resolution": "Upgraded to patched Zod, enforced a 1 MiB byte limit before parsing interactive dashboard mutation requests, and limited validation responses to eight issues of at most 512 characters each. Streamed bytes are counted regardless of Content-Length; geometric buffering avoids retaining arbitrarily many small chunks.",
+      "compatibility": "The supported 20,000 selected IDs plus assignment notes still pass. Retained nonstandard PostgreSQL/provider UUIDs keep the old acceptance contract through z.guid(); dictionary schemas were migrated explicitly. Empty inference bodies, UTF-8 and BOM handling remain supported.",
+      "boundedReproduction": {
+        "inputBytes": 50011,
+        "arrayElements": 10000,
+        "schemaMaximum": 50,
+        "previousIssueCount": 10001,
+        "currentIssueCount": 1,
+        "elementValidatorInvocationsForOversizedArray": 0,
+        "serverCrashAttempted": false
+      }
+    }
+  ],
+  "dependencies": {
+    "next": {
+      "before": "16.4.3",
+      "after": "16.4.6"
+    },
+    "zod": {
+      "before": "3.25.76",
+      "after": "4.6.7"
+    },
+    "openai": {
+      "before": "4.104.0",
+      "after": "7.63.0"
+    },
+    "node": "22.x",
+    "versionsPinned": true,
+    "otherExistingPackageVersionsChanged": false,
+    "productionAudit": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    },
+    "sdkVerification": "Actual upgraded OpenAI SDK exercised against a stubbed fetch transport for both structured-output requests and rate-limit propagation without retries."
+  },
+  "validation": {
+    "typecheck": "passed",
+    "productionBuild": "passed on Next.js 16.4.6",
+    "unitTestsPassed": 263,
+    "regularIntegration": {
+      "passed": 518,
+      "skipped": 8
+    },
+    "sharedSchemaRehearsal": {
+      "passed": 31,
+      "skipped": 2,
+      "uniqueAdditionalCompatibilityTestsPassed": 8
+    },
+    "distinctIntegrationAndCompatibilityTestsPassed": 526,
+    "distinctProductionBrowserTestsPassed": 328,
+    "browserFiles": [
+      "01-auth-roles.spec.ts",
+      "02-scope.spec.ts",
+      "04-assign-flow.spec.ts",
+      "05-employee-work.spec.ts",
+      "06-team.spec.ts",
+      "11-ux-recovery.spec.ts",
+      "14-my-work-filters.spec.ts",
+      "15-raw-export.spec.ts",
+      "33-queue-ux.spec.ts",
+      "34-assignment-details-menus.spec.ts",
+      "35-pagination-batches.spec.ts",
+      "37-navigation-loading.spec.ts",
+      "40-ai-details-cards.spec.ts",
+      "42-ai-call-timeline.spec.ts",
+      "43-transcripts-assignees.spec.ts",
+      "44-autosave-conflicts.spec.ts",
+      "44-loading-efficiency.spec.ts",
+      "45-caller-board.spec.ts",
+      "45-employee-perspective.spec.ts",
+      "46-admin-employee-edit.spec.ts",
+      "46-board-panel.spec.ts",
+      "47-ai-exclusions.spec.ts",
+      "47-board-drag.spec.ts",
+      "48-board-strikes.spec.ts",
+      "49-board-funnel.spec.ts",
+      "50-board-perspective.spec.ts",
+      "51-board-employee-edit.spec.ts",
+      "52-board-save-efficiency.spec.ts",
+      "52-site-performance.spec.ts",
+      "employee-preservation.spec.ts",
+      "warehouse-contacts.spec.ts"
+    ],
+    "browserCounting": "Counted unique file/test titles across the runs; repeat executions are not added. The broad run passed 306 tests; its outdated catalog-refresh expectation passed after updating the contract. Targeted batch/navigation/boundary checks supply 21 additional distinct cases.",
+    "testCorrections": [
+      "New refresh counters initially included Next.js link prefetches. Traces confirmed prefetch headers; corrected counters exclude them and still require a real refresh after visible edits.",
+      "The previous manual catalog test expected a refresh for an assignment note not shown in that catalog. It now requires no refresh for that note, then verifies a visible batch creation and the note changing in the legacy detail view."
+    ],
+    "buildEnvironment": "The restricted sandbox returned empty output from Next.js detached TypeScript subprocesses. The unmodified production build succeeded outside that sandbox; type checking was not disabled.",
+    "diffWhitespaceCheck": "passed",
+    "applicationAndDependencyFilesVerifiedUnchangedSinceFinalBuild": 285,
+    "sourceManifestSha256": "1b89f900f441f2aa723445d0306f077efb0fdc29c336b96a99db60a4fbc1a0e9"
+  },
+  "readOnlyProviderPayloadCompatibility": {
+    "readOnly": true,
+    "sampled": 100,
+    "beforeAccepted": 100,
+    "afterAccepted": 100,
+    "rejectedOnlyAfter": 0,
+    "parsedOutputDifferences": 0,
+    "method": "Validate up to 100 recent retained provider payloads using the previous schema with Zod 3 and the current schema with patched Zod 4. No payloads or identifiers are recorded."
+  },
+  "performance": {
+    "method": "Three-way reader comparison in one enforced READ ONLY snapshot: original pre-optimization readers, rejected fingerprint implementation, and fixed page-data tokens. Rotating execution order across three rounds. Excludes unchanged authentication/users/rendering; catalog hashing uses an empty people list equally for timing. No identifiers or record contents recorded.",
+    "all36SamplesReturnedEquivalentData": true,
+    "medianMilliseconds": {
+      "ai_catalog": {
+        "before": 632,
+        "rejected": 776,
+        "fixed": 509
+      },
+      "ai_detail": {
+        "before": 353,
+        "rejected": 336,
+        "fixed": 327
+      },
+      "manual_catalog": {
+        "before": 531,
+        "rejected": 242,
+        "fixed": 239
+      },
+      "manual_detail": {
+        "before": 399,
+        "rejected": 467,
+        "fixed": 327
+      }
+    },
+    "samples": [
+      {
+        "name": "manual_catalog",
+        "run": 1,
+        "version": "before",
+        "ms": 531,
+        "queries": 3,
+        "sameResults": true
+      },
+      {
+        "name": "manual_catalog",
+        "run": 1,
+        "version": "rejected",
+        "ms": 241,
+        "queries": 3,
+        "sameResults": true
+      },
+      {
+        "name": "manual_catalog",
+        "run": 1,
+        "version": "fixed",
+        "ms": 239,
+        "queries": 2,
+        "sameResults": true
+      },
+      {
+        "name": "manual_catalog",
+        "run": 2,
+        "version": "rejected",
+        "ms": 266,
+        "queries": 3,
+        "sameResults": true
+      },
+      {
+        "name": "manual_catalog",
+        "run": 2,
+        "version": "fixed",
+        "ms": 387,
+        "queries": 2,
+        "sameResults": true
+      },
+      {
+        "name": "manual_catalog",
+        "run": 2,
+        "version": "before",
+        "ms": 246,
+        "queries": 3,
+        "sameResults": true
+      },
+      {
+        "name": "manual_catalog",
+        "run": 3,
+        "version": "fixed",
+        "ms": 232,
+        "queries": 2,
+        "sameResults": true
+      },
+      {
+        "name": "manual_catalog",
+        "run": 3,
+        "version": "before",
+        "ms": 649,
+        "queries": 3,
+        "sameResults": true
+      },
+      {
+        "name": "manual_catalog",
+        "run": 3,
+        "version": "rejected",
+        "ms": 242,
+        "queries": 3,
+        "sameResults": true
+      },
+      {
+        "name": "manual_detail",
+        "run": 1,
+        "version": "before",
+        "ms": 3266,
+        "queries": 3,
+        "sameResults": true
+      },
+      {
+        "name": "manual_detail",
+        "run": 1,
+        "version": "rejected",
+        "ms": 1043,
+        "queries": 3,
+        "sameResults": true
+      },
+      {
+        "name": "manual_detail",
+        "run": 1,
+        "version": "fixed",
+        "ms": 327,
+        "queries": 2,
+        "sameResults": true
+      },
+      {
+        "name": "manual_detail",
+        "run": 2,
+        "version": "rejected",
+        "ms": 408,
+        "queries": 3,
+        "sameResults": true
+      },
+      {
+        "name": "manual_detail",
+        "run": 2,
+        "version": "fixed",
+        "ms": 1081,
+        "queries": 2,
+        "sameResults": true
+      },
+      {
+        "name": "manual_detail",
+        "run": 2,
+        "version": "before",
+        "ms": 367,
+        "queries": 3,
+        "sameResults": true
+      },
+      {
+        "name": "manual_detail",
+        "run": 3,
+        "version": "fixed",
+        "ms": 266,
+        "queries": 2,
+        "sameResults": true
+      },
+      {
+        "name": "manual_detail",
+        "run": 3,
+        "version": "before",
+        "ms": 399,
+        "queries": 3,
+        "sameResults": true
+      },
+      {
+        "name": "manual_detail",
+        "run": 3,
+        "version": "rejected",
+        "ms": 467,
+        "queries": 3,
+        "sameResults": true
+      },
+      {
+        "name": "ai_catalog",
+        "run": 1,
+        "version": "before",
+        "ms": 4450,
+        "queries": 3,
+        "sameResults": true
+      },
+      {
+        "name": "ai_catalog",
+        "run": 1,
+        "version": "rejected",
+        "ms": 672,
+        "queries": 3,
+        "sameResults": true
+      },
+      {
+        "name": "ai_catalog",
+        "run": 1,
+        "version": "fixed",
+        "ms": 509,
+        "queries": 2,
+        "sameResults": true
+      },
+      {
+        "name": "ai_catalog",
+        "run": 2,
+        "version": "rejected",
+        "ms": 776,
+        "queries": 3,
+        "sameResults": true
+      },
+      {
+        "name": "ai_catalog",
+        "run": 2,
+        "version": "fixed",
+        "ms": 520,
+        "queries": 2,
+        "sameResults": true
+      },
+      {
+        "name": "ai_catalog",
+        "run": 2,
+        "version": "before",
+        "ms": 590,
+        "queries": 3,
+        "sameResults": true
+      },
+      {
+        "name": "ai_catalog",
+        "run": 3,
+        "version": "fixed",
+        "ms": 425,
+        "queries": 2,
+        "sameResults": true
+      },
+      {
+        "name": "ai_catalog",
+        "run": 3,
+        "version": "before",
+        "ms": 632,
+        "queries": 3,
+        "sameResults": true
+      },
+      {
+        "name": "ai_catalog",
+        "run": 3,
+        "version": "rejected",
+        "ms": 817,
+        "queries": 3,
+        "sameResults": true
+      },
+      {
+        "name": "ai_detail",
+        "run": 1,
+        "version": "before",
+        "ms": 353,
+        "queries": 3,
+        "sameResults": true
+      },
+      {
+        "name": "ai_detail",
+        "run": 1,
+        "version": "rejected",
+        "ms": 361,
+        "queries": 3,
+        "sameResults": true
+      },
+      {
+        "name": "ai_detail",
+        "run": 1,
+        "version": "fixed",
+        "ms": 260,
+        "queries": 2,
+        "sameResults": true
+      },
+      {
+        "name": "ai_detail",
+        "run": 2,
+        "version": "rejected",
+        "ms": 333,
+        "queries": 3,
+        "sameResults": true
+      },
+      {
+        "name": "ai_detail",
+        "run": 2,
+        "version": "fixed",
+        "ms": 327,
+        "queries": 2,
+        "sameResults": true
+      },
+      {
+        "name": "ai_detail",
+        "run": 2,
+        "version": "before",
+        "ms": 323,
+        "queries": 3,
+        "sameResults": true
+      },
+      {
+        "name": "ai_detail",
+        "run": 3,
+        "version": "fixed",
+        "ms": 328,
+        "queries": 2,
+        "sameResults": true
+      },
+      {
+        "name": "ai_detail",
+        "run": 3,
+        "version": "before",
+        "ms": 354,
+        "queries": 3,
+        "sameResults": true
+      },
+      {
+        "name": "ai_detail",
+        "run": 3,
+        "version": "rejected",
+        "ms": 336,
+        "queries": 3,
+        "sameResults": true
+      }
+    ],
+    "interpretation": "The fixed AI detail median was 327 ms versus 353 ms before optimization. AI catalog was 509 ms versus 632 ms. Timings vary with cache state and database/network load; these three samples per version are not end-to-end latency or a production concurrency test."
+  },
+  "migrations": {
+    "local": 23,
+    "applied": 24,
+    "pending": [],
+    "mismatches": []
+  },
+  "preservation": {
+    "unchangedBaselineSourceFiles": 403,
+    "editedBaselineFiles": [
+      "src/app/api/batches/version/route.ts",
+      "src/app/api/calls/[id]/enrich/route.ts",
+      "src/app/dashboard/batches/[kind]/[id]/page.tsx",
+      "src/app/dashboard/batches/page.tsx",
+      "src/app/dashboard/batches/BatchLiveUpdates.tsx",
+      "src/lib/assignment-request.ts",
+      "src/lib/batch-browser.ts",
+      "src/lib/bolna.ts",
+      "src/lib/dispatch-service.ts",
+      "src/lib/export.ts",
+      "src/lib/filters.ts",
+      "src/lib/recover-batch-history.ts",
+      "src/lib/api.ts",
+      "src/lib/batch-version.ts",
+      "tests/browser/tests/44-loading-efficiency.spec.ts",
+      "tests/browser/tests/52-site-performance.spec.ts",
+      "tests/integration/site-performance.test.ts",
+      "package.json",
+      "package-lock.json"
+    ],
+    "newTestFiles": [
+      "src/lib/api-limits.test.ts",
+      "src/lib/openai-sdk.test.ts"
+    ],
+    "missingBaselineSourceFiles": [],
+    "databaseMigrationFilesChangedByThisFix": false
+  },
+  "adversarialReview": {
+    "status": "completed",
+    "unresolvedFindings": [],
+    "checks": [
+      "No extra initial token query or global table fingerprint remains.",
+      "Hashes are computed from displayed data; object keys and filter-option arrays have stable order.",
+      "Polling preserves filter values without trimming exact-match criteria, including repeated filters and page bounds.",
+      "Older-row edits, deletions, legacy batches, expired follow-ups, no-result pages and admin authorization are covered.",
+      "Polling does not replace drafts, run concurrently in a tab, or wait for provider reconciliation.",
+      "Oversized arrays stop before element validation; byte limits cannot be bypassed by missing or false Content-Length.",
+      "Allocation guards, ownership, revision conflicts, employee/admin attribution, Kanban moves and data preservation passed regression checks.",
+      "Only the intended dependency versions changed; the production audit is clean."
+    ]
+  },
+  "remainingLimits": [
+    "Polling still reads the scoped page and whole-batch aggregates every 30 seconds. Very large batches or many simultaneous viewers can require further capacity work.",
+    "Provider network behavior was tested with stubs; no live calls or production deployment were performed. The read-only payload comparison sampled 100 retained executions.",
+    "The assessment applies to this tested working tree; it is not a guarantee of zero defects under every production condition."
+  ],
+  "references": [
+    "https://zod.dev/v4/changelog",
+    "https://github.com/colinhacks/zod/commit/a0ebf970f2d752e5f58527cd2942ff48be4f46bd",
+    "https://github.com/vercel/next.js/releases/tag/v16.4.6"
+  ],
+  "followUpReview": {
+    "recordedAt": "2026-11-24T11:27:23.407124+00:00",
+    "decision": "no_new_release_blocking_findings",
+    "applicationAndDependencyFilesVerifiedUnchanged": 285,
+    "newApplicationChanges": false,
+    "testEvidence": "Rechecked the completed build, typecheck, test and audit records against the unchanged tested source. No full-suite rerun was needed for this review.",
+    "reviewedAreas": [
+      "Allocation preview cache invalidation, full-selection hash verification under the ownership lock, and request replay.",
+      "Employee/admin authorization, audit attribution, revision conflicts, queued confirmations, and preservation of drafts.",
+      "Batch polling filter parity, displayed-data tokens, deletion and due-time invalidation, and independence from provider synchronization.",
+      "Lazy transcript authorization for the exact execution/provider call and cancellation of obsolete requests.",
+      "Consolidated query semantics, shared-number exclusions, request-size boundaries, dependency compatibility, and corrected regression assertions."
+    ],
+    "releaseBlockingFindings": [],
+    "diffWhitespaceCheck": "passed",
+    "limitationsUnchanged": true
+  }
+}

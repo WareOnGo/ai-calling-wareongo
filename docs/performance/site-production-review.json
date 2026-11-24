@@ -1,0 +1,142 @@
+{
+  "reviewDate": "2026-11-24",
+  "branch": "codex/bolna-visual-overhaul",
+  "head": "be87ad5721901f90b507bb9f8b3ba5f9454295b0",
+  "decision": "hold_release",
+  "scope": "Current uncommitted application diff, including the performance changes and existing employee-editing / AI-exclusion work; deployment dependencies and migration state also checked.",
+  "applicationCodeChangedDuringThisReview": false,
+  "deployed": false,
+  "productionDataWrites": false,
+  "findings": [
+    {
+      "id": "validation_resource_limits",
+      "severity": "high dependency advisory; authenticated application exposure",
+      "introducedByPerformanceChanges": false,
+      "locations": [
+        {
+          "file": "package.json",
+          "line": 37
+        },
+        {
+          "file": "src/lib/api.ts",
+          "line": 8
+        },
+        {
+          "file": "src/app/api/board/no-answer/route.ts",
+          "line": 11
+        }
+      ],
+      "problem": "Installed Zod 3.25.76 validates every element of oversized constrained arrays before rejecting their length. jsonBody parses the full request, and apiError formats every validation issue. The board no-answer route authenticates first, but an authenticated caller can submit an oversized array despite the 50-item schema limit.",
+      "evidence": {
+        "method": "Bounded local execution of the route schema and API issue formatting, using installed Zod and a 256 MiB Node heap limit. No HTTP request, database mutation, or attempt to exhaust memory.",
+        "samples": [
+          {
+            "elements": 100,
+            "inputBytes": 511,
+            "validationMilliseconds": 2.5,
+            "issues": 101,
+            "errorResponseBytes": 4249
+          },
+          {
+            "elements": 10000,
+            "inputBytes": 50011,
+            "validationMilliseconds": 20.6,
+            "issues": 10001,
+            "errorResponseBytes": 438949
+          }
+        ]
+      },
+      "limitations": "Demonstrates unbounded per-element validation and error amplification, not a server crash. Production ingress limits and rate limits were not established. Authentication reduces exposure compared with the generic advisory.",
+      "requiredBeforeApproval": "Resolve the advisory with a compatible patched dependency or enforce request and collection limits before schema validation, bound returned validation errors, and verify deployed limits with targeted tests. Do not blindly apply major dependency upgrades.",
+      "sources": [
+        "https://github.com/advisories/GHSA-mrhx-c7xc-m3w5",
+        "https://github.com/colinhacks/zod/commit/a0ebf970f2d752e5f58527cd2942ff48be4f46bd"
+      ]
+    },
+    {
+      "id": "initial_batch_version_latency",
+      "severity": "medium",
+      "introducedByPerformanceChanges": true,
+      "locations": [
+        {
+          "file": "src/app/dashboard/batches/[kind]/[id]/page.tsx",
+          "line": 28
+        },
+        {
+          "file": "src/app/dashboard/batches/page.tsx",
+          "line": 22
+        },
+        {
+          "file": "src/lib/batch-version.ts",
+          "line": 9
+        }
+      ],
+      "problem": "Initial page rendering waits for a separate physical-row fingerprint before reading batch data. This adds a table-scanning query to the critical path and offsets the member-query improvements. AI detail reads were slower in every measured pair.",
+      "evidence": {
+        "method": "Before and after reader sequences on the same pinned PostgreSQL connection in one enforced REPEATABLE READ READ ONLY snapshot; alternating execution order across three pairs. Before is the pre-optimization working-tree snapshot. After includes batchVersion plus the new batch readers. All 24 samples across four paths returned equivalent results.",
+        "aiDetailBeforeMilliseconds": [
+          401,
+          418,
+          316
+        ],
+        "aiDetailAfterMilliseconds": [
+          590,
+          538,
+          434
+        ],
+        "aiDetailMedianBeforeMilliseconds": 401,
+        "aiDetailMedianAfterMilliseconds": 538,
+        "aiDetailMedianIncreasePercent": 34.2,
+        "queriesPerSequenceBeforeAndAfter": 3,
+        "priorIsolatedVersionColdMaximumMilliseconds": 3923
+      },
+      "limitations": "A small sample against the largest existing AI batch, not end-to-end browser or concurrent load testing. Excludes unchanged authentication, user lookups and rendering. Other batch paths showed mixed cache-sensitive results; this finding does not claim every page is slower.",
+      "requiredBeforeApproval": "Remove the separate expensive fingerprint from the initial critical path, for example by deriving a cheap token from the same authoritative read or maintaining inexpensive change metadata. Preserve the rule that a token must not acknowledge data absent from the rendered snapshot. Repeat paired page-sequence measurements and invalidation / draft-preservation tests."
+    }
+  ],
+  "dependencyAudit": {
+    "command": "npm audit --omit=dev --json",
+    "affectedPackages": {
+      "high": 2,
+      "moderate": 1
+    },
+    "highPackages": [
+      "zod",
+      "openai"
+    ],
+    "highPackageExplanation": "OpenAI is flagged through Zod; these are not two independent high-severity vulnerabilities.",
+    "nextInstalled": "16.4.3",
+    "nextAdvisories": "Seven moderate advisories reported; fixes are available. Inspected application code did not show the documented use-cache, Cache Components, Edge runtime, image optimization or transparent fetched-response forwarding preconditions. Exploitability was not demonstrated.",
+    "nextPrimaryReferences": [
+      "https://github.com/vercel/next.js/security/advisories/GHSA-pc58-hwjq-p385",
+      "https://github.com/vercel/next.js/security/advisories/GHSA-f3mh-rxg3-f5g2"
+    ],
+    "dependencyChangesMade": false
+  },
+  "migrationReview": {
+    "method": "Read-only comparison of local migration SHA-256 checksums against the configured database migration ledger.",
+    "localMigrations": 23,
+    "ledgerEntries": 24,
+    "pendingLocalMigrations": [],
+    "checksumMismatches": [],
+    "notes": "The additional historical ledger entry and retained-schema trigger configuration are preserved. No migration or trigger changes were performed."
+  },
+  "validation": {
+    "priorValidationReference": "docs/performance/site-latency-review.json",
+    "priorTypecheck": "passed",
+    "priorProductionBuild": "passed",
+    "priorUnitTestsPassed": 252,
+    "priorDistinctIntegrationAndCompatibilityTestsPassed": 523,
+    "priorDistinctBrowserTestsPassed": 165,
+    "priorTestedPerformanceFilesVerifiedUnchangedBySha256": 24,
+    "note": "These are prior results for the unchanged source, not newly repeated full test suites. This review added paired read-only performance/parity measurements, migration verification, a fresh production dependency audit and the bounded validation reproduction.",
+    "diffWhitespaceCheck": "passed",
+    "dataLossOrAuthorizationRegressionsIdentified": []
+  },
+  "limits": [
+    "Passing functional tests does not establish production latency or eliminate all concurrency risks.",
+    "No live provider mutation, production load test, deployment, commit or push was performed during this review.",
+    "Release approval remains withheld until the listed findings are resolved and the changed paths revalidated."
+  ],
+  "supersededBy": "docs/performance/site-production-assessment.json"
+}

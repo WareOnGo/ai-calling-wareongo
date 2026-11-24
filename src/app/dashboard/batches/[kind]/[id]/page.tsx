@@ -1,6 +1,6 @@
 import { BatchMemberFilters } from "../../BatchMemberFilters";
 import Link from 'next/link';
-import {ApiError} from '@/lib/api';
+import {ApiError,uuid} from '@/lib/api';
 import {notFound} from 'next/navigation';
 import {requireAdmin} from '@/lib/auth';
 import {getBatch,batchMembers,batchMemberFiltersSchema,AI_CARDS,MANUAL_CARDS,MANUAL_METRIC_DESCRIPTIONS} from '@/lib/batch-browser';
@@ -19,14 +19,17 @@ import {BatchStatus} from '../../BatchStatus';
 import {BatchLiveUpdates} from '../../BatchLiveUpdates';
 import {ManualBatchCells} from '../../ManualBatchCells';
 import {WarehouseNotice} from '../../../WarehouseNotice';
+import {batchDetailVersion,batchPollingQuery} from '@/lib/batch-version';
 export const dynamic='force-dynamic';
 
 export default async function BatchDetail({params,searchParams}:{params:Promise<{kind:string;id:string}>;searchParams:Promise<SearchValues>}){
  const viewer=await requireAdmin(),{kind,id}=await params,sp=await searchParams;if(kind!=='ai'&&kind!=='manual')notFound();
+ if(!(kind==='manual'&&id==='legacy')&&!uuid.safeParse(id).success)notFound();
  let batch;try{batch=await getBatch(viewer,kind,id);}catch(error){if(error instanceof ApiError && error.status===404)notFound();throw error;}
  const parsed=batchMemberFiltersSchema.safeParse(Object.fromEntries(Object.entries(sp).filter(([,v])=>v)));
  if(!parsed.success)return <p role="alert">Invalid member filters. <Link href={'/dashboard/batches/'+kind+'/'+id}>Clear filters</Link></p>;
  const metric=firstValue(sp.metric)||'all';let data;try{data=await batchMembers(viewer,batch,metric,Number(firstValue(sp.page)||1),parsed.data);}catch(error){console.error("Batch members failed",{kind,id,error:error instanceof Error?error.name:"Unknown"});return <p role="alert">Could not load batch records. <Link href={'/dashboard/batches/'+kind+'/'+id}>Reset filters and retry</Link></p>;}
+ const version=batchDetailVersion(batch,data);
  const base='/dashboard/batches/'+kind+'/'+id,cards=kind==='ai'?AI_CARDS:MANUAL_CARDS;
  const groups=kind==='ai'?[{title:'Call progress',keys:['all','attempted','connected']},{title:'Latest results',keys:['available','unavailable','unclear']},{title:'Needs attention',keys:['pending','failure','blocked']}]:[{title:'Assignment progress',keys:['all','assigned','open']},{title:'Completion & DB records',keys:['done','quality','available','onboarded']},{title:'Call activity & ownership',keys:['connected','retry_due','dropped']}];
  const finished=kind==='ai'?data.metrics.all-data.metrics.pending:data.metrics.done;
@@ -34,7 +37,7 @@ export default async function BatchDetail({params,searchParams}:{params:Promise<
   <div className="batch-breadcrumb"><Link href={'/dashboard/batches?kind='+kind}>← Back to {kind==='ai'?'AI':'manual'} batches</Link></div>
   <RecordsHeader title={id==='legacy'?'Legacy / no recorded batch':(kind==='ai'?'AI':'Manual')+' batch '+id.slice(0,8)}
    meta={<p className="batch-lead">{id==='legacy'?'These assignments predate recorded batch membership.':<>{kind==='ai'?agentLabel(batch.agent_id,batch.agent_language):batch.entity_type==='record'?'From Raw Dataset':'From Calls'} · Created {dateTime(batch.created_at)}</>}</p>}
-   actions={<><BatchStatus state={batch.state} received={finished} total={data.metrics.all}/><BatchLiveUpdates ids={kind==='ai'&&!['completed','canceled','stubbed'].includes(batch.state)?[id]:[]}/></>}/>
+   actions={<><BatchStatus state={batch.state} received={finished} total={data.metrics.all}/><BatchLiveUpdates ids={kind==='ai'&&!['completed','canceled','stubbed'].includes(batch.state)?[id]:[]} kind={kind} version={version} batchId={id} query={batchPollingQuery(sp)}/></>}/>
   <div className="batch-detail-tools">
    <details className="batch-metadata"><summary>Batch information</summary>
     <dl className="batch-info-facts"><div><dt>Created by</dt><dd>{batch.created_by||'Unknown'}</dd></div>{batch.scheduled_at&&<div><dt>Scheduled</dt><dd>{dateTime(batch.scheduled_at)}</dd></div>}{batch.assignees&&<div><dt>Original callers</dt><dd>{batch.assignees.join(', ')}</dd></div>}{batch.dispatch_request_id&&<div><dt>Parent dispatch</dt><dd><Link href={'/dashboard/batches?kind=ai&dispatch='+batch.dispatch_request_id}>{batch.dispatch_request_id}</Link></dd></div>}{batch.bolna_batch_id&&<div><dt>Provider batch</dt><dd><CopyText value={batch.bolna_batch_id} label="provider batch ID"/></dd></div>}</dl>

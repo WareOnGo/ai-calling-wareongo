@@ -1,16 +1,26 @@
 // Preserves the employee task editing contract from main before the visual overhaul.
-// The admin/manual-call workflows continue to use assignments.updateAssignment.
+// Manual-call workflows continue to use assignments.updateAssignment.
 import { ApiError } from "./api";
 import { query, transaction } from "./db";
 import type { CurrentUser } from "./auth";
+import { getUser } from "./users";
 import { contactTargets, type EntityType, type Outcome, type AssignmentState } from "./scope";
 
 export type AssignmentPatch = { outcome?: Outcome | null; remarks?: string | null; addedToDb?: boolean; whId?: string | null; state?: AssignmentState; revision: number };
 type AssignmentRow = { revision: number; id: string; state: string; outcome: string | null; remarks: string | null; added_to_db: boolean; wh_id: string | null };
 
-export async function getMyWorkAssignment(id: string, user: CurrentUser): Promise<AssignmentRow | null> {
+async function workAssignee(user: CurrentUser, employee?: string | null): Promise<string> {
+  const assignee = employee?.trim().toLowerCase() || user.email.toLowerCase();
+  if (assignee === user.email.toLowerCase()) return assignee;
+  if (!user.isAdmin) throw new ApiError(403, "Only admins can access another employee's work.");
+  if (!(await getUser(assignee))?.active) throw new ApiError(404, "This employee is no longer available.");
+  return assignee;
+}
+
+export async function getMyWorkAssignment(id: string, user: CurrentUser, employee?: string | null): Promise<AssignmentRow | null> {
+  const assignee = await workAssignee(user, employee);
   const result = await query<AssignmentRow>(`select revision,id,state,outcome,remarks,added_to_db,wh_id
-    from bolna_assignments where id=$1 and assignee=$2 and state<>'dropped'`, [id, user.email.toLowerCase()]);
+    from bolna_assignments where id=$1 and assignee=$2 and state<>'dropped'`, [id, assignee]);
   return result.rows[0] ?? null;
 }
 
@@ -18,7 +28,9 @@ export async function updateMyWorkAssignment(
   id: string,
   user: CurrentUser,
   patch: AssignmentPatch,
+  employee?: string | null,
 ): Promise<AssignmentRow | null> {
+  const assignee = await workAssignee(user, employee);
   if (patch.state === "dropped") throw new ApiError(403, "Only admins can unassign work");
   const sets: string[] = [];
   const vals: unknown[] = [];
@@ -40,7 +52,7 @@ export async function updateMyWorkAssignment(
   const revisionParam = `$${vals.length}`;
   vals.push(id);
   const idParam = `$${vals.length}`;
-  vals.push(user.email.toLowerCase());
+  vals.push(assignee);
   const ownership = ` and assignee = $${vals.length}`;
 
   const sql = `update bolna_assignments set ${sets.join(", ")}
@@ -53,7 +65,7 @@ export async function updateMyWorkAssignment(
       const current = (await client.query<{ entity_type: EntityType; entity_id: string; state: string }>(
         `select entity_type,entity_id,state from bolna_assignments
           where id=$1 and revision=$2 and state<>'dropped' and assignee=$3 for update`,
-        [id, patch.revision, user.email.toLowerCase()],
+        [id, patch.revision, assignee],
       )).rows[0];
       if (!current) throw new ApiError(409, "This assignment changed or is no longer editable. Review your changes before saving.", "ASSIGNMENT_CONFLICT");
       if (current.state !== "open") {

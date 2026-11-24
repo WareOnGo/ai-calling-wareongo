@@ -20,7 +20,7 @@ export class Autosave<T extends Values> {
   private requested = false;
   private code?: string;
   private snapshot: SaveSnapshot<T>;
-  constructor(initial: T, private send: (patch: Partial<T>) => Promise<T | void>, private rollback: (keyof T)[] = [], private validationDrafts: (keyof T)[] = []) {
+  constructor(initial: T, private send: (patch: Partial<T>) => Promise<T | void>, private rollback: (keyof T)[] = [], private validationDrafts: (keyof T)[] = [], private beforeSave?: () => Promise<boolean>) {
     this.baseline = { ...initial };
     this.desired = { ...initial };
     this.snapshot = { values: { ...initial }, status: "idle", error: "", dirty: false };
@@ -77,8 +77,16 @@ export class Autosave<T extends Values> {
       for (const key of Object.keys(this.failed)) delete patch[key];
       if (!Object.keys(patch).length) return;
       const sentValues = { ...this.desired };
-      this.running = true; this.publish("saving", this.snapshot.error);
+      this.running = true;
       try {
+        if (this.beforeSave && !(await this.beforeSave())) {
+          // Cancel is not a failed write. Keep every draft, including checkbox
+          // and Done changes, and wait for another explicit save attempt.
+          this.running = false; this.requested = false;
+          this.publish(Object.keys(this.failed).length ? "error" : Object.keys(this.diff()).length ? "dirty" : "idle", this.snapshot.error);
+          return;
+        }
+        this.publish("saving", this.snapshot.error);
         const confirmed = await this.send(patch);
         if (confirmed) {
           // Adopt server updates without erasing edits made while saving or

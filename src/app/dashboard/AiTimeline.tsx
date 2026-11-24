@@ -8,9 +8,9 @@ import { useDashboardUI } from './DashboardUI';
 import { ResultBadge } from './ResultBadge';
 import { Transcript } from './Transcript';
 
-export function AiTimeline({ entity, id, initialOpen = false, initialBatch = '', initialScope, initialPhone, children, employee }: {
+export function AiTimeline({ entity, id, initialOpen = false, initialBatch = '', initialScope, initialPhone, defaultPrimary = false, children, employee }: {
   initialBatch?: string; initialScope?: 'contact' | 'execution'; initialPhone?: string | null;
-  entity: 'record' | 'call'; id: string; initialOpen?: boolean; children?: ReactNode; employee?: string;
+  entity: 'record' | 'call'; id: string; initialOpen?: boolean; children?: ReactNode; employee?: string; defaultPrimary?: boolean;
 }) {
   const { isAdmin } = useDashboardUI();
   const adminHistory = isAdmin && !employee;
@@ -18,22 +18,24 @@ export function AiTimeline({ entity, id, initialOpen = false, initialBatch = '',
   const [scope, setScope] = useState(initialScope || (entity === 'record' || adminHistory ? 'contact' : 'execution'));
   const [batch, setBatch] = useState(initialBatch), [draft, setDraft] = useState(initialBatch);
   const digits = initialPhone?.replace(/\D/g, '').slice(-10);
-  const [phone, setPhone] = useState(digits?.length === 10 ? digits : '');
+  const [phone, setPhone] = useState(digits?.length === 10 ? digits : defaultPrimary ? 'primary' : '');
   const [page, setPage] = useState(1), [data, setData] = useState<AiHistory | null>(null);
   const [phones, setPhones] = useState<string[]>([]);
   const [error, setError] = useState(''), [retry, setRetry] = useState(0);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [savedOpen, setSavedOpen] = useState(false);
+  const params = new URLSearchParams({ scope, batch, phone:phone==='primary'?'':phone, page:String(page),transcripts:'lazy' });
+  if(phone==='primary')params.set('primary','1');
+  if(employee)params.set('employee',employee);
+  const historyUrl=`/api/details/${entity}/${id}/ai?${params}`;
   useEffect(() => {
     if (!open) return;
     const controller = new AbortController(); setData(null); setError('');
-    const params = new URLSearchParams({ scope, batch, phone, page: String(page) });
-    if (employee) params.set('employee', employee);
-    requestJson<AiHistory>(`/api/details/${entity}/${id}/ai?${params}`, { signal: controller.signal })
+    requestJson<AiHistory>(historyUrl, { signal: controller.signal })
       .then(value => { if (!controller.signal.aborted) { setData(value); setPhones(value.phones); } })
       .catch(e => { if (!controller.signal.aborted) setError(e.message); });
     return () => controller.abort();
-  }, [entity, id, scope, batch, phone, page, open, retry, employee]);
+  }, [historyUrl, open, retry]);
 
   return <section className="ai-timeline" aria-label="AI call history">
     <div className="history-heading"><h3>AI calls{data && <span className="history-count" aria-label={`${data.total} ${data.total === 1 ? 'call' : 'calls'}`}>{data.total}</span>}</h3>
@@ -47,20 +49,20 @@ export function AiTimeline({ entity, id, initialOpen = false, initialBatch = '',
         </form>
         {data && <p className="history-scope">{data.outbound} outbound · {data.inbound} inbound · {data.conversations} confirmed {data.conversations === 1 ? 'conversation' : 'conversations'}{data.total > data.outbound + data.inbound && <> · {data.total - data.outbound - data.inbound} unknown direction</>}</p>}
         <details className="history-about"><summary>How calls are counted</summary><p>Calls shared across listings are grouped by phone number. Each provider call appears once; repeat calls remain separate. Known provider calls only. Older overwritten attempts and missing provider IDs cannot be reconstructed from totals. Conversation counts require finalized duration and caller speech evidence.</p>{!!data?.unknownExecutions && <p>{data.unknownExecutions} execution {data.unknownExecutions === 1 ? 'record has' : 'records have'} no identifiable provider attempt.</p>}</details>
-        {children && <details className="history-saved" open={savedOpen} onToggle={event => setSavedOpen(event.currentTarget.open)}><summary>Saved record details</summary>{children}</details>}
+        {children && <details className="history-saved" open={savedOpen} onToggle={event => setSavedOpen(event.currentTarget.open)}><summary>Saved record details</summary>{savedOpen && children}</details>}
       </div>}
       {batch && <div className="history-active-filter"><span>Batch: {batch}</span><button type="button" className="btn-text" onClick={() => { setBatch(''); setDraft(''); setPage(1); }}>Clear batch filter</button></div>}
-      {phones.length > 1 && <label className="history-phone">History for <select aria-label="AI history phone number" value={phone} onChange={e => { setPhone(e.target.value); setPage(1); }}><option value="">All linked numbers</option>{phones.map(number => <option key={number} value={number}>+91{number}</option>)}</select></label>}
+      {phones.length > 1 && <label className="history-phone">History for <select aria-label="AI history phone number" value={phone==='primary'?(data?.phone||''):phone} onChange={e => { setPhone(e.target.value); setPage(1); }}><option value="">All linked numbers</option>{phones.map(number => <option key={number} value={number}>+91{number}</option>)}</select></label>}
       {scope === 'execution' && <p className="history-restriction">This execution only</p>}
       {error ? <p role="alert">{error} <button type="button" className="btn-row" onClick={() => setRetry(n => n + 1)}>Retry AI history</button></p> : !data ? <p role="status" className="history-loading">Loading AI calls…</p> : <>
-        {data.rows.length ? <ol className="attempt-list" aria-label="AI call timeline">{data.rows.map(event => <li className={`attempt-item attempt-${event.availability ? resultClass(event.availability) : 'unknown'}`} key={`${event.execution_id}:${event.provider_call_id}`}><span className="attempt-dot" aria-hidden="true"/><CallEvent event={event} showPhone={!data.phone && data.phones.length > 1}/></li>)}</ol> : <div className="history-empty"><p>{batch ? 'No AI calls match this batch.' : 'No recorded AI calls for this number.'}</p>{children && !batch && <button type="button" className="btn-text" onClick={() => { setOptionsOpen(true); setSavedOpen(true); }}>View saved record details</button>}</div>}
+        {data.rows.length ? <ol className="attempt-list" aria-label="AI call timeline">{data.rows.map(event => <li className={`attempt-item attempt-${event.availability ? resultClass(event.availability) : 'unknown'}`} key={`${event.execution_id}:${event.provider_call_id}`}><span className="attempt-dot" aria-hidden="true"/><CallEvent event={event} historyUrl={historyUrl} showPhone={!data.phone && data.phones.length > 1}/></li>)}</ol> : <div className="history-empty"><p>{batch ? 'No AI calls match this batch.' : 'No recorded AI calls for this number.'}</p>{children && !batch && <button type="button" className="btn-text" onClick={() => { setOptionsOpen(true); setSavedOpen(true); }}>View saved record details</button>}</div>}
         {data.pages > 1 && <nav className="history-pagination" aria-label="AI attempt pages"><button type="button" className="btn-row" disabled={data.page <= 1} onClick={() => setPage(p => p - 1)}>Previous AI attempts</button><span>Page {data.page} of {data.pages}</span><button type="button" className="btn-row" disabled={data.page >= data.pages} onClick={() => setPage(p => p + 1)}>Next AI attempts</button></nav>}
       </>}
     </>}
   </section>;
 }
 
-function CallEvent({ event, showPhone }: { event: AiAttempt; showPhone: boolean }) {
+function CallEvent({ event, showPhone, historyUrl }: { event: AiAttempt; showPhone: boolean; historyUrl: string }) {
   const [audioFailed, setAudioFailed] = useState(false);
   const direction = event.direction === 'outbound' ? 'Outbound' : event.direction === 'inbound' ? 'Inbound' : 'Direction unknown';
   const status = event.status ? event.status.replaceAll('-', ' ').replace(/^./, value => value.toUpperCase()) : 'Unknown status';
@@ -72,7 +74,7 @@ function CallEvent({ event, showPhone }: { event: AiAttempt; showPhone: boolean 
     {event.notes && <p className="attempt-notes">{longNotes ? `${event.notes.slice(0, 217).trim()}…` : event.notes}</p>}
     {event.recording_url && <div className="attempt-recording"><audio aria-label="Call recording" controls preload="none" src={event.recording_url} onError={() => setAudioFailed(true)}/>{audioFailed && <p role="alert">Couldn't play this recording. <a href={event.recording_url} target="_blank" rel="noreferrer">Open recording</a></p>}</div>}
     <div className="attempt-actions">
-      {event.transcript && <details className="attempt-transcript"><summary>Transcript</summary><Transcript text={event.transcript}/></details>}
+      {(event.has_transcript || event.transcript) && <AttemptTranscript url={`${historyUrl}&${new URLSearchParams({transcript:'1',execution:event.execution_id,provider_call:event.provider_call_id})}`} initial={event.transcript}/>}
       <details className="attempt-info"><summary>Call info</summary><div className="attempt-info-content">
         {longNotes && <><h4>AI notes</h4><p className="detail-text">{event.notes}</p></>}
         <dl className="attempt-provider-facts"><div><dt>Connection</dt><dd>{status}</dd></div><div><dt>Conversation</dt><dd>{event.confirmed_conversation ? 'Confirmed' : 'Not confirmed'}</dd></div>
@@ -84,4 +86,21 @@ function CallEvent({ event, showPhone }: { event: AiAttempt; showPhone: boolean 
       </div></details>
     </div>
   </article>;
+}
+
+function AttemptTranscript({url,initial}:{url:string;initial:string|null}) {
+  const [open,setOpen]=useState(false),[data,setData]=useState<{transcript:string|null}|null>(initial?{transcript:initial}:null);
+  const [error,setError]=useState(''),[retry,setRetry]=useState(0);
+  useEffect(()=>{
+    if(!open||data)return;
+    const controller=new AbortController();setError('');
+    requestJson<{transcript:string|null}>(url,{signal:controller.signal})
+      .then(value=>{if(!controller.signal.aborted)setData(value);})
+      .catch(error=>{if(!controller.signal.aborted)setError(error.message);});
+    return()=>controller.abort();
+  },[open,data,url,retry]);
+  return <details className="attempt-transcript" onToggle={event=>setOpen(event.currentTarget.open)}><summary>Transcript</summary>
+    {open && (error?<p role="alert">{error} <button type="button" className="btn-row" onClick={()=>setRetry(value=>value+1)}>Retry transcript</button></p>
+      :!data?<p role="status">Loading transcript…</p>:data.transcript?<Transcript text={data.transcript}/>:<p>No transcript available.</p>)}
+  </details>;
 }

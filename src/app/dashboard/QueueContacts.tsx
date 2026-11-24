@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { type QueueSel, type CallCat, CAT_TAG_LABEL, normNum } from "@/lib/queue";
+import { type QueueSel, type CallCat, CALLED_CATS, calledCategories, excludedByCategory, normNum } from "@/lib/queue";
 import { routeLanguage, LANGUAGE_LABELS, type CallLanguage, type RoutingMode } from "@/lib/routing";
 import { ResultBadge } from "./ResultBadge";
 import { WarehouseNotice } from './WarehouseNotice';
@@ -22,14 +22,14 @@ export function QueueContacts({ rows, excluded, routingMode, availableLanguages 
         const language = routeLanguage(row.state, routingMode);
         // Match assembleBatch's precedence so the reason explains the count.
         const reason = row.warehouseIds?.length ? 'Warehouse already added to DB' : owner ? `Assigned to ${owner.name || owner.email}`
-          : row.cat && excluded.has(row.cat) ? "Excluded by outcome"
+          : excludedByCategory(row, excluded) ? "Excluded by outcome"
           : !language || !availableLanguages.includes(language) ? "Agent unavailable"
           : row.queued ? "Already queued"
           : !/^\d{10}$/.test(normNum(row.contact)) ? "No usable number" : null;
         return <li key={row.id} className="queue-contact">
           <div><strong>{row.name || "Unnamed contact"}</strong><span className="queue-contact-phone">{row.contact || "No phone number"}</span>
             <WarehouseNotice ids={row.warehouseIds}/>
-            <small>{[row.area, language && LANGUAGE_LABELS[language]].filter(Boolean).join(" · ")}{row.cat && <> · {row.cat === 'dead' ? 'AI: no-answer' : <ResultBadge prefix="AI: " value={CAT_TAG_LABEL[row.cat]}/>}</>}</small>
+            <small>{[row.area, language && LANGUAGE_LABELS[language]].filter(Boolean).join(" · ")}{calledCategories(row).map(cat => <span key={cat}> · {cat === 'dead' ? 'AI: no-answer' : <ResultBadge prefix="AI: " value={CALLED_CATS.find(category => category.key === cat)!.label}/>}</span>)}</small>
           </div>
           <span className={`queue-contact-status${reason ? "" : " is-ready"}`}>{reason || "Ready to call"}</span>
         </li>;

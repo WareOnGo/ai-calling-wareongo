@@ -129,7 +129,7 @@ export async function dropAssignment(id: string, actor: string | null = null): P
 
 export type AssignmentHistoryRow = {
   warehouse_ids: number[];
-  work_context?: { owner_name: string | null; city: string | null; area_sqft: string | null; built_up_area_sqft: string | null; carpet_area_sqft: string | null; rent: string | null };
+  work_context?: { owner_name: string | null; city: string | null; area_sqft: string | null; built_up_area_sqft: string | null; carpet_area_sqft: string | null; rent: string | null; call_count?: number };
   ai_summary: AiAttemptSummary;
   batch_id: string | null;
   revision: number;
@@ -291,7 +291,7 @@ export function assignmentSelectionQuery(viewer: import("./scope").Viewer, filte
     ${historyFilterFrom(filters)} ${sql}${ids?`${sql?' and':'where'} a.id=any($${params.length}::bigint[])`:''}`,params};
 }
 
-export async function listAssignments(viewer: import("./scope").Viewer, f: HistoryFilters, { workContext = false }: { workContext?: boolean } = {}) {
+export async function listAssignments(viewer: import("./scope").Viewer, f: HistoryFilters, { workContext = false, employeeContext = false }: { workContext?: boolean; employeeContext?: boolean } = {}) {
   const { sql: whereSql, params } = historyWhere(viewer, f);
   const requestedPage = Number.isFinite(f.page) ? Math.max(1, Math.floor(f.page!)) : 1;
   const pageSize = Number.isFinite(f.pageSize) ? Math.max(1, Math.min(100, Math.floor(f.pageSize!))) : HISTORY_PAGE_SIZE;
@@ -321,12 +321,15 @@ export async function listAssignments(viewer: import("./scope").Viewer, f: Histo
             case when a.entity_type='record' then
               (select row_to_json(ai) from (${aiAttemptSummarySql("record", "a.entity_id")}) ai)
             else (select row_to_json(ai) from (${aiAttemptSummarySql("call", "a.entity_id")}) ai) end as ai_summary
-            ${workContext ? `, json_build_object(
+            ${workContext || employeeContext ? `, json_build_object(
               'owner_name', work_source.owner_name,
-              'city', ${HISTORY_CITY},
+              'city', ${employeeContext ? `coalesce(nullif(r.city,''),nullif(initcap(cl.context_details->'recipient_data'->>'area'),''),nullif(work_source.city,''),${HISTORY_CITY})` : HISTORY_CITY},
               'area_sqft', coalesce(r.area_sqft::text,work_source.area_sqft::text),
               'built_up_area_sqft',cl.built_up_area_sqft,'carpet_area_sqft',cl.carpet_area_sqft,
-              'rent',case when a.entity_type='record' then r.metadata->>'rent' else cl.expected_rent end) as work_context` : ''}
+              'rent',case when a.entity_type='record' then r.metadata->>'rent' else cl.expected_rent end
+              ${employeeContext ? `,'call_count',case when a.entity_type='call' then case when cl.id is null then 0 else 1 end else
+                (select count(*)::int from raw_phones rp join bolna_call_logs c on c.phone_id=rp.phone_id
+                  where rp.master_id=r.id and c.status is distinct from 'balance-low') end` : ''}) as work_context` : ''}
        ${HISTORY_FROM.replace('from bolna_assignments a', 'from page_assignments a')}
        order by ${order}`,
     params);

@@ -110,6 +110,8 @@ test('matched listings and AI follow-ups are marked and read-only for callers an
     await context.addCookies([sessionCookie(perspective?ADMIN.email:EMPLOYEE.email) as never]);
     await page.goto(`/dashboard/my${perspective?`?employee=${encodeURIComponent(EMPLOYEE.email)}`:''}`);
     await ready(page);
+    await expect(page.getByRole('button', { name: 'Edit row', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Save changes', exact: true })).toHaveCount(0);
     for(const [entity,note] of [['record','Existing caller note'],['call','Existing AI follow-up note']]){
       const row=page.locator(`[data-entity="${entity}"] tbody tr`);
       await expect(row.getByText('Already added',{exact:true})).toBeVisible();

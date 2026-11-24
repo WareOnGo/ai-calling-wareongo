@@ -10,17 +10,17 @@ export function WorkColumns() {
   </colgroup>;
 }
 
-export function WorkHeaders({ readOnly = false }: { readOnly?: boolean }) {
+export function WorkHeaders({ employeeView = false }: { employeeView?: boolean }) {
   return <thead><tr className="colheads">
     <th className="rowgutter" aria-label="Row" /><th>Who to call</th><th>Phone / AI status</th>
     <th className="mine mine-first"><IconPencil size={12} />Result</th>
-    <th className="mine">{readOnly ? "Employee notes" : "Your notes"}</th><th className="mine">In DB?</th>
+    <th className="mine">{employeeView ? "Employee notes" : "Your notes"}</th><th className="mine">In DB?</th>
     <th className="mine">WH ID</th><th className="mine">Finished?</th>
   </tr></thead>;
 }
 
-export function WorkLegend({ readOnly = false }: { readOnly?: boolean }) {
-  if (readOnly) return <p className="legend">Assignment details and employee updates are read only.</p>;
+export function WorkLegend({ employeeView = false }: { employeeView?: boolean }) {
+  if (employeeView) return <p className="legend">Edit fields directly. The first save for each row asks for confirmation. Use <strong>Save changes</strong> for notes and warehouse IDs.</p>;
   return <p className="legend">
     <span className="legend-sys">Assignment details</span> are read only.{" "}
     <span className="legend-mine"><IconPencil size={11} />Your updates</span> save automatically.

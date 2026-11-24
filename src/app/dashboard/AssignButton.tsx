@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AllocationPreview, AssignSummary } from "@/lib/assignment-allocation";
 import type { AssigneeWorkload } from "@/lib/users";
 import { IconUsers } from "./icons";
@@ -9,8 +9,10 @@ import { useDashboardUI } from "./DashboardUI";
 import { requestJson } from "./requests";
 import { AllocationRecords } from "./AllocationRecords";
 import { CallerPicker } from "./CallerPicker";
+import { PreviousAiCalls } from "./PreviousAiCalls";
+import type { CallCat, CalledCat } from "@/lib/queue";
 export type Assignee = { email: string; name: string | null };
-type Preview = AllocationPreview & { workloads: AssigneeWorkload[] };
+type Preview = AllocationPreview & { workloads: AssigneeWorkload[]; page:number;pages:number;itemTotal:number };
 export function AssignButton({ entity, total, assignees }: { entity: "record" | "call"; total: number; assignees: Assignee[] }) {
   const selection = useSelection(), { pending, refresh, notify } = useDashboardUI();
   const [open, setOpen] = useState(false), [selIds, setSelIds] = useState<string[]>([]);
@@ -22,35 +24,51 @@ export function AssignButton({ entity, total, assignees }: { entity: "record" | 
   const [error, setError] = useState(""), [preview, setPreview] = useState<Preview | null>(null), [previewPage, setPreviewPage] = useState(0);
   const [result, setResult] = useState<AssignSummary | null>(null), [intentKey, setIntentKey] = useState("");
   const [retry, setRetry] = useState(0);
+  const [previewLoading,setPreviewLoading]=useState(false);
+  const previewCache=useRef(new Map<string,{data:Preview;at:number}>());
+  const [offCats, setOffCats] = useState<Set<CallCat>>(new Set());
+  const [aiHistory, setAiHistory] = useState<Pick<Preview, "aiCalled" | "aiCategories"> | null>(null);
   const count = scope === "selected" ? selIds.length : total, label = entity === "record" ? "record" : "call";
   const people = split ? callers : [assignee].filter(Boolean);
   const enoughCallers = people.length >= (split ? 2 : 1);
   const splitLabel = preview ? `Split ${preview.eligible.toLocaleString()} ${preview.eligible === 1 ? "call" : "calls"} across ${people.length} callers` : "Split calls";
-  const request = { entity_type: entity, ...(split ? { assignees: callers } : { assignee }), reassign, ...(scope === "selected" ? { ids: selIds } : { filters }) };
+  const request = { entity_type: entity, ...(split ? { assignees: callers } : { assignee }), reassign, excludeCats: [...offCats] as CalledCat[], ...(scope === "selected" ? { ids: selIds } : { filters }) };
   const requestText = JSON.stringify(request);
-  function change() { setIntentKey(crypto.randomUUID()); setResult(null); setPreview(null); setPreviewPage(0); setError(""); }
+  function change() { previewCache.current.clear();setIntentKey(crypto.randomUUID()); setResult(null); setPreview(null); setPreviewPage(0); setError(""); }
   function openModal() {
     const params = new URLSearchParams(location.search), f: Record<string, string | string[]> = {};
     for (const key of new Set(params.keys())) if (key !== "page") { const values = params.getAll(key); f[key] = values.length === 1 ? values[0] : values; }
     setFilters(f); setSelIds(selection.ids); setScope(!selection.allMatching && selection.ids.length ? "selected" : "all");
-    setAssignee(assignee || assignees[0]?.email || ""); setError(""); change(); setOpen(true);
+    setAssignee(assignee || assignees[0]?.email || ""); setOffCats(new Set()); setAiHistory(null); setError(""); change(); setOpen(true);
   }
   useEffect(() => {
     if (!open || result || !people.length) return;
-    let active = true; const controller = new AbortController(); setPreview(null);
-    requestJson<Preview>("/api/assignments/preview", { method: "POST", headers: { "content-type": "application/json" }, body: requestText, signal: controller.signal })
-      .then(data => { if (active) { setPreview(data); setWorkloads(data.workloads); setError(""); } })
-      .catch(e => { if (active) setError(e instanceof Error ? e.message : "Couldn't load the preview"); });
-    return () => { active = false; controller.abort(); };
+    let active = true; const controller = new AbortController();
+    const key=`${requestText}:${previewPage}`,cached=previewCache.current.get(key);
+    const accept=(data:Preview)=>{setPreview(data);setAiHistory(data);setWorkloads(data.workloads);setError('');setPreviewLoading(false);};
+    if(cached&&Date.now()-cached.at<15_000){accept(cached.data);return;}
+    setPreviewLoading(true);
+    // Coalesce rapid caller/exclusion changes before starting another DB plan.
+    const timer=setTimeout(()=>{
+      requestJson<Preview>(`/api/assignments/preview?page=${previewPage+1}`, { method: "POST", headers: { "content-type": "application/json" }, body: requestText, signal: controller.signal })
+        .then(data => { if (active) {
+          for(const [key,value] of previewCache.current)if(value.data.previewHash!==data.previewHash)previewCache.current.delete(key);
+          previewCache.current.set(key,{data,at:Date.now()});
+          while(previewCache.current.size>3)previewCache.current.delete(previewCache.current.keys().next().value!);
+          accept(data);
+        } })
+        .catch(e => { if (active) {setPreview(null);setPreviewLoading(false);setError(e instanceof Error ? e.message : "Couldn't load the preview");} });
+    },150);
+    return () => { active = false; clearTimeout(timer);controller.abort(); };
   // The serialized selection includes every input that changes allocation.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, result, requestText, retry]);
+  }, [open, result, requestText, previewPage, retry]);
   async function submit() {
-    if (!preview || busy || !enoughCallers || !preview.eligible) return; setBusy(true); setError("");
+    if (!preview || previewLoading || busy || !enoughCallers || !preview.eligible) return; setBusy(true); setError("");
     try {
       const data = await requestJson<AssignSummary>("/api/assignments", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...request, note: note.trim() || undefined, intentKey, previewHash: preview.previewHash }) });
       setResult(data); notify(`Assigned ${data.assigned} ${label}(s).`); refresh();
-    } catch (e) { setError(e instanceof Error ? e.message : "Couldn't assign this work. Try again."); setPreview(null); }
+    } catch (e) { previewCache.current.clear();setError(e instanceof Error ? e.message : "Couldn't assign this work. Try again."); setPreview(null); }
     finally { setBusy(false); }
   }
   return <>
@@ -63,6 +81,7 @@ export function AssignButton({ entity, total, assignees }: { entity: "record" | 
             {result.reassigned > 0 && <li>{result.reassigned} taken from a previous owner</li>}
             {result.skippedOwned > 0 && <li>{result.skippedOwned} skipped — a linked phone already has a caller</li>}
             {result.skippedWarehouse > 0 && <li>{result.skippedWarehouse} skipped — numbers with warehouses already added to DB</li>}
+            {result.skippedAi > 0 && <li>{result.skippedAi} excluded by AI history</li>}
             {result.duplicateContacts > 0 && <li>{result.duplicateContacts} duplicate calling targets grouped by phone. Source listings are preserved.</li>}
             {result.skippedNoPhone > 0 && <li>{result.skippedNoPhone} left out — no phone number to call</li>}
             {result.capped && <li>Assignment limit reached. Narrow the filters for remaining work.</li>}
@@ -71,10 +90,25 @@ export function AssignButton({ entity, total, assignees }: { entity: "record" | 
       </> : <>
         <div className="modal-body"><fieldset disabled={busy} className="plain-fieldset">
           <div className="assign-scope">
-            <label className={scope === "selected" ? "active" : undefined}><input type="radio" name="assign-scope" checked={scope === "selected"} disabled={!selIds.length} onChange={() => { change(); setScope("selected"); selection.setAllMatching(false); }} />{selIds.length} selected on this page</label>
-            <label className={scope === "all" ? "active" : undefined}><input type="radio" name="assign-scope" checked={scope === "all"} onChange={() => { change(); setScope("all"); selection.setAllMatching(true); }} />All {total.toLocaleString()} matching the current filters</label>
+            <label className={scope === "selected" ? "active" : undefined}><input type="radio" name="assign-scope" checked={scope === "selected"} disabled={!selIds.length} onChange={() => { change(); setAiHistory(null); setScope("selected"); selection.setAllMatching(false); }} />{selIds.length} selected on this page</label>
+            <label className={scope === "all" ? "active" : undefined}><input type="radio" name="assign-scope" checked={scope === "all"} onChange={() => { change(); setAiHistory(null); setScope("all"); selection.setAllMatching(true); }} />All {total.toLocaleString()} matching the current filters</label>
           </div>
-
+          {aiHistory && <PreviousAiCalls counts={aiHistory.aiCategories} total={aiHistory.aiCalled} included={preview?.aiIncluded}
+            unit="records" excluded={offCats} disabled={busy || !preview} onChange={categories => { change(); setOffCats(categories); }} />}
+          {!preview && !error && people.length > 0 && <p role="status">Checking ownership and caller workloads…</p>}
+          {preview && <section aria-label="Assignment preview" className="assignment-preview">
+            {split && enoughCallers && <h3 className="allocation-split-title">{splitLabel}</h3>}
+            <div className="allocation-summary"><strong>{preview.eligible} eligible</strong> of {preview.requested} rows</div>
+            <ul className="allocation-notes" aria-label="Assignment summary">
+              {preview.warehouseExists > 0 && <li><span className="warn" role="status"><strong>Numbers with warehouses already added to DB: {preview.warehouseNumbers}.</strong> {preview.warehouseExists} selected {preview.warehouseExists===1?'row':'rows'} excluded from assignment.<span className="allocation-note">Warehouse IDs are shown in the record preview.</span></span></li>}
+              {preview.owned > 0 && <li><strong>{preview.owned} already assigned to callers</strong> — kept with current owners.</li>}
+              {preview.excludedAi > 0 && <li><strong>{preview.excludedAi} excluded by AI history.</strong></li>}
+              {preview.duplicateContacts > 0 && <li>{preview.duplicateContacts} duplicate {preview.duplicateContacts === 1 ? 'target' : 'targets'}</li>}
+              {preview.missingPhone > 0 && <li>{preview.missingPhone} missing valid phone</li>}
+              {!split && Object.entries(preview.perCaller).map(([email, n]) => <li className="allocation-recipient" key={email}>New work for {email}: <strong>{n}</strong></li>)}
+              {preview.capped && <li><span role="status">Preview limited to 20,000 rows. Narrow your filters.</span></li>}
+            </ul>
+          </section>}
           {assignees.length > 1 && <fieldset className="assignment-mode"><legend>How should these calls be assigned?</legend><div>
             <label><input type="radio" name="assignment-mode" checked={!split} onChange={() => { change(); setSplit(false); }} />One caller</label>
             <label><input type="radio" name="assignment-mode" checked={split} onChange={() => { change(); setSplit(true); if (!callers.length) setCallers([assignee].filter(Boolean)); }} />Split across callers</label>
@@ -85,15 +119,7 @@ export function AssignButton({ entity, total, assignees }: { entity: "record" | 
           <label className="assign-field"><span>Note (optional)</span><input value={note} onChange={e => { setNote(e.target.value); setIntentKey(crypto.randomUUID()); }} placeholder="e.g. verify area + rent before adding to DB" /></label>
           <details className="assignment-options"><summary>Assignment options</summary><label className="assign-check"><input type="checkbox" checked={reassign} onChange={e => { change(); setReassign(e.target.checked); }} />Reassign rows already owned by someone else</label></details>
         </fieldset>
-          {!preview && !error && people.length > 0 && <p role="status">Checking ownership and caller workloads…</p>}
-          {preview && <section aria-label="Assignment preview" className="assignment-preview">
-            {split && enoughCallers && <h3 className="allocation-split-title">{splitLabel}</h3>}
-            <div className="allocation-summary"><strong>{preview.eligible} eligible</strong> of {preview.requested} rows</div>
-            {preview.warehouseExists > 0 && <p className="warn" role="status"><strong>Numbers with warehouses already added to DB: {preview.warehouseNumbers}.</strong> {preview.warehouseExists} selected {preview.warehouseExists===1?'row':'rows'} excluded from assignment. Warehouse IDs are shown in the record preview.</p>}
-            <div className="allocation-impact">{preview.owned > 0 && <span>{preview.owned} kept with current owners</span>}{preview.duplicateContacts > 0 && <span>{preview.duplicateContacts} duplicate targets</span>}{preview.missingPhone > 0 && <span>{preview.missingPhone} missing valid phone</span>}</div>
-            {!split && Object.entries(preview.perCaller).map(([email, n]) => <p className="allocation-recipient" key={email}>New work for {email}: <strong>{n}</strong></p>)}
-            {preview.capped && <p role="status">Preview limited to 20,000 rows. Narrow your filters.</p>}
-            <details className="allocation-inspection"><summary>Inspect selected records and planned actions</summary>
+          {preview && <details className="allocation-inspection"><summary>Inspect selected records and planned actions</summary>
               <details className="evidence-details allocation-audit"><summary>AI and ownership breakdown</summary>
             <p>{preview.uniquePhones} unique phones · {preview.validPhones} rows with valid phones</p>
             <p>{preview.owned} kept with current owners · {preview.duplicateContacts} duplicate targets · {preview.missingPhone} missing valid phone</p>
@@ -102,12 +128,11 @@ export function AssignButton({ entity, total, assignees }: { entity: "record" | 
             {Object.entries(preview.ownerCounts).map(([email, n]) => <p key={email}>Currently owned by {email}: {n} selected rows</p>)}
             {Object.entries(preview.completedOwners).map(([email,n]) => <p key={`completed-${email}`}>Completed episodes by {email}: {n}</p>)}
               </details>
-              <AllocationRecords items={preview.items.slice(previewPage * 50, previewPage * 50 + 50)} />
-              <div className="allocation-pagination">              <button type="button" disabled={previewPage === 0} onClick={() => setPreviewPage(p => p - 1)}>Previous records</button><span> Page {previewPage + 1} of {Math.max(1, Math.ceil(preview.items.length / 50))} </span><button type="button" disabled={(previewPage + 1) * 50 >= preview.items.length} onClick={() => setPreviewPage(p => p + 1)}>Next records</button></div>
-            </details>
-          </section>}
-          {error && <p className="assign-error" role="alert">{error} <button type="button" disabled={busy} onClick={() => setRetry(n => n + 1)}>Refresh preview</button></p>}</div>
-        <div className="modal-foot"><span className="muted">{count.toLocaleString()} {label}(s)</span><span className="spacer" /><button type="button" className="btn-text" disabled={busy} onClick={() => setOpen(false)}>Cancel</button><button type="button" className="btn-primary" disabled={busy || !preview || !preview.eligible || !count || !enoughCallers} onClick={submit}>{busy ? "Assigning…" : split ? enoughCallers ? splitLabel : "Split calls" : `Assign ${preview?.eligible ?? count}`}</button></div>
+              <AllocationRecords items={preview.items} />
+              <div className="allocation-pagination">              <button type="button" disabled={previewLoading || preview.page <= 1} onClick={() => setPreviewPage(preview.page - 2)}>Previous records</button><span> Page {preview.page} of {preview.pages} {previewLoading && <span role="status">Loading records…</span>} </span><button type="button" disabled={previewLoading || preview.page >= preview.pages} onClick={() => setPreviewPage(preview.page)}>Next records</button></div>
+            </details>}
+          {error && <p className="assign-error" role="alert">{error} <button type="button" disabled={busy} onClick={() => {previewCache.current.clear();setRetry(n => n + 1);}}>Refresh preview</button></p>}</div>
+        <div className="modal-foot"><span className="muted">{count.toLocaleString()} {label}(s)</span><span className="spacer" /><button type="button" className="btn-text" disabled={busy} onClick={() => setOpen(false)}>Cancel</button><button type="button" className="btn-primary" disabled={busy || previewLoading || !preview || !preview.eligible || !count || !enoughCallers} onClick={submit}>{busy ? "Assigning…" : split ? enoughCallers ? splitLabel : "Split calls" : `Assign ${preview?.eligible ?? count}`}</button></div>
       </>}
     </Dialog>}
   </>;

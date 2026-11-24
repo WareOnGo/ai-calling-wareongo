@@ -7,9 +7,10 @@ import { requestJson, RequestError } from "./requests";
 
 type ConflictRecovery<T> = { review: () => void; unavailable: () => void; values: (row: T) => T };
 
-export function useAutosave<T extends Values>(id: string, url: string, initial: T, rollback: (keyof T)[] = [], initialRevision = 0, validationDrafts: (keyof T)[] = [], recovery?: ConflictRecovery<T>) {
+export function useAutosave<T extends Values>(id: string, url: string, initial: T, rollback: (keyof T)[] = [], initialRevision = 0, validationDrafts: (keyof T)[] = [], recovery?: ConflictRecovery<T>, beforeSave?: () => Promise<boolean>) {
   const { reportSave, viewStorageKey } = useDashboardUI();
   const recoveryRef = useRef(recovery); recoveryRef.current = recovery;
+  const beforeSaveRef = useRef(beforeSave); beforeSaveRef.current = beforeSave;
   const baselineKnown = useRef(true);
   const version = useRef(initialRevision);
   const ref = useRef<Autosave<T> | null>(null);
@@ -49,7 +50,7 @@ export function useAutosave<T extends Values>(id: string, url: string, initial: 
     version.current = result.revision;
     baselineKnown.current = true;
     return recover?.values(result);
-  }, rollback, validationDrafts);
+  }, rollback, validationDrafts, beforeSave ? () => beforeSaveRef.current?.() ?? Promise.resolve(true) : undefined);
   const queue = ref.current;
   const snapshot = useSyncExternalStore(queue.subscribe, queue.getSnapshot, queue.getSnapshot);
   const needsReview = useCallback(() => queue.getSnapshot().code === "ASSIGNMENT_CONFLICT" && !!recoveryRef.current, [queue]);

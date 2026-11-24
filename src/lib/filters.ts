@@ -31,7 +31,7 @@ export const assignmentFiltersSchema = z.object({
   state: choices(["open", "done", "dropped"]), type: choices(["record", "call"]),
   outcome: choices(["none", "Available", "Unavailable", "Unclear"]), ai_result: multiple,
   follow_up: optional(z.enum(["pending", "due"])), quality_review: flag,
-  batch_id: optional(z.string().uuid()), date_from: optional(z.string().date()), date_to: optional(z.string().date()),
+  batch_id: optional(z.guid()), date_from: optional(z.string().date()), date_to: optional(z.string().date()),
   completed_from: optional(z.string().date()), completed_to: optional(z.string().date()),
   sort: optional(z.enum(["oldest", "name"])),
 }).refine(f => !f.date_from || !f.date_to || f.date_from <= f.date_to, "Start date cannot follow end date")

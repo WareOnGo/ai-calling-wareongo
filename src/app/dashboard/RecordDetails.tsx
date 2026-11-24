@@ -71,18 +71,19 @@ function DetailContents({ id, entity, onClose,initialSection,aiBatch,aiScope }: 
   const transcript = r ? entity === "record" ? r.last_transcript : r.transcript : null;
   const callFacts = r ? { "AI result": <ResultBadge value={result} empty="No AI result"/>, "Call connection": entity === "record" ? r.last_status : r.status, "Last call": dateTime(entity === "record" ? r.last_called_at : r.call_created_at) } : {};
   return <Dialog drawer wide className="record-details-dialog" title={r?.owner_name || "Record details"} onClose={onClose}>
-    {r && <><div className="detail-contact-bar"><div><span className="detail-label">Phone</span><CopyText value={phone} label="phone number" /></div>{phone && <a className="btn-row" href={`tel:${phone}`}>Call number</a>}</div>
+    {r && <div className="detail-contact-bar"><div><span className="detail-label">Phone</span><CopyText value={phone} label="phone number" /></div>{phone && <a className="btn-row" href={`tel:${phone}`}>Call number</a>}</div>}
       <div className="detail-tabs" ref={tabList} role="tablist" aria-label="Record details sections" onKeyDown={event => {
         if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
         event.preventDefault();
         const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (tabs.indexOf(tab) + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
         selectTab(tabs[next]); tabList.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next].focus();
       }}>{tabs.map((value, index) => <button type="button" role="tab" key={value} id={`${tabId}-tab-${index}`} aria-controls={`${tabId}-panel-${index}`} aria-selected={tab === value} tabIndex={tab === value ? 0 : -1} onClick={() => selectTab(value)}>{value}</button>)}</div>
-    </>}
     <div className="modal-body detail-body" ref={body}>
-      {error ? <div role="alert"><p>{error}</p><button type="button" className="btn" onClick={() => setAttempt(n => n + 1)}>Retry</button></div> : !r ? <div role="status"><p>Loading details…</p>{[1,2,3,4].map(i => <p className="skeleton detail-skeleton" key={i} />)}</div> : <>
-        <WarehouseNotice ids={r.warehouse_ids}/>
+      {error && <div role="alert"><p>{error}</p><button type="button" className="btn" onClick={() => setAttempt(n => n + 1)}>Retry</button></div>}
+      {!r && !error && tab==='Overview' && <div role="status"><p>Loading details…</p>{[1,2,3,4].map(i => <p className="skeleton detail-skeleton" key={i} />)}</div>}
+      {r && <WarehouseNotice ids={r.warehouse_ids}/>}
         <div className="detail-panel" role="tabpanel" id={`${tabId}-panel-0`} aria-labelledby={`${tabId}-tab-0`} hidden={tab !== "Overview"}>
+          {r && <>
           <section className="detail-section" aria-label="Property"><h3>Property</h3><Facts values={{ "Location": entity === "record" ? [r.city,r.state].filter(Boolean).join(", ") : r.db_area || r.raw_city,
             ...(entity === "record" ? { "Size": area(r.area_sqft) } : { "Built-up area": area(r.built_up_area_sqft), "Carpet area": area(r.carpet_area_sqft), "Listing area": area(r.raw_area_sqft) }), "Rent": rent(entity === "record" ? r.rent : r.expected_rent) }} />
             {r.address && <div className="detail-address"><span className="detail-label">Address</span><p>{r.address}</p></div>}
@@ -94,10 +95,11 @@ function DetailContents({ id, entity, onClose,initialSection,aiBatch,aiScope }: 
             {data.relatedListingsCapped && <p className="detail-description">Showing the first 100 related listings.</p>}
           </details>}
           {r.raw_matches?.length ? <details className="detail-section detail-listings"><summary>Matched listings <span>{r.raw_matches.length}</span></summary>{r.raw_matches.map((m,i) => <article className="detail-listing" key={i}><strong>{m.owner_name || "Unnamed owner"}</strong><Facts values={{ "Property type": m.warehouse_type, "Location": [m.city,m.state].filter(Boolean).join(", "), "Size": area(m.area_sqft) }} />{m.address && <p>{m.address}</p>}</article>)}</details> : null}
+          </>}
         </div>
         <div className="detail-panel" role="tabpanel" id={`${tabId}-panel-1`} aria-labelledby={`${tabId}-tab-1`} hidden={tab !== "AI activity"}>
-          {aiVisited && <AiTimeline initialBatch={aiBatch} initialScope={aiScope} initialPhone={phone} entity={entity} id={id} initialOpen>
-          <section className="detail-section ai-saved-summary" aria-label="Saved AI summary">
+          {aiVisited && <AiTimeline initialBatch={aiBatch} initialScope={aiScope} initialPhone={phone} entity={entity} id={id} initialOpen defaultPrimary>
+          {r && <section className="detail-section ai-saved-summary" aria-label="Saved AI summary">
             <div className="detail-section-heading"><h3>{entity === "call" ? "Selected call" : "Saved AI summary"}</h3><ResultBadge value={result} empty="No AI result"/></div>
             <p className="ai-saved-meta">{dateTime(entity === "record" ? r.last_called_at : r.call_created_at)}{(entity === "record" ? r.last_status : r.status) && <> · {entity === "record" ? r.last_status : r.status}</>}</p>
             <div className="ai-saved-evidence">
@@ -108,7 +110,7 @@ function DetailContents({ id, entity, onClose,initialSection,aiBatch,aiScope }: 
             {!audio && transcript && <p className="detail-description">No recording available.</p>}
             {r.calls_history?.length ? <details className="ai-saved-records"><summary>Saved execution records <span>{r.calls_history.length}</span></summary>{r.calls_history.map((h,i) => <div className="detail-history" key={i}><strong>{dateTime(h.at)}</strong><p>{h.status || "Unknown"} · <ResultBadge value={h.availability}/></p></div>)}</details> : null}
             </div>
-          </section>
+          </section>}
           </AiTimeline>}
         </div>
         <div className="detail-panel" role="tabpanel" id={`${tabId}-panel-2`} aria-labelledby={`${tabId}-tab-2`} hidden={tab !== "Manual activity"}>
@@ -117,7 +119,6 @@ function DetailContents({ id, entity, onClose,initialSection,aiBatch,aiScope }: 
         <section className="detail-section"><h3>Verification history <span className="detail-count">{manualData.historyTotal}</span></h3>{manualData.history.length ? manualData.history.map(h => <div className="detail-history" key={h.id}><strong>{h.assignee_name || h.assignee}</strong> · {h.state === 'dropped' ? 'unassigned' : h.state}<p>{dateTime(h.assigned_at)} · <ResultBadge value={h.outcome} empty="No result yet"/></p>{h.note && <p>Brief: {h.note}</p>}{h.remarks && <p className="detail-text">{h.remarks}</p>}<p>Staff-recorded onboarding: {h.added_to_db && h.wh_id ? "Yes" : "Not yet"}{h.wh_id ? ` · ${h.wh_id}` : ""}</p></div>) : <p className="muted">No verification history yet.</p>}{manualData.historyTotal > manualData.history.length && <p className="muted">Showing the latest {manualData.history.length} of {manualData.historyTotal} assignments.</p>}</section>
         </>}
         </div>
-      </>}
     </div>
     <div className="modal-foot">{entity === "record" && isAdmin && <Link className="btn-row" href={`/dashboard/raw/${id}`} onClick={onClose}>Open lead record</Link>}<button type="button" className="btn-text" onClick={onClose}>Close details</button></div>
   </Dialog>;

@@ -1097,6 +1097,10 @@
 #employee-work .work-perspective label { font-size: 12px; font-weight: 500; }
 #employee-work .work-perspective select { width: 320px; max-width: 100%; min-width: 0; }
 #employee-work .work-perspective > span { color: var(--muted); font-size: 12px; }
+#employee-work .work-row-editing { flex: none; color: var(--blue); font-size: 11px; font-weight: 500; }
+#employee-work .work-row-editing[data-status="saved"] { color: var(--fill-green-tx); }
+#employee-work .work-row-editing[data-status="error"] { color: var(--fill-red-tx); }
+#employee-work .work-draft-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 @media (max-width: 600px) {
   #employee-work .work-perspective select { flex: 1 1 210px; }
 }

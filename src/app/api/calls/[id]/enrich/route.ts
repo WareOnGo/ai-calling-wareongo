@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { apiError, uuid, ApiError } from "@/lib/api";
+import { apiError, uuid, jsonBody } from "@/lib/api";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { enrichCallById } from "@/lib/call-jobs";
@@ -24,10 +24,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!(await ownsEntity(user, "call", id))) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
-    const text = await req.text();
-    let data: unknown;
-    try { data = text ? JSON.parse(text) : {}; } catch { throw new ApiError(400, "Invalid JSON body"); }
-    const body = z.object({ force: z.boolean().optional() }).strict().parse(data);
+    const body = await jsonBody(req, z.object({ force: z.boolean().optional() }).strict(), { allowEmpty: true });
     const res = await enrichCallById(id, user, body.force);
     if (!res.ok) return NextResponse.json({ error: "Call changed during inference; refresh and retry" }, { status: 409 });
     return NextResponse.json({ ok: true, ...res.fields });

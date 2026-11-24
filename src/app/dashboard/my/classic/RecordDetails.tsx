@@ -20,7 +20,8 @@ function DetailContents({ id, entity, employee, onClose }: { id: string; entity:
   useEffect(() => {
     const controller = new AbortController();
     setError("");
-    requestJson(`/api/details/${entity}/${encodeURIComponent(id)}${employee ? `?${new URLSearchParams({ employee })}` : ""}`, { signal: controller.signal }).then(setData).catch(e => { if (!controller.signal.aborted) setError(e.message); });
+    const params = new URLSearchParams({ ...(employee ? { employee } : {}), section: 'classic' });
+    requestJson(`/api/details/${entity}/${encodeURIComponent(id)}?${params}`, { signal: controller.signal }).then(value => { if (!controller.signal.aborted) setData(value); }).catch(e => { if (!controller.signal.aborted) setError(e.message); });
     return () => controller.abort();
   }, [entity, id, employee, attempt]);
   const r = data?.row;

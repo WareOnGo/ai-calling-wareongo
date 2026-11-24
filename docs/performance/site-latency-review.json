@@ -1,0 +1,609 @@
+{
+  "recordedAt": "2026-11-24T01:08:01.809037+00:00",
+  "baselineCommit": "be87ad5721901f90b507bb9f8b3ba5f9454295b0",
+  "scope": "Site performance follow-up after beta Kanban save improvements; reviewed against a snapshot of the existing uncommitted work.",
+  "committed": false,
+  "deployed": false,
+  "schemaMigrationRequired": false,
+  "productionDataWrites": false,
+  "changes": [
+    "Negative ownership filters use an anti join; mixed Unassigned/caller selections preserve OR semantics without a correlated ownership subplan.",
+    "My Work receives the display context in its assignment query and no longer downloads duplicate full record/call details.",
+    "Classic employee details request only record data and verification history.",
+    "Batch members, totals, metrics and filter options share one calculation and snapshot; catalog count and page share one statement.",
+    "Batch pages poll a compact change token, preserve drafts, and refresh only on changes. Provider reconciliation runs after the sync response and cannot block the version read.",
+    "AI history starts independently of Overview, downloads individual transcripts on expansion, and defers mounting saved summaries.",
+    "Assignment previews return 50 items per requested page, debounce selection changes, and retain a bounded short-lived cache. Allocation facts use one statement instead of five; submit still recalculates the full locked plan."
+  ],
+  "measurementMethod": {
+    "readOnly": true,
+    "description": "Bounded READ ONLY PostgreSQL transactions against the configured application database. Measurements are reader/SQL wall times over a pinned connection, not browser latency. Sequential samples have different cache warmth and were collected at different times.",
+    "baselineGeneratedAt": "2026-11-24T00:12:34.425Z",
+    "afterGeneratedAt": "2026-11-24T00:32:36.545Z",
+    "productionMutationsOrProviderCalls": false,
+    "originalOwnershipCountTimeoutMs": 12203,
+    "finalBatchVersionProbe": {
+      "readOnly": true,
+      "generatedAt": "2026-11-24T00:58:36.326Z",
+      "samples": [
+        {
+          "name": "manual_catalog",
+          "run": 1,
+          "ms": 280
+        },
+        {
+          "name": "manual_catalog",
+          "run": 2,
+          "ms": 80
+        },
+        {
+          "name": "manual_detail",
+          "run": 1,
+          "ms": 2306
+        },
+        {
+          "name": "manual_detail",
+          "run": 2,
+          "ms": 122
+        },
+        {
+          "name": "ai_catalog",
+          "run": 1,
+          "ms": 3923
+        },
+        {
+          "name": "ai_catalog",
+          "run": 2,
+          "ms": 194
+        },
+        {
+          "name": "ai_detail",
+          "run": 1,
+          "ms": 98
+        },
+        {
+          "name": "ai_detail",
+          "run": 2,
+          "ms": 92
+        },
+        {
+          "name": "legacy",
+          "run": 1,
+          "ms": 1730
+        },
+        {
+          "name": "legacy",
+          "run": 2,
+          "ms": 191
+        }
+      ],
+      "settings": {
+        "work_mem": "2184kB",
+        "jit": "off"
+      }
+    },
+    "postChangeOwnershipFilterSamples": [
+      {
+        "entity": "record",
+        "name": "unassigned",
+        "count": 51422,
+        "ms": 3963
+      },
+      {
+        "entity": "record",
+        "name": "never",
+        "count": 51420,
+        "ms": 409
+      },
+      {
+        "entity": "record",
+        "name": "mixed",
+        "count": 52058,
+        "ms": 753
+      },
+      {
+        "entity": "call",
+        "name": "unassigned",
+        "count": 19894,
+        "ms": 460
+      },
+      {
+        "entity": "call",
+        "name": "never",
+        "count": 19892,
+        "ms": 423
+      },
+      {
+        "entity": "call",
+        "name": "mixed",
+        "count": 20148,
+        "ms": 839
+      }
+    ]
+  },
+  "readerMeasurements": {
+    "raw_unassigned": {
+      "before": [
+        {
+          "run": 1,
+          "ms": 8200,
+          "queries": 1,
+          "error": "57014"
+        }
+      ],
+      "after": [
+        {
+          "run": 1,
+          "ms": 6762,
+          "queries": 2,
+          "resultBytes": 62064,
+          "dbResultBytes": 62009,
+          "returnedRows": 50,
+          "total": 51422
+        },
+        {
+          "run": 2,
+          "ms": 1160,
+          "queries": 2,
+          "resultBytes": 62064,
+          "dbResultBytes": 62009,
+          "returnedRows": 50,
+          "total": 51422
+        }
+      ]
+    },
+    "employee_record_current": {
+      "before": [
+        {
+          "run": 1,
+          "ms": 410,
+          "queries": 3,
+          "resultBytes": 11488,
+          "dbResultBytes": 103410,
+          "returnedRows": 25,
+          "total": 352
+        },
+        {
+          "run": 2,
+          "ms": 221,
+          "queries": 3,
+          "resultBytes": 11488,
+          "dbResultBytes": 103410,
+          "returnedRows": 25,
+          "total": 352
+        }
+      ],
+      "after": [
+        {
+          "run": 1,
+          "ms": 241,
+          "queries": 2,
+          "resultBytes": 11488,
+          "dbResultBytes": 23168,
+          "returnedRows": 25,
+          "total": 352
+        },
+        {
+          "run": 2,
+          "ms": 121,
+          "queries": 2,
+          "resultBytes": 11488,
+          "dbResultBytes": 23168,
+          "returnedRows": 25,
+          "total": 352
+        }
+      ]
+    },
+    "employee_call_current": {
+      "before": [
+        {
+          "run": 1,
+          "ms": 529,
+          "queries": 3,
+          "resultBytes": 11148,
+          "dbResultBytes": 90035,
+          "returnedRows": 25,
+          "total": 855
+        },
+        {
+          "run": 2,
+          "ms": 194,
+          "queries": 3,
+          "resultBytes": 11148,
+          "dbResultBytes": 90035,
+          "returnedRows": 25,
+          "total": 855
+        }
+      ],
+      "after": [
+        {
+          "run": 1,
+          "ms": 198,
+          "queries": 2,
+          "resultBytes": 11148,
+          "dbResultBytes": 22516,
+          "returnedRows": 25,
+          "total": 855
+        },
+        {
+          "run": 2,
+          "ms": 117,
+          "queries": 2,
+          "resultBytes": 11148,
+          "dbResultBytes": 22516,
+          "returnedRows": 25,
+          "total": 855
+        }
+      ]
+    },
+    "batch_manual_members": {
+      "before": [
+        {
+          "run": 1,
+          "ms": 1343,
+          "queries": 2,
+          "resultBytes": 49238,
+          "dbResultBytes": 49186,
+          "returnedRows": 50,
+          "total": 550
+        },
+        {
+          "run": 2,
+          "ms": 230,
+          "queries": 2,
+          "resultBytes": 49238,
+          "dbResultBytes": 49186,
+          "returnedRows": 50,
+          "total": 550
+        }
+      ],
+      "after": [
+        {
+          "run": 1,
+          "ms": 1241,
+          "queries": 1,
+          "resultBytes": 49238,
+          "dbResultBytes": 49238,
+          "returnedRows": 50,
+          "total": 550
+        },
+        {
+          "run": 2,
+          "ms": 146,
+          "queries": 1,
+          "resultBytes": 49238,
+          "dbResultBytes": 49238,
+          "returnedRows": 50,
+          "total": 550
+        }
+      ]
+    },
+    "batch_manual_filtered": {
+      "before": [
+        {
+          "run": 1,
+          "ms": 328,
+          "queries": 3,
+          "resultBytes": 2381,
+          "dbResultBytes": 2343,
+          "returnedRows": 2,
+          "total": 2
+        }
+      ],
+      "after": [
+        {
+          "run": 1,
+          "ms": 151,
+          "queries": 1,
+          "resultBytes": 2381,
+          "dbResultBytes": 2381,
+          "returnedRows": 2,
+          "total": 2
+        }
+      ]
+    },
+    "batch_ai_members": {
+      "before": [
+        {
+          "run": 1,
+          "ms": 218,
+          "queries": 2,
+          "resultBytes": 45995,
+          "dbResultBytes": 45939,
+          "returnedRows": 50,
+          "total": 5100
+        },
+        {
+          "run": 2,
+          "ms": 215,
+          "queries": 2,
+          "resultBytes": 45995,
+          "dbResultBytes": 45939,
+          "returnedRows": 50,
+          "total": 5100
+        }
+      ],
+      "after": [
+        {
+          "run": 1,
+          "ms": 199,
+          "queries": 1,
+          "resultBytes": 45995,
+          "dbResultBytes": 45993,
+          "returnedRows": 50,
+          "total": 5100
+        },
+        {
+          "run": 2,
+          "ms": 208,
+          "queries": 1,
+          "resultBytes": 45995,
+          "dbResultBytes": 45993,
+          "returnedRows": 50,
+          "total": 5100
+        }
+      ]
+    },
+    "batch_ai_filtered": {
+      "before": [
+        {
+          "run": 1,
+          "ms": 306,
+          "queries": 3,
+          "resultBytes": 2122,
+          "dbResultBytes": 2082,
+          "returnedRows": 2,
+          "total": 2
+        }
+      ],
+      "after": [
+        {
+          "run": 1,
+          "ms": 191,
+          "queries": 1,
+          "resultBytes": 2122,
+          "dbResultBytes": 2120,
+          "returnedRows": 2,
+          "total": 2
+        }
+      ]
+    },
+    "batches_list_manual": {
+      "before": [
+        {
+          "run": 1,
+          "ms": 352,
+          "queries": 3,
+          "resultBytes": 22938,
+          "dbResultBytes": 21922,
+          "returnedRows": 25,
+          "total": 46
+        },
+        {
+          "run": 2,
+          "ms": 167,
+          "queries": 3,
+          "resultBytes": 22938,
+          "dbResultBytes": 21922,
+          "returnedRows": 25,
+          "total": 46
+        }
+      ],
+      "after": [
+        {
+          "run": 1,
+          "ms": 281,
+          "queries": 2,
+          "resultBytes": 23131,
+          "dbResultBytes": 22146,
+          "returnedRows": 25,
+          "total": 46
+        },
+        {
+          "run": 2,
+          "ms": 139,
+          "queries": 2,
+          "resultBytes": 23131,
+          "dbResultBytes": 22146,
+          "returnedRows": 25,
+          "total": 46
+        }
+      ]
+    },
+    "batches_list_ai": {
+      "before": [
+        {
+          "run": 1,
+          "ms": 1394,
+          "queries": 3,
+          "resultBytes": 13202,
+          "dbResultBytes": 12381,
+          "returnedRows": 20,
+          "total": 20
+        },
+        {
+          "run": 2,
+          "ms": 416,
+          "queries": 3,
+          "resultBytes": 13202,
+          "dbResultBytes": 12381,
+          "returnedRows": 20,
+          "total": 20
+        }
+      ],
+      "after": [
+        {
+          "run": 1,
+          "ms": 1719,
+          "queries": 2,
+          "resultBytes": 13381,
+          "dbResultBytes": 12591,
+          "returnedRows": 20,
+          "total": 20
+        },
+        {
+          "run": 2,
+          "ms": 391,
+          "queries": 2,
+          "resultBytes": 13381,
+          "dbResultBytes": 12591,
+          "returnedRows": 20,
+          "total": 20
+        }
+      ]
+    }
+  },
+  "queryBudgets": {
+    "employeeList": {
+      "before": 3,
+      "after": 2,
+      "perList": true
+    },
+    "classicDetails": {
+      "before": 7,
+      "after": 3,
+      "excludes": "authentication and optional admin employee-perspective lookup"
+    },
+    "batchMembers": {
+      "before": "2 unfiltered / 3 filtered",
+      "after": 1
+    },
+    "batchCatalog": {
+      "before": 2,
+      "after": 1,
+      "excludes": "progress, users and change token"
+    },
+    "allocationPlan": {
+      "before": 8,
+      "after": 4,
+      "excludes": "transaction control, endpoint selection resolution, workloads and mutation statements"
+    }
+  },
+  "adversarialReview": {
+    "status": "completed",
+    "reviewedFiles": [
+      "src/app/api/assignments/preview/route.ts",
+      "src/app/api/batches/sync/route.ts",
+      "src/app/api/batches/version/route.ts",
+      "src/app/api/details/[entity]/[id]/ai/route.ts",
+      "src/app/api/details/[entity]/[id]/route.ts",
+      "src/app/dashboard/AiTimeline.tsx",
+      "src/app/dashboard/AssignButton.tsx",
+      "src/app/dashboard/RecordDetails.tsx",
+      "src/app/dashboard/batches/BatchLiveUpdates.tsx",
+      "src/app/dashboard/batches/[kind]/[id]/page.tsx",
+      "src/app/dashboard/batches/page.tsx",
+      "src/app/dashboard/my/classic/RecordDetails.tsx",
+      "src/lib/ai-attempts.ts",
+      "src/lib/assignment-allocation.ts",
+      "src/lib/assignments.ts",
+      "src/lib/batch-browser.ts",
+      "src/lib/batch-version.ts",
+      "src/lib/employee-work.ts",
+      "src/lib/record-access.ts",
+      "src/lib/scope.ts",
+      "tests/browser/tests/34-assignment-details-menus.spec.ts",
+      "tests/browser/tests/44-loading-efficiency.spec.ts",
+      "tests/browser/tests/52-site-performance.spec.ts",
+      "tests/integration/site-performance.test.ts"
+    ],
+    "resolvedFindings": [
+      {
+        "risk": "A mixed Unassigned/named-caller OR can retain the slow correlated plan.",
+        "resolution": "Build selectable ID sets with UNION; added call/record parity tests across assignment states."
+      },
+      {
+        "risk": "A global source-table fingerprint can make the new polling query expensive.",
+        "resolution": "Restrict source-property and contact versions to batch members; measure the final catalog/detail/legacy queries separately."
+      },
+      {
+        "risk": "Reading a version after page data can acknowledge a change that the page did not display.",
+        "resolution": "Read the version before the authoritative page readers."
+      },
+      {
+        "risk": "A hung reconciliation request can block committed status reads; a successful read can hide a sync error.",
+        "resolution": "Run sync and version requests independently, bound requests, and maintain separate error state."
+      },
+      {
+        "risk": "A rejected allocation followed by cache reuse can keep presenting an obsolete preview.",
+        "resolution": "Clear the preview cache after failures and retries; browser test changes ownership externally and verifies rejection plus recovery."
+      },
+      {
+        "risk": "Making preview pagination mandatory breaks existing clients.",
+        "resolution": "Pagination is opt-in via page; requests without it retain the full item list."
+      },
+      {
+        "risk": "A deleted call could acquire an incorrect AI-call count during lean hydration.",
+        "resolution": "Keep the legacy zero-count fallback; include a missing-call assignment in field-for-field parity tests."
+      },
+      {
+        "risk": "Lazy transcripts could return another execution or employee history.",
+        "resolution": "Reuse authorized history scope, exact deduplicated execution/provider IDs and phone-matched evidence fallback; test unauthorized, dropped, malformed and employee-perspective requests."
+      }
+    ],
+    "additionalChecks": [
+      "Allocation lock, preview hash, idempotency, ownership, warehouse and exclusion guards remain active.",
+      "Paged previews summarize and allocate the entire selection, including rows not on the displayed page.",
+      "No-result and out-of-range batch pages preserve whole-batch metrics, filter options and export parity.",
+      "Row-version tokens detect older-row edits and deletions; due-time transitions participate in manual detail invalidation.",
+      "Aborted requests cannot replace newer history or preview results; caches remain bounded to the current dialog.",
+      "Classic employee display fields retain legacy area/rent/city formatting, blocked-call visibility and execution-count behavior.",
+      "API compatibility, employee/admin perspectives, responsive layouts and draft preservation were exercised in production-mode Chromium."
+    ],
+    "unresolvedDataCorrectnessOrAuthorizationFindings": []
+  },
+  "validation": {
+    "database": "Disposable PostgreSQL 17, migrations through 023; no application-database mutations.",
+    "typecheck": "passed",
+    "unitTestsPassed": 252,
+    "productionBuild": "passed",
+    "regularIntegrationTests": {
+      "passed": 515,
+      "skipped": 8,
+      "note": "The eight retained-schema tests passed separately in the shared-schema rehearsal."
+    },
+    "sharedSchemaRehearsal": {
+      "passed": 31,
+      "skipped": 2,
+      "uniqueCompatibilityTestsPassed": 8,
+      "historicalSchemaCommit": "707f7971fa6982b73e502d3ef8cc3ee778b54848",
+      "note": "Separate temporary local database, upgrade applied twice, original migration ledger preserved; two current-schema-only tests run in the regular suite."
+    },
+    "browserTestsPassedDistinct": 165,
+    "browserFiles": [
+      "04-assign-flow.spec.ts",
+      "05-employee-work.spec.ts",
+      "14-my-work-filters.spec.ts",
+      "34-assignment-details-menus.spec.ts",
+      "35-pagination-batches.spec.ts",
+      "40-ai-details-cards.spec.ts",
+      "42-ai-call-timeline.spec.ts",
+      "43-transcripts-assignees.spec.ts",
+      "44-loading-efficiency.spec.ts",
+      "45-employee-perspective.spec.ts",
+      "46-admin-employee-edit.spec.ts",
+      "47-ai-exclusions.spec.ts",
+      "50-board-perspective.spec.ts",
+      "52-site-performance.spec.ts",
+      "employee-preservation.spec.ts",
+      "warehouse-contacts.spec.ts"
+    ],
+    "browserNote": "Final build: 137 tests followed by 28 tests in disjoint files. The earlier 46-test run is not added again.",
+    "preexistingFilesIdentical": 44,
+    "intentionalOverlapWithExistingWork": [
+      "src/app/dashboard/AssignButton.tsx",
+      "src/lib/assignment-allocation.ts"
+    ],
+    "diffWhitespaceCheck": "passed",
+    "buildWarning": "The existing Next.js 16.4.3 dependency reports a security advisory. Build completed on retry; no dependency upgrade was included.",
+    "distinctIntegrationTestsPassed": 523
+  },
+  "remainingLimits": [
+    "Cold batch-version reads still took up to 3.9 seconds in the final probe, versus 80-194 ms when warm. Initial batch rendering includes this additional token read; end-to-end production latency was not measured.",
+    "Manual tokens deliberately include shared assignment/warehouse changes, which can cause a conservative refresh for unrelated work. This avoids silently missing cross-contact ownership changes.",
+    "Batch summaries still evaluate the whole batch; very large batches can remain expensive even though repeated calculations and round trips were removed.",
+    "Reopen and unassign retain a page refresh to recompute filtered membership, counts and pagination. The legacy ManualAttemptButton currently has no active page consumer.",
+    "Lazy transcript history excludes transcript bodies, but the Overview reader retains its existing saved-evidence payload for compatibility.",
+    "Provider reconciliation was tested with stubs; no live provider mutation or deployment was performed."
+  ]
+}

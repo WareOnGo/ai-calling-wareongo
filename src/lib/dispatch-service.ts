@@ -14,7 +14,7 @@ export const dispatchSchema = z.object({
   ids: selectedIds, intentKey: uuid, confirm: z.literal(true),
   // Older tabs previewed Hindi-only calls and omit this field. Auto must be explicit.
   routingMode: z.enum(["auto", "hindi", "english"]).default("hindi"),
-  filters: z.record(z.union([z.string().max(1000),z.array(z.string().max(1000)).max(100)])).nullable().optional(),
+  filters: z.record(z.string(), z.union([z.string().max(1000),z.array(z.string().max(1000)).max(100)])).nullable().optional(),
   excludeCats: z.array(z.enum(["dead", "unclear", "available", "unavailable"])).max(4).default([]),
 }).strict();
 export type DispatchInput = z.output<typeof dispatchSchema>;

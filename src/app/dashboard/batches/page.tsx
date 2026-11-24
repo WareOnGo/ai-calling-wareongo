@@ -12,16 +12,19 @@ import {Freshness} from '../DashboardUI';
 import {BatchStatus} from './BatchStatus';
 import {BatchLiveUpdates} from './BatchLiveUpdates';
 import {BatchFilters} from './BatchFilters';
+import {batchCatalogVersion,batchPollingQuery} from '@/lib/batch-version';
 export const dynamic='force-dynamic';
 
 export default async function Batches({searchParams}:{searchParams:Promise<SearchValues>}){
  const viewer=await requireAdmin(),sp=await searchParams;
  const parsed=batchListSchema.safeParse(Object.fromEntries(Object.entries(sp).filter(([,v])=>v)));
  if(!parsed.success)return <p role="alert">Invalid batch filters. <Link href="/dashboard/batches">Clear filters</Link></p>;
- const f=parsed.data,[data,people]=await Promise.all([listBatches(viewer,f,Number(firstValue(sp.page)||1)),listUsers()]);
+ const f=parsed.data;
+ const [data,people]=await Promise.all([listBatches(viewer,f,Number(firstValue(sp.page)||1)),listUsers()]);
  const progress=await batchProgress(data.rows),active=data.rows.filter(b=>b.kind==='ai'&&!['completed','canceled','stubbed'].includes(b.state)).map(b=>b.id);
+ const version=batchCatalogVersion(data,progress,people);
  return <>
-  <RecordsHeader title="Batches" meta={f.kind==='ai'?<WalletBalance compact/>:undefined} actions={<><BatchLiveUpdates ids={active}/><Freshness updatedAt={new Date().toISOString()}/></>}
+  <RecordsHeader title="Batches" meta={f.kind==='ai'?<WalletBalance compact/>:undefined} actions={<><BatchLiveUpdates ids={active} kind={f.kind} version={version} query={batchPollingQuery(sp)}/><Freshness updatedAt={new Date().toISOString()}/></>}
    tabs={<nav className="batch-tabs" aria-label="Batch type"><Link href="/dashboard/batches?kind=ai" aria-current={f.kind==='ai'?'page':undefined}>AI batches</Link><Link href="/dashboard/batches?kind=manual" aria-current={f.kind==='manual'?'page':undefined}>Manual batches</Link></nav>}/>
   <BatchFilters applied={sp} kind={f.kind} people={people} />
   <div className="batch-results-heading"><span>{data.total.toLocaleString()} matching {f.kind==='ai'?'AI':'manual'} batches <small>Dates use IST</small></span><a href={'/api/batches/export?'+searchQuery({...sp,kind:f.kind},['page'])}>Export batch list</a></div>

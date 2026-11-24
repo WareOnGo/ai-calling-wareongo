@@ -24,12 +24,12 @@ function LoadingWork() {
     <WorkStatusBar filters={filters} employeeName={filters.employee} loading />
     <WorkFilters filters={filters} loading />
     <WorkResultSummary filters={filters} loading />
-    <WorkLegend readOnly={readOnly} />
+    <WorkLegend employeeView={readOnly} />
     <div className="stacked work-content">
       {sections.map(([,title]) => <section className="worklist" key={title}>
         <h2 className="section-head">{title}<span className="count"><Placeholder width={65} /></span></h2>
         <div className="gridwrap"><table className="sheet task-sheet loading-work">
-          <WorkColumns /><WorkHeaders readOnly={readOnly} />
+          <WorkColumns /><WorkHeaders employeeView={readOnly} />
           <tbody>{Array.from({ length: 2 }, (_, row) => <tr className="skeleton-row" key={row}>
             <td className="rownum"><Placeholder width={10} /></td>
             <td className="who"><div className="work-person-heading"><span className="who-name"><Placeholder width="85%" height={14} /></span><span className="btn-row details-trigger loading-detail-button">Details</span></div><WorkContext loading /><div className="work-assignment-note"><span className="work-note-label"><IconClipboard size={12} />Assigner&apos;s note</span><span className="brief"><Placeholder width="90%" /></span></div><div className="work-assigned-meta"><Placeholder width="65%" /><Placeholder width={35} /></div></td>

@@ -85,7 +85,7 @@ test.describe("assign flow @shot", () => {
     let modal = await pickA1();
     await expect(modal.getByRole("region", {name:"Assignment preview"})).toContainText("0 eligible of 1 rows");
     await expect(modal.getByRole("button", {name:"Assign 0",exact:true})).toBeDisabled();
-    await expect(modal).toContainText("1 kept with current owners");
+    await expect(modal.getByText("1 already assigned to callers", {exact:true})).toBeVisible();
     await modal.getByText("Assignment options", {exact:true}).click();
     await modal.getByLabel("Reassign rows already owned by someone else").check();
     await modal.getByRole("button", { name: /^Assign/ }).click();

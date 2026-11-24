@@ -12,9 +12,9 @@ const admin = { email: 'admin@employee.test', name: null, isAdmin: true };
 const auth = vi.hoisted(() => ({ user: null as { email: string; name: null; isAdmin: boolean } | null }));
 vi.mock('@/lib/auth', () => ({ getCurrentUser: async () => auth.user, getCurrentAdmin: async () => auth.user?.isAdmin ? auth.user : null }));
 let id: string, recordId: string, callId: string;
-const request = (body: unknown) => new NextRequest('http://localhost/api/my-work/assignments', { method: 'PATCH', body: JSON.stringify(body) });
-const patch = (body: unknown) => PATCH(request(body), { params: Promise.resolve({ id }) });
-const latest = (assignmentId = id) => GET(new NextRequest('http://localhost/api/my-work/assignments'), {params:Promise.resolve({id:assignmentId})});
+const request = (body: unknown, employee?: string) => new NextRequest(`http://localhost/api/my-work/assignments${employee ? `?${new URLSearchParams({ employee })}` : ''}`, { method: 'PATCH', body: JSON.stringify(body) });
+const patch = (body: unknown, employee?: string) => PATCH(request(body, employee), { params: Promise.resolve({ id }) });
+const latest = (assignmentId = id, employee?: string) => GET(new NextRequest(`http://localhost/api/my-work/assignments${employee ? `?${new URLSearchParams({ employee })}` : ''}`), {params:Promise.resolve({id:assignmentId})});
 const row = async () => (await query('select * from bolna_assignments where id=$1', [id])).rows[0];
 
 beforeAll(() => {
@@ -34,6 +34,106 @@ beforeEach(async () => {
 });
 afterAll(async () => { await getPool().end(); });
 
+describe('admin editing employee work', () => {
+  it('edits all task fields, completes and reopens while retaining the employee and auditing the admin', async () => {
+    auth.user = admin;
+    expect((await patch({ revision: 0, outcome: 'Available', remarks: 'Admin correction', added_to_db: true, wh_id: 'WH-123' }, ` ${caller.email.toUpperCase()} `)).status).toBe(200);
+    expect((await patch({ revision: 1, state: 'done' }, caller.email)).status).toBe(200);
+    expect(await row()).toMatchObject({ assignee: caller.email, state: 'done', outcome: 'Available', remarks: 'Admin correction', added_to_db: true, wh_id: 'WH-123', revision: 2 });
+    expect((await patch({ revision: 2, state: 'open' }, caller.email)).status).toBe(200);
+    expect(await row()).toMatchObject({ assignee: caller.email, state: 'open', completed_at: null, revision: 3 });
+    const response = await latest(id, caller.email);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(await response.json()).toMatchObject({ remarks: 'Admin correction', revision: 3 });
+    expect((await query('select actor from bolna_assignment_changes where assignment_id=$1 order by id desc limit 3', [id])).rows).toEqual(Array.from({ length: 3 }, () => ({ actor: admin.email })));
+    expect((await query('select count(*)::int n from bolna_manual_attempts')).rows[0].n).toBe(0);
+  });
+
+  it('applies the same editing contract to AI follow-ups', async () => {
+    await query("update bolna_assignments set state='dropped' where id=$1", [id]);
+    await assignEntities({ entity: 'call', ids: [callId], assignee: caller.email, assignedBy: admin.email });
+    id = (await query("select id::text from bolna_assignments where entity_type='call'")).rows[0].id;
+    auth.user = admin;
+    expect((await patch({ revision: 0, remarks: 'Admin follow-up', state: 'done' }, caller.email)).status).toBe(200);
+    expect(await row()).toMatchObject({ assignee: caller.email, state: 'done', remarks: 'Admin follow-up' });
+  });
+
+  it('requires admin access and a matching employee scope for both reads and writes', async () => {
+    for (const user of [null, other, { ...admin, isAdmin: false, canSwitchView: true }]) {
+      auth.user = user;
+      expect((await latest(id, caller.email)).status).toBe(user ? 403 : 401);
+      expect((await patch({ revision: 0, remarks: 'Must not save' }, caller.email)).status).toBe(user ? 403 : 401);
+    }
+    auth.user = admin;
+    for (const employee of [undefined, other.email]) {
+      expect((await latest(id, employee)).status).toBe(404);
+      expect((await patch({ revision: 0, remarks: 'Wrong employee' }, employee)).status).toBe(409);
+    }
+    expect(await row()).toMatchObject({ revision: 0, remarks: null });
+  });
+
+  it('rejects unknown and inactive employees, and immediately respects revoked admin access', async () => {
+    auth.user = admin;
+    await query('update bolna_app_users set active=false where email=$1', [caller.email]);
+    for (const employee of [caller.email, 'missing@employee.test']) {
+      expect((await latest(id, employee)).status).toBe(404);
+      expect((await patch({ revision: 0, state: 'done' }, employee)).status).toBe(404);
+    }
+    await query('update bolna_app_users set active=true where email=$1', [caller.email]);
+    auth.user = { ...admin, isAdmin: false };
+    expect((await patch({ revision: 0, state: 'done' }, caller.email)).status).toBe(403);
+    expect(await row()).toMatchObject({ revision: 0, state: 'open' });
+  });
+
+  it('protects concurrent employee changes and allows an explicit revision-based correction', async () => {
+    expect((await patch({ revision: 0, remarks: 'Employee change' })).status).toBe(200);
+    auth.user = admin;
+    const stale = await patch({ revision: 0, remarks: 'Admin correction' }, caller.email);
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({ code: 'ASSIGNMENT_CONFLICT' });
+    expect(await (await latest(id, caller.email)).json()).toMatchObject({ revision: 1, remarks: 'Employee change' });
+    expect((await patch({ revision: 1, remarks: 'Admin correction' }, caller.email)).status).toBe(200);
+    expect(await row()).toMatchObject({ revision: 2, remarks: 'Admin correction', assignee: caller.email });
+  });
+
+  it('cannot reopen reassigned contacts, edit dropped work or change ownership', async () => {
+    auth.user = admin;
+    expect((await patch({ revision: 0, state: 'done' }, caller.email)).status).toBe(200);
+    await assignEntities({ entity: 'call', ids: [callId], assignee: other.email, assignedBy: admin.email, reassign: true });
+    expect((await patch({ revision: 1, state: 'open' }, caller.email)).status).toBe(409);
+    for (const fields of [{ assignee: other.email }, { state: 'dropped' }, { closure_reason: 'resolved' }]) {
+      expect((await patch({ revision: 1, ...fields }, caller.email)).status).toBe(400);
+    }
+    await query("update bolna_assignments set state='dropped',revision=revision+1 where id=$1", [id]);
+    expect((await latest(id, caller.email)).status).toBe(404);
+    expect((await patch({ revision: 2, remarks: 'Unavailable' }, caller.email)).status).toBe(409);
+  });
+
+  it('preserves the warehouse reopening guard for admin edits', async () => {
+    auth.user = admin;
+    await query("insert into bolna_warehouse_imports(name,snapshot_at,source_sha256,summary) values ('admin-work-test',now(),'fixture','{}')");
+    await query("insert into bolna_warehouse_contacts values ('9811500001',123,array['contactNumber'],'admin-work-test')");
+    expect((await patch({ revision: 0, state: 'done' }, caller.email)).status).toBe(200);
+    const response = await patch({ revision: 1, state: 'open' }, caller.email);
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: 'WAREHOUSE_ALREADY_ADDED' });
+  });
+
+  it.skipIf(process.env.TEST_SHARED_SCHEMA === '1')('keeps the database exception limited to active admins and classic fields', async () => {
+    const finish = (extra = '') => transaction(async client => {
+      await client.query("select set_config('bolna.actor',$1,true),set_config('bolna.employee_workflow','classic',true)", [admin.email]);
+      return client.query(`update bolna_assignments set state='done',revision=revision+1${extra} where id=$1`, [id]);
+    });
+    await query('update bolna_app_users set active=false where email=$1', [admin.email]);
+    await expect(finish()).rejects.toMatchObject({ code: '23514' });
+    await query("update bolna_app_users set active=true,role='employee' where email=$1", [admin.email]);
+    await expect(finish()).rejects.toMatchObject({ code: '23514' });
+    await query("update bolna_app_users set role='admin' where email=$1", [admin.email]);
+    await expect(finish(",note='Changed assignment instructions'")).rejects.toMatchObject({ code: '23514' });
+    expect((await finish()).rowCount).toBe(1);
+  });
+});
 describe('preserved employee task workflow', () => {
   it('returns the latest editable fields and version for conflict review without caching', async () => {
     expect((await patch({revision:0,remarks:'Saved elsewhere',wh_id:'3271'})).status).toBe(200);

@@ -109,22 +109,27 @@ export function ownershipFilter(entity: EntityType, idExpr: string, f: { assigne
       join (${CONTACT_PHONES_SQL}) target using(phone_last10)
       where ${states} and target.entity_type='${entity}' ${owner}`;
   const open = `${idExpr} in (${ownedIds()})`;
-  const assigned = `${idExpr} in (${ownedIds("", "a.state in ('open','done')")})`;
+  // NOT IN can choose a materialized subplan scanned for every source row when
+  // the estimated ownership set exceeds work_mem. NOT EXISTS permits an anti
+  // join. Both branches return non-null entity IDs, including phone aliases.
+  const absent = (states: string, target=idExpr) => `not exists (select 1 from (${ownedIds("", states)}) ownership where ownership.entity_id=${target})`;
   const where: string[] = [];
-  if (f.assignment_state === "unassigned") where.push(`not (${assigned})`);
+  if (f.assignment_state === "unassigned") where.push(absent("a.state in ('open','done')"));
   if (f.assignment_state === "open") where.push(`(${open})`);
-  if (f.assignment_state === "never") where.push(`not (${idExpr} in (${ownedIds("", "true")}))`);
+  if (f.assignment_state === "never") where.push(absent("true"));
   if (f.assignment_state === "done") where.push(`${idExpr} in (${ownedIds("", "a.state='done'")})`);
   const assignees=filterValues(f.assignee),named=assignees.filter(email=>email!=="none");
-  const ownerChoices:string[]=[];
-  if(assignees.includes("none"))ownerChoices.push(`not (${assigned})`);
+  const none=assignees.includes('none');
   if(named.length){
     params.push(named.map(email=>email.toLowerCase()));
-    ownerChoices.push(f.assignment_state === 'done'
-      ? `${idExpr} in (${ownedIds(`and a.assignee=any($${params.length}::text[])`, "a.state='done'")})`
-      : `${idExpr} in (${ownedIds(`and a.assignee=any($${params.length}::text[])`)})`);
-  }
-  if(ownerChoices.length)where.push(`(${ownerChoices.join(" or ")})`);
+    const namedIds=ownedIds(`and a.assignee=any($${params.length}::text[])`,f.assignment_state==='done'?"a.state='done'":"a.state='open'");
+    // An OR around a correlated NOT EXISTS prevents PostgreSQL from pulling it
+    // into an anti join. Build the two selectable sets instead, even for mixed
+    // "Unassigned + caller" filters on a large source table.
+    const choices=none?`select unowned.id from ${entity==='record'?'raw_records':'bolna_call_logs'} unowned
+      where ${absent("a.state in ('open','done')",'unowned.id')} union ${namedIds}`:namedIds;
+    where.push(`${idExpr} in (${choices})`);
+  } else if(none)where.push(absent("a.state in ('open','done')"));
   return where;
 }
 

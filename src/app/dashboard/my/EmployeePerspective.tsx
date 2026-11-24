@@ -18,6 +18,6 @@ export function EmployeePerspective({ employees, filters, loading = false }: {
       {loading && filters.employee && <option value={filters.employee}>{filters.employee}</option>}
       {employees.map(person => <option key={person.email} value={person.email}>{person.name ? `${person.name} (${person.email})` : person.email}</option>)}
     </select>
-    {filters.employee && <span id="work-perspective-note">Read-only employee view</span>}
+    {filters.employee && <span id="work-perspective-note">Confirm once per row</span>}
   </div>;
 }

@@ -28,5 +28,5 @@ export default async function MyWork({ searchParams }: { searchParams: Promise<R
     hasWorkCriteria(filters) ? personalTotals(viewer.email, filters) : totalRequest,
     personalAssigners(viewer.email),
   ]);
-  return <WorkLists key={JSON.stringify(filters)} records={records} calls={calls} totals={totals} matchingTotals={matchingTotals} filters={filters} assigners={assigners} employees={employees?.filter(person => person.email !== user.email).map(({ email, name }) => ({ email, name }))} viewingEmployee={viewingEmployee} updatedAt={new Date().toISOString()} />;
+  return <WorkLists key={viewer.email} records={records} calls={calls} totals={totals} matchingTotals={matchingTotals} filters={filters} assigners={assigners} employees={employees?.filter(person => person.email !== user.email).map(({ email, name }) => ({ email, name }))} viewingEmployee={viewingEmployee} updatedAt={new Date().toISOString()} />;
 }

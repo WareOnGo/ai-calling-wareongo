@@ -45,16 +45,16 @@ export const executionMetadataSchema=z.object({
 
 export const executionSchema = executionMetadataSchema
   .extend({
-    id: z.string().uuid(),
+    id: z.guid(),
     agent_id: z.string().nullish(),
     batch_id: z.string().nullish(),
     status: z.string(),
     total_cost: z.number().nullish(),
-    cost_breakdown: z.record(z.any()).nullish(),
+    cost_breakdown: z.record(z.string(), z.any()).nullish(),
     transcript: z.string().nullish(),
     answered_by_voice_mail: z.boolean().nullish(),
-    extracted_data: z.record(z.any()).nullish(),
-    context_details: z.record(z.any()).nullish(),
+    extracted_data: z.record(z.string(), z.any()).nullish(),
+    context_details: z.record(z.string(), z.any()).nullish(),
     created_at: z.string().nullish(),
     initiated_at: z.string().nullish(),
     updated_at: z.string().nullish(),

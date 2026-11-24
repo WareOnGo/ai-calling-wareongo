@@ -9,7 +9,7 @@ import {contactTargets} from './scope';
 import {CONNECTED_DISPOSITIONS} from './manual-dispositions';
 import {ASSIGNMENT_SOURCE_JOIN,ASSIGNMENT_SUBJECT,ASSIGNMENT_CITY} from './assignment-context';
 import type {ExportQuery} from './export';
-export const batchListSchema=z.object({kind:z.enum(['ai','manual']).default('ai'),created_by:z.string().trim().max(1000).optional(),q:z.string().trim().max(1000).optional(),language:z.enum(['english','hindi']).optional(),date_from:z.string().date().optional(),date_to:z.string().date().optional(),caller:z.string().max(1000).optional(),agent:z.string().max(1000).optional(),origin:z.enum(['record','call']).optional(),state:z.union([z.string().max(100),z.array(z.string().max(100)).max(30)]).optional(),dispatch:z.string().uuid().optional()}).refine(f=>!f.date_from||!f.date_to||f.date_from<=f.date_to,'Start date cannot follow end date');
+export const batchListSchema=z.object({kind:z.enum(['ai','manual']).default('ai'),created_by:z.string().trim().max(1000).optional(),q:z.string().trim().max(1000).optional(),language:z.enum(['english','hindi']).optional(),date_from:z.string().date().optional(),date_to:z.string().date().optional(),caller:z.string().max(1000).optional(),agent:z.string().max(1000).optional(),origin:z.enum(['record','call']).optional(),state:z.union([z.string().max(100),z.array(z.string().max(100)).max(30)]).optional(),dispatch:z.guid().optional()}).refine(f=>!f.date_from||!f.date_to||f.date_from<=f.date_to,'Start date cannot follow end date');
 export type BatchListFilters=z.infer<typeof batchListSchema>;
 export type BatchRow={id:string;kind:'ai'|'manual';created_at:string;created_by:string|null;scheduled_at:string|null;state:string;entity_type:string|null;agent_id:string|null;agent_language:string|null;dispatch_request_id:string|null;bolna_batch_id:string|null;assignees:string[]|null;selection:unknown;last_error:string|null;resolution_note:string|null};
 export type BatchProgress={targeted:number;finished:number;attempts:number};
@@ -54,11 +54,14 @@ function listQuery(f:BatchListFilters){
 export async function listBatches(viewer:Viewer,filters:BatchListFilters,requested=1){
  adminOnly(viewer);const {base,params,where}=listQuery(filters);
  const legacyCount=filters.kind==='manual'?'(select count(*)::int from bolna_assignments where batch_id is null)':'0';
- const counts=(await query(`select count(*)::int n,${legacyCount} legacy from (${base}) batches ${where}`,params)).rows[0];
- const total=Number(counts.n);
- const pages=Math.max(1,Math.ceil(total/25)),page=Math.min(pages,Math.max(1,Math.floor(Number.isFinite(requested)?requested:1)));
- const rows=(await query<BatchRow>(`select * from (${base}) batches ${where} order by created_at desc,id limit 25 offset ${(page-1)*25}`,params)).rows;
- const legacy=Number(counts.legacy);
+ const requestedPage=Math.max(1,Math.floor(Number.isFinite(requested)?requested:1));
+ params.push(requestedPage);
+ const {rows,total,page,pages,legacy}=(await query<{rows:BatchRow[];total:number;page:number;pages:number;legacy:number}>(`
+  with matching as materialized (select * from (${base}) batches ${where}), totals as (
+   select count(*)::int total,greatest(1,ceil(count(*)/25.0)::int) pages,${legacyCount} legacy from matching
+  ), bounds as (select *,least(pages,$${params.length}::numeric)::int page from totals), page_rows as (
+   select * from matching order by created_at desc,id limit 25 offset (select (page-1)*25 from bounds)
+  ) select bounds.*,coalesce((select json_agg(page_rows order by created_at desc,id) from page_rows),'[]'::json) rows from bounds`,params)).rows[0];
  return {rows,total,page,pages,legacy};
 }
 export function batchListExport(viewer:Viewer,filters:BatchListFilters):ExportQuery{
@@ -181,17 +184,27 @@ export function batchMembersExport(viewer:Viewer,batch:BatchRow,metric='all',fil
  return {sql:`select * from (${sql}) members ${where} order by member_id`,countSql:`select count(*)::text n from (${sql}) members ${where}`,params,countParams:params};
 }
 export async function batchMembers(viewer:Viewer,batch:BatchRow,metric='all',requested=1,filters:BatchMemberFilters={}){
- const spec=batchMembersExport(viewer,batch,metric,filters),base=membersBase(batch);
+ adminOnly(viewer);
+ const base=membersBase(batch),where=memberWhere(batch,metric,filters,base.params);
  const fields=(batch.kind==='ai'?AI_CARDS:MANUAL_CARDS).filter(c=>c[0]!=='all').map(([key])=>`count(*) filter(${metricWhere(batch,key)})::int ${key}`);
- // Progress describes the whole batch; filtering members must not imply completion.
- const summary=(await query(`select count(*)::int "all",coalesce(sum(attempts),0)::int attempts,${fields.join(',')},
-  array_agg(distinct state) states,array_agg(distinct assignee) callers,array_agg(distinct current_owner) owners
-  from (${base.sql}) members`,base.params)).rows[0];
- const {states,callers,owners,...counts}=summary;
+ // Compute evidence once in one statement/snapshot. Whole-batch progress and
+ // filter options remain independent of the filtered page (including no matches).
+ const requestedPage=Math.max(1,Math.floor(Number.isFinite(requested)?requested:1));
+ base.params.push(requestedPage);
+ const result=(await query<{summary:Record<string,number> & {states:(string|null)[];callers:(string|null)[];owners:(string|null)[]};total:number;page:number;pages:number;rows:BatchMember[]}>(`
+  with members as materialized (${base.sql}), summary as (
+   select count(*)::int "all",coalesce(sum(attempts),0)::int attempts,${fields.join(',')},
+  array_agg(distinct state order by state) states,array_agg(distinct assignee order by assignee) callers,array_agg(distinct current_owner order by current_owner) owners
+   from members
+  ), filtered as materialized (select * from members ${where}), totals as (
+   select count(*)::int total,greatest(1,ceil(count(*)/50.0)::int) pages from filtered
+  ), bounds as (select *,least(pages,$${base.params.length}::numeric)::int page from totals), page_rows as (
+   select * from filtered order by member_id limit 50 offset (select (page-1)*50 from bounds)
+  ) select row_to_json(summary) summary,bounds.*,
+   coalesce((select json_agg(page_rows order by member_id) from page_rows),'[]'::json) rows
+   from summary cross join bounds`,base.params)).rows[0];
+ const {states,callers,owners,...counts}=result.summary;
  const metrics=counts as Record<string,number>;
- const total=Object.values(filters).some(value=>Array.isArray(value)?value.length:!!value)
-  ? Number((await query(spec.countSql,spec.countParams)).rows[0].n) : metrics[metric];
- const pages=Math.max(1,Math.ceil(total/50)),page=Math.min(pages,Math.max(1,Math.floor(Number.isFinite(requested)?requested:1)));
- const rows=(await query<BatchMember>(`${spec.sql} limit 50 offset ${(page-1)*50}`,spec.params)).rows;
+ const {rows,total,page,pages}=result;
  return {rows,total,page,pages,metrics,options:{states:(states||[]).filter(Boolean) as string[],callers:(callers||[]).filter(Boolean) as string[],owners:(owners||[]).filter(Boolean) as string[]}};
 }

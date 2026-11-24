@@ -2,6 +2,7 @@
 import { searchValues } from "@/lib/filter-values";
 
 import { QueueContacts } from "./QueueContacts";
+import { PreviousAiCalls } from "./PreviousAiCalls";
 import { WalletBalance } from "./WalletBalance";
 import { useCallback, useMemo, useState, useRef } from "react";
 import { IconPhoneOutgoing, IconDownload, IconAlert } from "./icons";
@@ -9,7 +10,7 @@ import {
   type CallCat,
   type QueueSel as Sel,
   PROPERTY_TYPE,
-  CALLED_CATS,
+  calledCategories,
   buildCsv,
   dedupByNumber,
 } from "@/lib/queue";
@@ -79,27 +80,10 @@ export function QueueForCalling({ availableLanguages }: { availableLanguages: Ca
   // Category counts stay stable while outcomes are excluded or re-included.
   const catCounts = useMemo(() => {
     const m: Record<string, number> = {};
-    for (const r of rows) if (r.cat) m[r.cat] = (m[r.cat] ?? 0) + 1;
+    for (const r of rows) for (const cat of calledCategories(r)) m[cat] = (m[cat] ?? 0) + 1;
     return m;
   }, [rows]);
-  const presentCats = CALLED_CATS.filter((c) => catCounts[c.key]);
-  const calledTotal = rows.filter((r) => r.cat).length;
-
-  const toggleCat = useCallback((cat: CallCat) => {
-    setConfirming(false);
-    setOffCats((prev) => {
-      const next = new Set(prev);
-      if (next.has(cat)) next.delete(cat);
-      else next.add(cat);
-      return next;
-    });
-  }, []);
-  const allOff = presentCats.length > 0 && presentCats.every((c) => offCats.has(c.key));
-  const toggleAllCalled = useCallback(() => {
-    // If everything's already excluded, re-include all; otherwise exclude all.
-    setConfirming(false);
-    setOffCats(allOff ? new Set() : new Set(presentCats.map((c) => c.key)));
-  }, [allOff, presentCats]);
+  const calledTotal = rows.filter((r) => calledCategories(r).length).length;
 
   // Use the same routing and validation as the server. Dedup happens before splitting.
   const summary = assembleBatch(rows, [...offCats], { mode: routingMode, availableLanguages });
@@ -221,16 +205,11 @@ export function QueueForCalling({ availableLanguages }: { availableLanguages: Ca
               {alreadyQueued > 0 && <BatchActivity />}
               {capped && <p className="queue-limit">Showing the first {rows.length.toLocaleString()} — narrow filters to include the rest.</p>}
             </section>
+            <PreviousAiCalls counts={catCounts} total={calledTotal} included={callable.filter(row => calledCategories(row).length).length}
+              unit="contacts" excluded={offCats} disabled={sending || uncertain} onChange={categories => {
+                setConfirming(false); intent.current = crypto.randomUUID(); setOffCats(categories);
+              }} />
             {showLanguage && languageSettings}
-            {calledTotal > 0 && <details className="queue-disclosure queue-previous">
-              <summary>Previous AI calls <span>{calledTotal.toLocaleString()} {calledTotal === 1 ? "contact" : "contacts"}</span></summary>
-              <p>Choose which previous outcomes to include. Numbers with warehouses already added to DB, queued contacts and open manual assignments stay excluded.</p>
-              <div className="queue-outcomes">{presentCats.map(category => <label key={category.key}>
-                <input type="checkbox" checked={!offCats.has(category.key)} disabled={sending || uncertain} onChange={() => toggleCat(category.key)} />
-                <span>{category.label}</span><small>{catCounts[category.key].toLocaleString()}</small>
-              </label>)}</div>
-              <button type="button" className="btn-text" disabled={sending || uncertain} onClick={toggleAllCalled}>{allOff ? "Re-include all called" : "Exclude all called"}</button>
-            </details>}
             {rows.length > 0 && <QueueContacts rows={rows} excluded={offCats} routingMode={routingMode} availableLanguages={availableLanguages} />}
             <details className="queue-disclosure queue-audit">
               <summary>Selection details</summary>

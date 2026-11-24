@@ -8,11 +8,22 @@ are `05-employee-work`, `11-ux-recovery`, `14-my-work-filters` and
 completion redesign are retained in [deferred-employee](deferred-employee/README.md),
 outside the active test directory. Admin and API manual-call coverage stays active.
 
-`45-employee-perspective.spec.ts` covers the admin's read-only employee dropdown,
+`45-employee-perspective.spec.ts` covers the admin's employee dropdown,
 assignment and detail scope, filter/saved-view continuity, pagination, returning
 to editable own work, and desktop/mobile layouts in both themes. Pagination
 checks verify that the updated list and first row actually enter the viewport,
 with focus on that list's heading, for both admins and employees.
+
+`46-admin-employee-edit.spec.ts` covers the beta board's editing pattern in My Work:
+normal controls, confirmation on the first save per row, cancel/Escape retaining
+drafts, Save changes/Discard draft, accurate Saved status and admin audit
+attribution. It checks all five fields, conflict review, draft recovery, filter/refresh
+continuity and resetting confirmation when changing employees or reloading.
+The shared Save changes action confirms each dirty row in turn. Cancel/Escape
+skips only the current row, while browser Back cancels all queued confirmations;
+both retain unsaved drafts. Discarding a conflicted draft refreshes the employee's
+latest changes.
+It also checks employee-mode restrictions and desktop/mobile layouts in both themes.
 
 `50-board-perspective.spec.ts` covers the beta board's admin employee selector:
 matching the employee's cards and counts, scoped details/AI/activity, normal edit

@@ -7,7 +7,7 @@ import { csvCell } from "./csv";
 export const EXPORT_CAP = 100000;
 export const exportSchema = z.object({
   ids: z.array(uuid).min(1).max(EXPORT_CAP).transform(v => [...new Set(v)]).optional(),
-  filters: z.record(z.unknown()).default({}),
+  filters: z.record(z.string(), z.unknown()).default({}),
 }).strict();
 export async function exportInput(req: Request) {
   if (req.method === "POST") return jsonBody(req, exportSchema);

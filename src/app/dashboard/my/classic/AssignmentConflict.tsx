@@ -18,8 +18,9 @@ const fields: { key: keyof WorkValues; label: string }[] = [
 ];
 const display = (value: string | boolean | undefined) => typeof value === "boolean" ? value ? "Added" : "Not yet" : value || "Empty";
 
-export function AssignmentConflict({ url, draft, contactName, phone, onClose, onResolve, onDiscard, onUnavailable }: {
+export function AssignmentConflict({ url, draft, contactName, phone, notesLabel = "Your notes", onClose, onResolve, onDiscard, onUnavailable }: {
   url: string; draft: Partial<WorkValues>; contactName: string | null; phone: string | null; onClose: () => void;
+  notesLabel?: string;
   onResolve: (values: WorkValues, revision: number, keepDraft: boolean) => void; onDiscard: () => void;
   onUnavailable: () => void;
 }) {
@@ -50,7 +51,7 @@ export function AssignmentConflict({ url, draft, contactName, phone, onClose, on
       {unavailable && <p>Your draft is below so you can copy it before discarding it.</p>}
       {latest && <p>Saving your changes replaces the saved values shown below.</p>}
       {(latest || unavailable) && fields.filter(({ key }) => key in draft).map(({ key, label }) => <section className="detail-history" key={key}>
-        <h3>{label}</h3>
+        <h3>{key === "remarks" ? notesLabel : label}</h3>
         {latest && <><strong>Latest saved</strong><p className="detail-text">{display(latest.values[key])}</p></>}
         <strong>Your change</strong><p className="detail-text">{display(draft[key])}</p>
       </section>)}

@@ -12,11 +12,11 @@ const patchSchema = z.object({
   added_to_db: z.boolean().optional(), wh_id: nullableText.optional(), revision,
 }).strict().refine(v => Object.keys(v).length > 1, "No editable fields provided");
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   try {
-    const row = await getMyWorkAssignment(bigintId.parse((await params).id), user);
+    const row = await getMyWorkAssignment(bigintId.parse((await params).id), user, req.nextUrl.searchParams.get("employee"));
     if (!row) return NextResponse.json({ error: "This assignment is no longer available to you." }, { status: 404 });
     return NextResponse.json(row, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return apiError(error); }
@@ -32,7 +32,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const row = await updateMyWorkAssignment(id, user, { ...rest,
       ...(added_to_db !== undefined ? { addedToDb: added_to_db } : {}),
       ...(wh_id !== undefined ? { whId: wh_id } : {}),
-    });
+    }, req.nextUrl.searchParams.get("employee"));
     return NextResponse.json({ ok: true, ...row });
   } catch (error) { return apiError(error); }
 }

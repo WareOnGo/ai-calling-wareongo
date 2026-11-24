@@ -56,7 +56,7 @@ async function* providerPages(providerId: string) {
 
 /** Operator recovery: provider GETs only; never changes scheduling, reservations or assignments. */
 export async function recoverBatchHistory(id: string, options: { apply?: boolean; progress?: (p: Progress) => void } = {}) {
-  z.string().uuid().parse(id);
+  z.guid().parse(id);
   const batch = (await query<{ bolna_batch_id: string | null; agent_id: string }>(
     "select bolna_batch_id,agent_id from call_batches where id=$1", [id])).rows[0];
   if (!batch?.bolna_batch_id) throw new Error("An existing batch with a saved provider ID is required");

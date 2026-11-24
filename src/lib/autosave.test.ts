@@ -9,6 +9,40 @@ function deferred() {
 }
 const initial = { notes: "original", added: false, state: "open" };
 describe("confirmed autosave state", () => {
+  it("waits for confirmation and keeps every draft when cancelled", async () => {
+    let decide!: (accepted: boolean) => void;
+    const confirmation = new Promise<boolean>(resolve => { decide = resolve; });
+    const beforeSave = vi.fn().mockReturnValueOnce(confirmation).mockResolvedValue(true);
+    const send = vi.fn().mockResolvedValue(undefined);
+    const save = new Autosave(initial, send, ['added', 'state'], [], beforeSave);
+    save.set('notes', 'Keep this draft');
+    save.set('added', true);
+    const pending = save.flush();
+    save.set('state', 'done', true);
+    expect(send).not.toHaveBeenCalled();
+    decide(false); await pending;
+    expect(beforeSave).toHaveBeenCalledTimes(1);
+    expect(save.getSnapshot()).toMatchObject({ status: 'dirty', dirty: true, error: '', values: { notes: 'Keep this draft', added: true, state: 'done' } });
+    expect(send).not.toHaveBeenCalled();
+    await save.flush();
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith({ notes: 'Keep this draft', added: true, state: 'done' });
+    expect(save.getSnapshot()).toMatchObject({ status: 'saved', dirty: false });
+  });
+  it("confirms recovered drafts and retries without marking cancellations saved", async () => {
+    const beforeSave = vi.fn().mockResolvedValueOnce(false).mockResolvedValue(true);
+    const send = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValue(undefined);
+    const save = new Autosave(initial, send, [], [], beforeSave);
+    save.set('notes', 'Recovered draft');
+    save.retry();
+    await vi.waitFor(() => expect(save.getSnapshot().status).toBe('dirty'));
+    expect(send).not.toHaveBeenCalled();
+    await save.flush();
+    expect(save.getSnapshot().status).toBe('error');
+    save.retry();
+    await vi.waitFor(() => expect(save.getSnapshot()).toMatchObject({ status: 'saved', dirty: false }));
+    expect(beforeSave).toHaveBeenCalledTimes(3);
+  });
   it('retains a dependent result draft on validation failure while rolling back Done',async()=>{
     const values={outcome:'Unavailable',state:'open',remarks:''};
     const error=Object.assign(new Error('Explain the closure'),{field:'remarks'});

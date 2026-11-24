@@ -13,7 +13,7 @@ export type AiAttempt = {
   execution_created_at: string | null; first_observed_at: string;
   duration_seconds: string | null; conversation_seconds: string | null;
   confirmed_conversation: boolean; interval_seconds: string | null;
-  availability: string | null; notes: string | null; transcript: string | null; recording_url: string | null;
+  availability: string | null; notes: string | null; transcript: string | null; has_transcript?: boolean; recording_url: string | null;
 };
 export type AiHistory = {
   rows: AiAttempt[]; total: number; page: number; pages: number; outbound: number;
@@ -21,13 +21,13 @@ export type AiHistory = {
   scope: 'contact' | 'execution'; batch: string | null; phones: string[]; phone: string | null;
 };
 
-export async function aiHistory(viewer: Viewer, entity: 'call' | 'record', id: string,
-  options: { page?: number; scope?: 'contact' | 'execution'; batch?: string; phone?: string } = {}): Promise<AiHistory> {
-  const { phones } = await recordAccess(viewer, entity, id);
+type HistoryOptions = { page?: number; scope?: 'contact' | 'execution'; batch?: string; phone?: string; primaryPhone?: boolean; lazyTranscripts?: boolean };
+async function historyScope(viewer: Viewer, entity: 'call' | 'record', id: string, options: HistoryOptions) {
+  const { phones, primary_phone } = await recordAccess(viewer, entity, id, options.primaryPhone);
   // Employees following up one execution cannot expand into other callers' tasks.
-  const scope = entity === 'record' || viewer.isAdmin && options.scope === 'contact' ? 'contact' : 'execution';
+  const scope: 'contact' | 'execution' = entity === 'record' || viewer.isAdmin && options.scope === 'contact' ? 'contact' : 'execution';
   const requestedPhone = options.phone?.trim();
-  const phone = requestedPhone ? requestedPhone.replace(/\D/g, '').slice(-10) : null;
+  const phone = requestedPhone ? requestedPhone.replace(/\D/g, '').slice(-10) : options.primaryPhone && primary_phone && phones.includes(primary_phone) ? primary_phone : null;
   if (requestedPhone && (!phone || !phones.includes(phone))) throw new ApiError(400, 'Choose a phone number linked to this contact.');
   const params: unknown[] = [id], batch = options.batch?.trim() || null;
   const contact = `in (select phone_last10 from bolna_assignment_contacts where entity_type='${entity}' and entity_id=$1::uuid)`;
@@ -40,6 +40,30 @@ export async function aiHistory(viewer: Viewer, entity: 'call' | 'record', id: s
   if (phone) {
     params.push(phone); where += ` and ai_attempt.phone_last10=$${params.length}`; unknown += ` and cl.phone_last10=$${params.length}`;
   }
+  return { phones, scope, phone, params, batch, where, unknown };
+}
+const transcriptSql = "coalesce(nullif(a.raw->>'transcript',''),c.transcript)";
+const evidenceJoin = `left join bolna_call_logs c on c.id=a.execution_id
+    and nullif(trim(c.raw#>>'{telephony_data,provider_call_id}'),'')=a.provider_call_id
+    and c.phone_last10 is not distinct from a.phone_last10`;
+
+export async function aiTranscript(viewer: Viewer, entity: 'call' | 'record', id: string,
+  executionId: string, providerCallId: string, options: HistoryOptions = {}): Promise<string | null> {
+  const {where,params}=await historyScope(viewer,entity,id,options);
+  const unique=distinctAiAttemptsSql(where);
+  params.push(executionId,providerCallId);
+  // Match the deduplicated dial in this authorized history, never an arbitrary
+  // execution's latest transcript or a retry belonging to another provider ID.
+  const row=(await query<{transcript:string|null}>(`with unique_calls as (${unique})
+    select ${transcriptSql} transcript from unique_calls a ${evidenceJoin}
+    where a.execution_id=$${params.length-1}::uuid and a.provider_call_id=$${params.length}`,params)).rows[0];
+  if(!row)throw new ApiError(404,'Call no longer available in this history');
+  return row.transcript;
+}
+
+export async function aiHistory(viewer: Viewer, entity: 'call' | 'record', id: string,
+  options: HistoryOptions = {}): Promise<AiHistory> {
+  const {phones,scope,phone,params,batch,where,unknown}=await historyScope(viewer,entity,id,options);
   const unique = distinctAiAttemptsSql(where);
   const summary = (await query(`select count(*)::int total,count(*) filter(where direction='outbound')::int outbound,
     count(*) filter(where direction='inbound')::int inbound,count(*) filter(where confirmed_conversation)::int conversations,
@@ -62,11 +86,10 @@ export async function aiHistory(viewer: Viewer, entity: 'call' | 'record', id: s
     a.initiated_at::text,a.raw->>'initiated_at' as provider_initiated_at,a.execution_created_at::text,a.first_observed_at::text,
     a.duration_seconds::text,a.conversation_seconds::text,a.confirmed_conversation,a.interval_seconds,
     case when c.id is not null then bolna_availability(a.status,c.llm_availability) end as availability,c.notes,
-    coalesce(nullif(a.raw->>'transcript',''),c.transcript) as transcript,
+    ${options.lazyTranscripts ? 'null::text' : transcriptSql} as transcript,
+    nullif(${transcriptSql},'') is not null as has_transcript,
     coalesce(nullif(a.raw#>>'{telephony_data,recording_url}',''),nullif(a.raw->>'recording_url',''),c.recording_url) as recording_url
-  from paged a left join bolna_call_logs c on c.id=a.execution_id
-    and nullif(trim(c.raw#>>'{telephony_data,provider_call_id}'),'')=a.provider_call_id
-    and c.phone_last10 is not distinct from a.phone_last10
+  from paged a ${evidenceJoin}
   order by a.initiated_at desc nulls last,a.first_observed_at desc,a.execution_id,a.provider_call_id`, params)).rows;
   for (const row of rows) {
     const label = agentLabel(row.agent_id);
